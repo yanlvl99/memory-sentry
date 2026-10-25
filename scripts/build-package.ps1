@@ -12,6 +12,10 @@ if (-not $Version) {
 }
 if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z.+-]*$') { throw "Invalid release version: $Version" }
 
+$CargoManifest = Join-Path $Root "native\rust\Cargo.toml"
+& cargo build --release --manifest-path $CargoManifest --target x86_64-pc-windows-msvc --locked
+if ($LASTEXITCODE -ne 0) { throw "Rust release build failed with exit code $LASTEXITCODE." }
+
 $Binary = Join-Path $Root "native\rust\target\x86_64-pc-windows-msvc\release\memory-sentry-native.exe"
 if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
     throw "Compiled Windows companion not found at $Binary. Run cargo build --release for x86_64-pc-windows-msvc first."
