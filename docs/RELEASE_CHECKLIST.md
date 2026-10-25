@@ -34,4 +34,4 @@ Do not call the release stable until all required real-desktop tests are complet
 - [ ] Setup EXE and SHA-256 files are attached to the correct release.
 - [ ] Mark v1.0.0-rc.1 as a prerelease; create stable v1.0.0 only after every required Windows 10/11 real-desktop test passes.
 - [ ] Never state the release has no antivirus warnings; the current executable is unsigned.
-- [ ] Add the exact GitHub repository topic `spicetify-apps` manually, then submit the discovery listing; Marketplace is not an installer.
+- [ ] Add the exact GitHub repository topic `spicetify-apps` manually, then submit the discovery listing. The listing only links to the repository and cannot install Memory Sentry.
