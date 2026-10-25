@@ -30,6 +30,7 @@ impl FileTime {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Default)]
 struct ProcessMemoryCounters {
     cb: u32,
     page_fault_count: u32,
@@ -41,6 +42,15 @@ struct ProcessMemoryCounters {
     quota_non_paged_pool_usage: usize,
     pagefile_usage: usize,
     peak_pagefile_usage: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct ProcessMemoryCountersEx2 {
+    base: ProcessMemoryCounters,
+    private_usage: usize,
+    private_working_set_size: usize,
+    shared_commit_usage: u64,
 }
 
 #[repr(C)]
@@ -87,7 +97,7 @@ extern "system" {
 
 #[link(name = "psapi")]
 extern "system" {
-    fn GetProcessMemoryInfo(process: Handle, counters: *mut ProcessMemoryCounters, size: u32) -> i32;
+    fn GetProcessMemoryInfo(process: Handle, counters: *mut c_void, size: u32) -> i32;
     fn EmptyWorkingSet(process: Handle) -> i32;
 }
 
@@ -130,6 +140,7 @@ pub struct ProcessRow {
     pub cpu_time_ms: f64,
     pub cpu_percent: Option<f64>,
     pub working_set_mb: Option<f64>,
+    pub private_working_set_mb: Option<f64>,
     pub private_mb: Option<f64>,
     pub page_fault_count: Option<u64>,
     pub page_faults_delta: Option<u64>,
@@ -161,6 +172,7 @@ pub struct NativeStats {
     pub creation: u64,
     pub cpu_time_ms: f64,
     pub working_set_mb: f64,
+    pub private_working_set_mb: Option<f64>,
     pub page_fault_count: u64,
 }
 
@@ -198,31 +210,47 @@ fn process_times(handle: Handle) -> Result<(u64, f64), String> {
     Ok((creation.value(), cpu_ticks as f64 / 10_000.0))
 }
 
-fn process_stats_with_handle(handle: Handle) -> Result<(f64, u64), String> {
+fn process_stats_with_handle(handle: Handle) -> Result<(f64, Option<f64>, u64), String> {
     let mut counters = ProcessMemoryCounters {
         cb: std::mem::size_of::<ProcessMemoryCounters>() as u32,
-        page_fault_count: 0,
-        peak_working_set_size: 0,
-        working_set_size: 0,
-        quota_peak_paged_pool_usage: 0,
-        quota_paged_pool_usage: 0,
-        quota_peak_non_paged_pool_usage: 0,
-        quota_non_paged_pool_usage: 0,
-        pagefile_usage: 0,
-        peak_pagefile_usage: 0,
+        ..ProcessMemoryCounters::default()
     };
     let ok = unsafe {
         GetProcessMemoryInfo(
             handle,
-            &mut counters,
+            &mut counters as *mut _ as *mut c_void,
             std::mem::size_of::<ProcessMemoryCounters>() as u32,
         )
     };
     if ok == 0 {
         return Err(format!("GetProcessMemoryInfo failed with Win32 error {}", last_error()));
     }
+
+    let mut extended = ProcessMemoryCountersEx2 {
+        base: counters,
+        ..ProcessMemoryCountersEx2::default()
+    };
+    extended.base.cb = std::mem::size_of::<ProcessMemoryCountersEx2>() as u32;
+    let extended_ok = unsafe {
+        GetProcessMemoryInfo(
+            handle,
+            &mut extended as *mut _ as *mut c_void,
+            std::mem::size_of::<ProcessMemoryCountersEx2>() as u32,
+        )
+    } != 0;
+    let working_set_size = if extended_ok {
+        extended.base.working_set_size
+    } else {
+        counters.working_set_size
+    };
+    let private_working_set_mb = if extended_ok && extended.private_working_set_size > 0 {
+        Some(extended.private_working_set_size as f64 / (1024.0 * 1024.0))
+    } else {
+        None
+    };
     Ok((
-        counters.working_set_size as f64 / (1024.0 * 1024.0),
+        working_set_size as f64 / (1024.0 * 1024.0),
+        private_working_set_mb,
         counters.page_fault_count as u64,
     ))
 }
@@ -231,8 +259,8 @@ pub fn inspect_process(pid: u32) -> Result<NativeStats, String> {
     let handle = open_process(pid, PROCESS_QUERY_INFORMATION)?;
     let result = (|| {
         let (creation, cpu_time_ms) = process_times(handle)?;
-        let (working_set_mb, page_fault_count) = process_stats_with_handle(handle)?;
-        Ok(NativeStats { creation, cpu_time_ms, working_set_mb, page_fault_count })
+        let (working_set_mb, private_working_set_mb, page_fault_count) = process_stats_with_handle(handle)?;
+        Ok(NativeStats { creation, cpu_time_ms, working_set_mb, private_working_set_mb, page_fault_count })
     })();
     unsafe { CloseHandle(handle); }
     result
@@ -454,6 +482,7 @@ try {
                 let mut creation = creation_from_wmi;
                 let mut cpu_time_ms = cpu_from_wmi;
                 let mut working_set_mb = (ws > 0.0).then_some(ws / (1024.0 * 1024.0));
+                let mut private_working_set_mb = None;
                 let mut page_fault_count = (parts[7].parse::<u64>().is_ok()).then_some(faults as u64);
                 let mut error_code = 0;
                 if let Ok(native) = inspect_process(pid) {
@@ -461,13 +490,15 @@ try {
                     creation = native.creation;
                     cpu_time_ms = native.cpu_time_ms;
                     working_set_mb = Some(native.working_set_mb);
+                    private_working_set_mb = native.private_working_set_mb;
                     page_fault_count = Some(native.page_fault_count);
                 } else {
                     error_code = -1;
                 }
                 snapshot.processes.push(ProcessRow {
                     pid, ppid, cmd, creation, cpu_time_ms, cpu_percent: None,
-                    working_set_mb, private_mb: (private > 0.0).then_some(private / (1024.0 * 1024.0)),
+                    working_set_mb, private_working_set_mb,
+                    private_mb: (private > 0.0).then_some(private / (1024.0 * 1024.0)),
                     page_fault_count, page_faults_delta: None, error_code,
                 });
             }
