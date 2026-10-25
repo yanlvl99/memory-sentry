@@ -11,7 +11,7 @@
 /dist/
 /build/
 /release/
-
+target/
 # Local runtime data
 node_modules/
 *.log
