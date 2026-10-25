@@ -15,15 +15,15 @@ If the log is missing, open PowerShell and run:
 Get-Content "$env:LOCALAPPDATA\SpicetifyMemorySentry\logs\startup.log" -Tail 40
 ```
 
-The first command prints a direct error if the launcher cannot initialize; the second shows local startup diagnostics if the file was created. If the executable itself is missing, repair the installation using the official setup executable. For runtime events after the API starts, inspect `helper.log` in the same `logs` folder. These logs stay on the PC and are not uploaded. A "port already in use" error means another process is listening on port 38472. An "Invalid local token" error indicates that the dashboard and companion were configured with different tokens; rerun the official installer to configure both together.
+The first command prints a direct error if the launcher cannot initialize; the second shows local startup diagnostics if the file was created. If the executable itself is missing, repair the installation using the official setup executable. For runtime events after the local API starts, inspect `helper.log` in the same `logs` folder. These logs stay on the PC and are not uploaded. A "port already in use" error means another process is listening on port 38472. An "Invalid local token" error means the plugin and server were configured with different internal tokens; rerun the official installer to configure both together.
 
 ## Uninstall while Spotify is open
 
-The uninstaller asks the native companion to restore the original Windows working-set limits and exit, removes its current-user startup registration, then removes the Custom App from Spicetify and runs `spicetify apply`. That lets Spicetify refresh Spotify as part of removing the app; you should not need to close Spotify manually for a normal uninstall. If the companion cannot confirm recovery or its process will not exit, uninstall stops and preserves the recovery files instead of deleting them.
+The uninstaller asks the server to restore the original Windows working-set limits and exit, removes its current-user startup registration, then removes the plugin from Spicetify and runs `spicetify apply`. That lets Spicetify refresh Spotify as part of removing the app; you should not need to close Spotify manually for a normal uninstall. If the server cannot confirm recovery or its process will not exit, uninstall stops and preserves the recovery files instead of deleting them.
 
 ## Spotify restart during setup
 
-Setup does not require Spotify to be manually closed. It prepares or shuts down the previous Memory Sentry helper, installs the Custom App files, starts the local API, and then calls `spicetify apply`; Spicetify may restart Spotify itself.
+Setup does not require Spotify to be manually closed. It prepares or shuts down the previous Memory Sentry server, installs the plugin files, starts the local API, and then calls `spicetify apply`; Spicetify may restart Spotify itself.
 
 ## Setup says Spicetify was not found
 
