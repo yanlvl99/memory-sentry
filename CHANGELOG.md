@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Identify processes that hold an active Windows audio session through the Core Audio session API, so audio-holding processes (including the Spotify main process, which hosts audio in current builds) are excluded from caps and any cap already applied to them is restored.
+- Switch the dashboard's debug mode control to the Spicetify Toggle component, keeping the previous button as a fallback when the component is unavailable.
+- Validate Core Audio session discovery and the dashboard Toggle component in the package checks.
 - Add a release mode setting so trimming can release memory only down to the current ceiling (default) or as much unused memory as possible, selectable from the dashboard.
 - Add a `--swap <exe>` server command and `scripts/swap-server.ps1` so a new server build replaces the running one while Spotify and the plugin stay open.
 - Add a debug mode toggle to the dashboard: the default view shows only the essential cards, processes and settings, while diagnostics (page faults, restore timing, adjustments, activity log and per-process detail) appear only when debug mode is enabled. The choice is remembered locally.
