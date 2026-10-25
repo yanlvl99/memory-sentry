@@ -1787,12 +1787,23 @@ fn apply_manual_cap(
         let _ = persist_or_log(state);
         return Err(error);
     }
+    let trimmed = !state.settings.trim_to_cap
+        && process
+            .working_set_mb
+            .map(|working_set_mb| working_set_mb > cap_mb as f64)
+            .unwrap_or(false)
+        && platform::empty_working_set(process.pid, process.creation).is_ok();
     log_event(
         state,
         format!(
-            "Applied manual {} limit to PID {}: {cap_mb} MB.",
+            "Applied manual {} limit to PID {}: {cap_mb} MB{}.",
             role_name(role),
-            process.pid
+            process.pid,
+            if trimmed {
+                "; one-time trim requested"
+            } else {
+                ""
+            }
         ),
         "info",
     );
@@ -2125,6 +2136,10 @@ fn should_manage_limits_in_background(window_state: &str) -> bool {
     matches!(window_state, "minimized" | "hidden" | "background-visible")
 }
 
+fn background_delay_elapsed(since: u64, now: u64, delay_seconds: u64) -> bool {
+    since > 0 && now.saturating_sub(since) >= delay_seconds.saturating_mul(1000)
+}
+
 fn maybe_auto_optimize(state: &mut AppState, now: u64) {
     if !state.settings.enabled {
         state.hidden_since_ms = 0;
@@ -2146,17 +2161,37 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
         return;
     }
     if !state.settings.auto_optimize {
-        state.hidden_since_ms = 0;
         if should_manage_limits_in_background(&state.window_state) {
+            if state.hidden_since_ms == 0 {
+                state.hidden_since_ms = now;
+                log_event(
+                    state,
+                    format!(
+                        "Spotify entered {}; manual limits wait {} second(s).",
+                        state.window_state, state.settings.hidden_delay_seconds
+                    ),
+                    "info",
+                );
+            }
+            if !background_delay_elapsed(
+                state.hidden_since_ms,
+                now,
+                state.settings.hidden_delay_seconds,
+            ) {
+                return;
+            }
             reconcile_manual_caps(state);
-        } else if !state.active_caps.is_empty()
-            && now.saturating_sub(state.last_restore_attempt_at_ms) >= 1500
-        {
-            state.last_restore_attempt_at_ms = now;
-            restore_all(
-                state,
-                &format!("manual policy window {}", state.window_state),
-            );
+        } else {
+            state.hidden_since_ms = 0;
+            if !state.active_caps.is_empty()
+                && now.saturating_sub(state.last_restore_attempt_at_ms) >= 1500
+            {
+                state.last_restore_attempt_at_ms = now;
+                restore_all(
+                    state,
+                    &format!("manual policy window {}", state.window_state),
+                );
+            }
         }
         return;
     }
@@ -2183,7 +2218,11 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
             "info",
         );
     }
-    if now.saturating_sub(state.hidden_since_ms) < state.settings.hidden_delay_seconds * 1000 {
+    if !background_delay_elapsed(
+        state.hidden_since_ms,
+        now,
+        state.settings.hidden_delay_seconds,
+    ) {
         return;
     }
     if !state.snapshot_ok
