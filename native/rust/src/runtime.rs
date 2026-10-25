@@ -2318,13 +2318,29 @@ fn public_config(settings: &Settings) -> String {
 fn status_payload(state: &AppState) -> String {
     let targets = descendants(state);
     let process_count = state.snapshot.processes.len();
+    let private_working_set_available = process_count > 0
+        && state
+            .snapshot
+            .processes
+            .iter()
+            .all(|p| p.private_working_set_mb.is_some());
+    let displayed_memory_mb = |process: &platform::ProcessRow| {
+        if private_working_set_available {
+            process.private_working_set_mb
+        } else {
+            process.working_set_mb
+        }
+    };
     let spotify_total_mb: f64 = state
         .snapshot
         .processes
         .iter()
-        .filter_map(|p| p.working_set_mb)
+        .filter_map(displayed_memory_mb)
         .sum();
-    let target_total_mb: f64 = targets.iter().filter_map(|(p, _)| p.working_set_mb).sum();
+    let target_total_mb: f64 = targets
+        .iter()
+        .filter_map(|(p, _)| displayed_memory_mb(p))
+        .sum();
     let capped_count = state
         .active_caps
         .values()
@@ -2349,9 +2365,10 @@ fn status_payload(state: &AppState) -> String {
         let manual_cap = state.settings.manual_caps.get(&(p.pid, p.creation)).copied();
         let adaptive_status = profile.map(|p| p.last_reason.as_str()).unwrap_or("baseline");
         format!(
-            "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"protectedAudio\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{}}}",
+            "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"protectedAudio\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{}}}",
             p.pid, json_quote(&p.creation.to_string()), json_quote(role_name(*role)),
             json_optional_number(p.working_set_mb),
+            json_optional_number(p.private_working_set_mb),
             json_optional_number(p.private_mb),
             json_optional_number(p.cpu_percent),
             json_optional_u64(p.page_fault_count),
@@ -2403,9 +2420,9 @@ fn status_payload(state: &AppState) -> String {
         0
     };
     let memory = format!(
-        "{{\"spotifyTotalMB\":{},\"targetTotalMB\":{},\"processCount\":{},\"targetCount\":{},\"cappedCount\":{},\"targets\":[{}],\"sampledAt\":{}}}",
+        "{{\"spotifyTotalMB\":{},\"targetTotalMB\":{},\"processCount\":{},\"targetCount\":{},\"cappedCount\":{},\"privateWorkingSet\":{},\"targets\":[{}],\"sampledAt\":{}}}",
         json_num(spotify_total_mb), json_num(target_total_mb), process_count, targets.len(), capped_count,
-        target_json.join(","), json_quote(&iso_now())
+        private_working_set_available, target_json.join(","), json_quote(&iso_now())
     );
     let telemetry = format!(
         "{{\"lastRestoreDurationMs\":{},\"lastRestoreAt\":{},\"lastRestoreRestored\":{},\"lastRestoreFailures\":{},\"pageFaultDelta\":{},\"pageFaultsPerSecond\":{},\"sampleIntervalMs\":{},\"adaptiveAdjustments\":{},\"lastAdaptiveAdjustmentAt\":{}}}",

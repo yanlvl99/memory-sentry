@@ -64,10 +64,15 @@ check('dashboard has a GitHub release button when helper is absent', /MSSOpenGit
 check('dashboard offers setup/help links without a Node.js button', /MSSOpenGitHub/.test(app) && /MSSOpenInstallGuide/.test(app) && !/MSSOpenNode|nodeButton|nodejs\.org/.test(app));
 check('dashboard links to official releases and a generic installation guide', /MSS_RELEASES_URL/.test(app) && /MSS_INSTALL_GUIDE_URL/.test(app) && /installGuideButton/.test(app) && !/Marketplace setup guide|Guia de instalação do Marketplace/.test(app));
 check('documentation describes one install path and Marketplace linking only', /only supported installation method/i.test(read('docs/INSTALLATION.md')) && /only links to the project repository/i.test(read('docs/INSTALLATION.md')) && !/Path B/.test(read('docs/INSTALLATION.md')));
-check('dashboard offers per-process manual caps only in saved manual mode', /manualReady = !config\.autoOptimize/.test(app) && /setManualCap/.test(app) && /clearManualCap/.test(rustRuntime));
-check('dashboard warns for 15 seconds before applying below-default limits', /Date\.now\(\) \+ 15000/.test(app) && /lowLimitWarning/.test(app) && /manualWarning\.seconds > 0/.test(app));
+check('dashboard offers per-process manual caps after manual mode is saved', /manualReady = !config\.autoOptimize && savedAutoOptimize === false/.test(app) && /setManualCap/.test(app) && /clearManualCap/.test(rustRuntime));
+check('dashboard automatically saves policy and release setting changes', app.includes('function setField(key, value)') && app.includes('saveSettings(nextConfig)') && app.includes("setField('autoOptimize', event.target.checked)") && app.includes("tx(saving ? 'saving' : 'autoSaved')") && !app.includes("tx('save')"));
+check('manual limit inputs auto-apply and reset to role defaults on restore', app.includes('scheduleManualLimit(process, key, value)') && app.includes('value: manualInputs[key] ?? String(defaultMB)') && app.includes('await clearManualLimit(process, key)') && app.includes("windowState === 'foreground'") && app.includes('setManualInputs({})'));
+check('below-default warning requires confirmation after five seconds', /Date\.now\(\) \+ 5000/.test(app) && /Spicetify\.PopupModal/.test(app) && /popup\.display\(\{ title, content: panel, isLarge: false \}\)/.test(app) && /popup\.hide\(\)/.test(app) && /tx\('waitBeforeApply', \{ seconds \}\)/.test(app) && /confirmButton\.disabled = false/.test(app) && /confirmManualLimit\(warning, countdownComplete\)/.test(app) && /if \(!countdownComplete\) return/.test(app) && /void applyManualLimit\(\{ pid: warning\.pid, creation: warning\.creation \}, warning\.capMB\)/.test(app) && !/hideModal\(\);\s*setManualWarning\(null\);\s*void applyManualLimit/.test(app));
+check('dashboard relies on automatic restore and polling instead of action buttons', !app.includes("tx('applyManual')") && !app.includes("tx('restoreNow')") && !app.includes("tx('refresh')"));
 check('dashboard sends process creation identity with manual limit actions', /creation: process\.creation/.test(app) && rustRuntime.includes('\\"creation\\":{},'));
 check('dashboard shows per-process CPU and active ceiling', /process\.cpuPercent/i.test(app) && /process\.limitMB/i.test(app));
+check('dashboard uses private working-set memory when Windows provides it', rustPlatform.includes('ProcessMemoryCountersEx2') && rustPlatform.includes('private_working_set_size') && rustRuntime.includes('privateWorkingSetMB') && rustRuntime.includes('private_working_set_available') && app.includes("memory.privateWorkingSet ? process.privateWorkingSetMB : process.workingSetMB") && app.includes("memory.privateWorkingSet ? 'privateWorkingSetRam' : 'spotifyRam'"));
+check('low-limit modal warning and confirmation use high-contrast red styling', app.includes('mss-btn-danger') && app.includes('.mss-modal .mss-notice-warn') && app.includes('#ff5252'));
 check('dashboard explains local-only diagnostics', /No telemetry is uploaded/i.test(app));
 check('Custom App replaces per-install token placeholder', app.includes('__MSS_TOKEN__'));
 check('Custom App calls local status/config endpoints', app.includes('/api/status') && app.includes('/api/config'));
@@ -150,10 +155,10 @@ check('CPU estimate is capped at one logical processor', policy.estimateCpuPerce
 
 const warningSecondsSource = app.match(/function MSSManualWarningSeconds\(readyAt, now\) \{[\s\S]*?\n\}/)?.[0];
 if (warningSecondsSource) {
-  check('below-default warning cannot finish before 15 seconds',
-    vm.runInNewContext(`${warningSecondsSource}; MSSManualWarningSeconds(15000, 0)`) === 15 &&
-    vm.runInNewContext(`${warningSecondsSource}; MSSManualWarningSeconds(15000, 14999)`) === 1 &&
-    vm.runInNewContext(`${warningSecondsSource}; MSSManualWarningSeconds(15000, 15000)`) === 0);
+  check('below-default warning countdown lasts five seconds',
+    vm.runInNewContext(`${warningSecondsSource}; MSSManualWarningSeconds(5000, 0)`) === 5 &&
+    vm.runInNewContext(`${warningSecondsSource}; MSSManualWarningSeconds(5000, 4999)`) === 1 &&
+    vm.runInNewContext(`${warningSecondsSource}; MSSManualWarningSeconds(5000, 5000)`) === 0);
 } else check('below-default warning countdown function exists', false);
 
 for (const [name, source] of [['app/index.js', app], ['helper/helper.js', helper], ['helper/adaptive-policy.js', read('helper/adaptive-policy.js')]]) {
