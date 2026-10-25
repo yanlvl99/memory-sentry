@@ -19,7 +19,7 @@ Do not call the release stable until all required real-desktop tests are complet
 - [ ] Confirm setup is per-user, does not ask for admin and does not alter antivirus/SmartScreen/firewall settings.
 - [ ] Confirm original process limits are durably saved before each initial cap.
 - [ ] Confirm audio-service processes remain excluded.
-- [ ] Confirm high sustained CPU raises the per-process ceiling and idle/headroom lowers it without oscillation.
+- [ ] Confirm high CPU alone does not raise a ceiling while the working set is below it; sustained high CPU at the full current ceiling does raise it, and idle/headroom lowers it without oscillation.
 - [ ] Confirm limits are restored on focus return, disable, shutdown, restart recovery and uninstall.
 - [ ] Confirm an unresponsive recovery path leaves backups and blocks file removal.
 - [ ] Test legacy Node migration with and without Node.js 22+ and with successful and failed recovery.

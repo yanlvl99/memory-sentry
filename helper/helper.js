@@ -816,7 +816,8 @@ function updateAdaptiveCaps(now) {
       profile.lowCpuMs = 0;
       continue;
     }
-    if (cpu >= 10) profile.highCpuMs += sampleIntervalMs;
+    const atWorkingSetCeiling = Number.isFinite(process.workingSetMB) && process.workingSetMB >= appliedCap;
+    if (cpu >= 10 && atWorkingSetCeiling) profile.highCpuMs += sampleIntervalMs;
     else profile.highCpuMs = 0;
     if (cpu <= 3 && Number.isFinite(process.workingSetMB) && process.workingSetMB <= appliedCap - 6) {
       profile.lowCpuMs += sampleIntervalMs;

@@ -39,7 +39,7 @@ check('official Setup declares supported Windows 10/11 desktop only', /Windows 1
 check('local publishing helper and generated archives are ignored', /\/PUSH-TO-GITHUB\.bat/.test(read('.gitignore')) && /\*\.bundle/.test(read('.gitignore')) && /\*\.zip/.test(read('.gitignore')));
 check('development guide documents Rust build and package validation without local publishing scripts', /cargo test/.test(read('docs/DEVELOPMENT.md')) && /scripts\/build-package\.ps1/.test(read('docs/DEVELOPMENT.md')) && !/PUSH-TO-GITHUB\.bat/i.test(read('docs/DEVELOPMENT.md')));
 check('README explains server requirement', /Memory Sentry server/i.test(read('README.md')) && /separate per-user process/i.test(read('README.md')));
-check('README documents adaptive CPU and headroom rules', /six seconds/i.test(read('README.md')) && /ten seconds/i.test(read('README.md')));
+check('README documents adaptive CPU and headroom rules', /six consecutive seconds/i.test(read('README.md')) && /ten seconds/i.test(read('README.md')) && /full current working-set ceiling/i.test(read('README.md')));
 check('README documents unsigned SmartScreen limitations', /No unsigned release can guarantee zero SmartScreen/i.test(read('README.md')));
 check('GPL-3.0 license is present', /GNU GENERAL PUBLIC LICENSE/i.test(read('LICENSE')) && /Version 3, 29 June 2007/i.test(read('LICENSE')));
 check('privacy explicitly states no uploads', /No information is uploaded/i.test(read('PRIVACY.md')));
@@ -112,7 +112,7 @@ check('CI runs package validation', validation.includes('node tests/validate-pac
 check('release versions are aligned on 1.0.0-rc.1', rustCargo.includes('version = "1.0.0-rc.1"') && read('native/rust/Cargo.lock').includes('version = "1.0.0-rc.1"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.1";') && setupScript.includes('#define AppVersion "1.0.0-rc.1"') && read('README.md').includes('1.0.0-rc.1'));
 check('semantic prereleases are never marked as latest stable', read('.github/workflows/release.yml').includes("contains(steps.version.outputs.version, '-')") && read('.github/workflows/release.yml').includes("!contains(steps.version.outputs.version, '-')"));
 check('Rust scaffold uses a minimal standard-library dependency policy', rustCargo.includes('name = "memory-sentry-native"') && !rustCargo.includes('[dependencies]'));
-check('Rust policy has pure, testable adaptive logic', rustLib.includes('decide_adjustment') && rustLib.includes('#[cfg(test)]'));
+check('Rust policy has pure, testable adaptive logic', rustLib.includes('decide_adjustment') && rustLib.includes('working_set_at_ceiling') && rustLib.includes('#[cfg(test)]'));
 check('Rust binary exposes OS, install-preflight, upgrade, configure, monitor, and uninstall commands', ['--check-os', '--check-install', '--check-spicetify', '--prepare-upgrade', '--configure', '--monitor', '--pre-uninstall', '--restore-limits'].every(command => rustMain.includes(command)));
 check('server can be swapped in place while Spotify keeps running', rustMain.includes('"--swap"') && rustRuntime.includes('pub fn swap_server') && buildScriptSwap.includes('--swap'));
 check('dashboard offers ceiling-only and maximum release modes', /trimToCap/.test(app) && /releaseCeiling/.test(app) && /trimToCap/.test(rustRuntime) && /trim_to_cap/.test(rustRuntime));
@@ -121,7 +121,9 @@ check('dashboard debug switch uses the Spicetify Toggle component with a fallbac
 check('server discovers audio sessions through the Core Audio session API', rustPlatform.includes('pub fn audio_session_pids') && rustPlatform.includes('CoCreateInstance') && rustPlatform.includes('IID_IAUDIO_SESSION_CONTROL2') && rustRuntime.includes('refresh_audio_session_pids') && rustRuntime.includes('audio_pids'));
 check('status payload reports the server as Server, not Rust', /"node\\":\\"Server\\",\\"runtime\\":\\"Server\\"/.test(rustRuntime));
 check('Rust runtime implements local API, automatic limits and manual per-process limits', rustRuntime.includes('/api/status') && rustRuntime.includes('/api/config') && rustRuntime.includes('/api/action') && rustRuntime.includes('platform::set_working_set_limits') && rustRuntime.includes('restore_all') && rustRuntime.includes('apply_manual_cap') && rustRuntime.includes('manualCapMB'));
-check('Rust manual defaults set Main and Audio to 36 MB without changing automatic audio protection', rustLib.includes('Self::Main | Self::Audio => 36') && rustRuntime.includes('if role == ProcessRole::Audio') && rustLib.includes('audio_processes_never_receive_an_automatic_ceiling'));
+check('Rust automatic policy caps Main and Audio at 36 MB', rustLib.includes('Self::Main | Self::Audio => Some(36)') && rustLib.includes('Self::Main => Some(36)') && rustLib.includes('Self::Audio => None') && rustRuntime.includes('audioFixedCapMB'));
+check('manual mode applies per-role defaults with process overrides', rustRuntime.includes('manual_cap_for') && rustRuntime.includes('manual_default_cap_mb'));
+check('automatic and manual limits are restricted to background window states', rustRuntime.includes('should_manage_limits_in_background') && rustRuntime.includes('"background-visible"'));
 check('manual caps persist process creation identity and are recorded in recovery backups', rustRuntime.includes('manualCaps') && rustRuntime.includes('manual: fields') && rustRuntime.includes('if r.manual { \"manual\" }'));
 check('policy transitions restore active limits before switching modes', rustRuntime.includes('next.auto_optimize != state.settings.auto_optimize') && rustRuntime.includes('policy mode changed') && rustRuntime.includes('failed > 0'));
 check('Rust native layer protects process identity before each working-set mutation', rustPlatform.includes('set_working_set_limits') && rustPlatform.includes('creation != expected_creation') && rustPlatform.includes('restore_working_set_limits'));
@@ -133,16 +135,17 @@ check('Rust dashboard port remains consistent with the Custom App endpoint', /co
 check('main process starts with its role baseline', policy.baseCapMB('Main') === 36);
 check('CPU estimate is normalized to one logical processor', policy.estimateCpuPercent(1000, 1250, 1000) === 25);
 check('CPU estimate rejects invalid sample intervals', policy.estimateCpuPercent(1000, 1250, 0) === null);
-check('sustained high CPU increases the ceiling by 8 MB', policy.decideAdjustment({ role: 'Renderer', currentCapMB: 28, workingSetMB: 24, cpuPercent: 18, highCpuMs: 7000, lowCpuMs: 0, lastAdjustmentAt: 0, now: 20000 })?.nextCapMB === 36);
-check('high CPU without enough duration does not increase ceiling', policy.decideAdjustment({ role: 'Renderer', currentCapMB: 28, workingSetMB: 24, cpuPercent: 18, highCpuMs: 3000, now: 20000 }) === null);
+check('sustained high CPU at the working-set ceiling increases the ceiling by 8 MB', policy.decideAdjustment({ role: 'Renderer', currentCapMB: 28, workingSetMB: 28, cpuPercent: 18, highCpuMs: 7000, lowCpuMs: 0, lastAdjustmentAt: 0, now: 20000 })?.nextCapMB === 36);
+check('high CPU below the working-set ceiling does not increase the ceiling', policy.decideAdjustment({ role: 'Renderer', currentCapMB: 28, workingSetMB: 27.9, cpuPercent: 18, highCpuMs: 20000, lowCpuMs: 0, lastAdjustmentAt: 0, now: 20000 }) === null);
+check('high CPU at the ceiling without enough duration does not increase ceiling', policy.decideAdjustment({ role: 'Renderer', currentCapMB: 28, workingSetMB: 28, cpuPercent: 18, highCpuMs: 3000, now: 20000 }) === null);
 check('low CPU and headroom lowers the ceiling by 4 MB', policy.decideAdjustment({ role: 'Renderer', currentCapMB: 28, workingSetMB: 15, cpuPercent: 1, lowCpuMs: 12000, lastAdjustmentAt: 0, now: 20000 })?.nextCapMB === 24);
 check('main process keeps a 24 MB floor to improve restore responsiveness', policy.minimumCapMB('Main') === 24 && policy.decideAdjustment({ role: 'Main', currentCapMB: 28, workingSetMB: 15, cpuPercent: 1, lowCpuMs: 12000, lastAdjustmentAt: 0, now: 20000 })?.nextCapMB === 24);
 check('renderers can still shrink toward the 12 MB floor', policy.minimumCapMB('Renderer') === 12 && policy.decideAdjustment({ role: 'Renderer', currentCapMB: 16, workingSetMB: 7, cpuPercent: 1, lowCpuMs: 12000, lastAdjustmentAt: 0, now: 20000 })?.nextCapMB === 12);
 check('low CPU near the ceiling does not reduce the limit', policy.decideAdjustment({ role: 'Renderer', currentCapMB: 28, workingSetMB: 25, cpuPercent: 1, lowCpuMs: 12000, lastAdjustmentAt: 0, now: 20000 }) === null);
 check('adjustment cooldown prevents rapid oscillation', policy.decideAdjustment({ role: 'Renderer', currentCapMB: 28, workingSetMB: 15, cpuPercent: 1, lowCpuMs: 12000, lastAdjustmentAt: 17000, now: 20000 }) === null);
 check('adaptive floor is 12 MB and global ceiling is 64 MB', policy.MIN_CAP_MB === 12 && policy.MAX_CAP_MB === 64);
-check('per-role upper bounds remain below the global safety limit', policy.maximumCapMB('Main') === 60 && policy.maximumCapMB('Renderer') === 52);
-check('a process at its role maximum cannot grow further', policy.decideAdjustment({ role: 'Main', currentCapMB: 60, workingSetMB: 50, cpuPercent: 90, highCpuMs: 12000, lastAdjustmentAt: 0, now: 20000 }) === null);
+check('per-role upper bounds remain below the global safety limit', policy.maximumCapMB('Main') === 36 && policy.maximumCapMB('Renderer') === 52);
+check('a process at its role maximum cannot grow further', policy.decideAdjustment({ role: 'Main', currentCapMB: 36, workingSetMB: 36, cpuPercent: 90, highCpuMs: 12000, lastAdjustmentAt: 0, now: 20000 }) === null);
 check('CPU estimate is capped at one logical processor', policy.estimateCpuPercent(0, 4000, 1000) === 100);
 
 const warningSecondsSource = app.match(/function MSSManualWarningSeconds\(readyAt, now\) \{[\s\S]*?\n\}/)?.[0];

@@ -49,6 +49,7 @@ function estimateCpuPercent(previousCpuMs, currentCpuMs, elapsedMs) {
 }
 
 function maximumCapMB(role) {
+  if (role === 'Main') return baseCapMB(role);
   return Math.min(MAX_CAP_MB, baseCapMB(role) + 24);
 }
 
@@ -69,7 +70,8 @@ function decideAdjustment(sample) {
   if (!Number.isFinite(currentCapMB) || !Number.isFinite(workingSetMB) || !Number.isFinite(cpuPercent)) return null;
   if (now - lastAdjustmentAt < ADJUSTMENT_COOLDOWN_MS) return null;
 
-  if (cpuPercent >= HIGH_CPU_PERCENT && highCpuMs >= HIGH_CPU_DURATION_MS) {
+  if (cpuPercent >= HIGH_CPU_PERCENT && highCpuMs >= HIGH_CPU_DURATION_MS &&
+      workingSetMB >= currentCapMB) {
     const next = Math.min(maximumCapMB(role), currentCapMB + INCREASE_STEP_MB);
     return next > currentCapMB
       ? { nextCapMB: next, direction: 'increase', reason: 'sustained-high-cpu' }

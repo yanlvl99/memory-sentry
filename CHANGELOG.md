@@ -2,10 +2,12 @@
 
 ## Unreleased
 
-- Add a saved automatic/manual policy toggle. Manual mode exposes per-process working-set limits, including Audio; Main and Audio default to 36 MB, and limits are bound to PID plus process-creation identity.
+- Apply role-specific manual defaults automatically while Spotify is minimized, hidden, or in the background: Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB and Crashpad 16 MB. Restore original limits in the foreground; saved per-process overrides replace only their matching defaults.
 - Require a 15-second warning countdown and explicit confirmation before applying a manual limit below that process's default; validate manual values on both the dashboard and server.
 - Preserve original-limit recovery for manual changes, restore before policy transitions, and clear manual overrides when the user requests a full restore.
-- Identify processes that hold an active Windows audio session through the Core Audio session API, so audio-holding processes (including the Spotify main process, which hosts audio in current builds) are excluded from automatic caps and any automatic cap already applied to them is restored.
+- Keep automatic optimization active when Spotify is in the background; restore original limits only when it returns to the foreground.
+- Cap Main at 36 MB automatically and apply a fixed 36 MB ceiling to Audio processes, whether Spotify hosts audio in Main or moves it to a separate process.
+- Raise automatic ceilings only when high CPU and full use of the current working-set ceiling persist together for six seconds; high CPU alone no longer requests more memory.
 - Switch the dashboard's debug mode control to the Spicetify Toggle component, keeping the previous button as a fallback when the component is unavailable.
 - Validate Core Audio session discovery and the dashboard Toggle component in the package checks.
 - Add a release mode setting so trimming can release memory only down to the current ceiling (default) or as much unused memory as possible, selectable from the dashboard.

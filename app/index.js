@@ -13,31 +13,31 @@ const MSS_PT = MSS_LOCALE === 'pt-BR';
 const MSS_TEXT = {
   en: {
     kicker: 'SPICETIFY · WINDOWS MEMORY TOOL · RELEASE CANDIDATE v1.0.0-rc.1', title: 'Memory Sentry',
-    intro: 'Memory management for Spotify Desktop. Choose an automatic policy that adapts limits while minimized, or turn it off to set a working-set limit for each Spotify process. Original Windows limits are recorded before changes.',
+    intro: 'Memory management for Spotify Desktop. Choose an automatic policy that applies limits when minimized, hidden, or in the background, or turn it off to set a working-set limit for each Spotify process. Original Windows limits are recorded before changes.',
     connected: 'Server connected', unavailable: 'Connection unavailable', waiting: 'Waiting for server',
     helperMissingTitle: 'Memory Sentry server is not connected',
     helperMissingBody: 'The Marketplace listing only links to this project and cannot install Memory Sentry. Use the official Setup from GitHub Releases to install or repair the Memory Sentry server.',
-    helperButton: 'Download official setup', installGuideButton: 'Installation guide', safety: 'On supported Windows 10/11 x64 PCs, automatic optimization is intended to reduce Spotify resident RAM while minimized or hidden; actual savings vary by PC and workload. Audio-service processes are protected automatically, but can be limited in manual mode. A manual limit below the process default can cause failures. This changes resident working-set memory, not committed memory; trimmed pages usually stay cached in RAM and may return without disk access. Very low-end PCs may briefly show a black window on restore; that alone does not prove a reload if the previous UI state returns. Input may take a few seconds to respond.',
+    helperButton: 'Download official setup', installGuideButton: 'Installation guide', safety: 'On supported Windows 10/11 x64 PCs, automatic optimization is intended to reduce Spotify resident RAM while minimized, hidden, or in the background; actual savings vary by PC and workload. Main and Audio processes have a 36 MB automatic ceiling; Audio is fixed while Main may adapt only below that ceiling. A manual limit below the process default can cause failures. A working-set ceiling does not necessarily reduce resident memory immediately; this changes resident working-set memory, not committed memory. Very low-end PCs may briefly show a black window on restore; that alone does not prove a reload if the previous UI state returns. Input may take a few seconds to respond.',
     spotifyRam: 'Spotify resident memory', ramNote: '{count} Spotify processes detected. Summing working sets can double-count shared pages.',
-    optimizedRam: 'Managed-process memory', managedNote: '{count} non-audio processes are currently eligible for optimization.', manualManagedNote: '{count} Spotify processes are available for manual limits.',
-    activeLimits: 'Managed limits active', activeNote: 'Per-process working-set limits currently applied.', manualLimitsCard: 'Manual limits active', manualActiveNote: 'Manual ceilings are not adjusted automatically.',
+    optimizedRam: 'Managed-process memory', managedNote: '{count} Spotify processes are eligible for automatic ceilings; Main is capped at 36 MB and Audio stays fixed at 36 MB.', manualManagedNote: '{count} Spotify processes are available for manual limits.',
+    activeLimits: 'Managed limits active', activeNote: 'Per-process working-set limits currently applied.', manualLimitsCard: 'Manual limits active', manualActiveNote: 'Role defaults or your saved overrides apply only while Spotify is minimized, hidden, or in the background.',
     pageFaults: 'Page faults since last sample', pageFaultNote: 'Includes soft and hard faults; not equivalent to disk reads.',
     pageFaultRate: 'Page faults per second', pageFaultRateNote: 'A local diagnostic signal, not proof of disk I/O by itself.',
     restoreDuration: 'Limit restoration duration', restoreNote: 'Measures the server operation, not full UI recovery time.',
     adaptiveChanges: 'Adaptive adjustments', adaptiveNote: 'Changes made by the automatic per-process policy.',
     processes: 'Monitored processes', updated: 'Updated {time}', cpu: 'CPU {value}%', privateMemory: 'Private {value} MB',
-    audioProtected: 'Audio protected · no automatic limit', adaptiveAt: 'Adaptive ceiling: {value} MB',
+    audioProtected: 'Audio fixed at 36 MB · not adaptive', adaptiveAt: 'Adaptive ceiling: {value} MB',
     willOptimize: 'Ready for automatic optimization', notIncluded: 'Outside the current process tree',
-    reasonHigh: 'raised for sustained CPU activity', reasonLow: 'lowered because CPU and memory usage were low', reasonBaseline: 'using role baseline', reasonHolding: 'holding current ceiling',
+    reasonHigh: 'raised after sustained high CPU at the working-set ceiling', reasonLow: 'lowered because CPU and memory usage were low', reasonBaseline: 'using role baseline', reasonHolding: 'holding current ceiling',
     noneDetected: 'No eligible processes detected. Open Spotify and wait for process discovery. Memory Sentry will not guess at unknown process identities.',
     restoreNow: 'Restore original limits now', restoring: 'Restoring…', refresh: 'Refresh data', lastAdjustment: 'Last adjustment: {time}',
-    lastAction: 'Last automatic action: adjusted {count} process(es). Audio-service processes were excluded.',
-    behavior: 'Memory policy', active: 'Automatic policy enabled', autoExplanation: 'When enabled, limits adapt after Spotify is minimized or hidden. Turn this off to use manual mode and set a limit per process.',
-    manualMode: 'Manual mode', manualExplanation: 'Automatic changes are off. Set an independent working-set limit for each detected process; these limits stay active while Spotify is visible or minimized. Audio is protected only in automatic mode.',
-    delay: 'Delay after minimize/hide', delayExplanation: 'Used only by automatic policy; it avoids optimizing during brief minimizations.',
-    manualLimit: 'Manual limit (MB)', applyManual: 'Apply', clearManual: 'Remove manual limit', manualCurrent: 'Default (not applied): {value} MB', manualActive: 'Manual limit: {value} MB',
+    lastAction: 'Last automatic action: adjusted {count} process(es). Audio processes use a fixed 36 MB ceiling.',
+    behavior: 'Memory policy', active: 'Automatic policy enabled', autoExplanation: 'When enabled, limits apply after Spotify is minimized, hidden, or moved behind another window. Main never exceeds 36 MB; Audio stays fixed at 36 MB. Turn this off to use manual mode and set a limit per process.',
+    manualMode: 'Manual mode', manualExplanation: 'Role defaults are applied automatically while Spotify is minimized, hidden, or in the background: Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB, Crashpad 16 MB. Your per-process values override these defaults. Original limits are restored in the foreground.',
+    delay: 'Delay after leaving foreground', delayExplanation: 'Used only by automatic policy; it avoids optimizing during brief background changes.',
+    manualLimit: 'Manual limit (MB)', applyManual: 'Apply', clearManual: 'Remove manual limit', manualCurrent: 'Default for background: {value} MB', manualActive: 'Manual limit active: {value} MB', manualConfigured: 'Saved for background: {value} MB',
     lowLimitWarning: 'The requested {capMB} MB limit is below this process default ({defaultMB} MB) and may cause slowdowns, glitches, or failures. Review the risk before continuing. You can proceed in {seconds} seconds.',
-    lowLimitTitle: 'Low limit warning · {role} PID {pid}', waitBeforeApply: 'Wait {seconds}s…', confirmLowLimit: 'Apply lower limit', cancel: 'Cancel', limitRange: 'Enter a whole number from 8 to 512 MB.', limitApplied: 'Manual limit applied.', limitCleared: 'Manual limit cleared.', saveBeforeManual: 'Save the policy setting above to activate manual process controls.',
+    lowLimitTitle: 'Low limit warning · {role} PID {pid}', waitBeforeApply: 'Wait {seconds}s…', confirmLowLimit: 'Apply lower limit', cancel: 'Cancel', limitRange: 'Enter a whole number from 8 to 512 MB.', limitApplied: 'Manual limit applied for the background state.', limitSavedForBackground: 'Manual limit saved; it will apply when Spotify leaves the foreground.', limitCleared: 'Custom override removed; the role default will apply in the background.', saveBeforeManual: 'Save the policy setting above to activate manual process controls.',
     releaseMode: 'Memory release', releaseCeiling: 'Release only down to the ceiling', releaseAggressive: 'Release as much as possible',
     releaseModeExplanation: 'Releasing only down to the ceiling frees the excess above the current limit and keeps restore smooth; releasing as much as possible frees more RAM right away but faults more pages back later.',
     debugMode: 'Debug mode', debugHint: 'Shows diagnostics: telemetry cards, activity log and per-process details.',
@@ -45,37 +45,37 @@ const MSS_TEXT = {
     events: 'Recent activity', noEvents: 'No activity recorded yet.', statusError: 'Could not connect to the local Memory Sentry server. The diagnostic appears in brackets; check startup.log in %LOCALAPPDATA%\\SpicetifyMemorySentry\\logs.',
     footer: 'Supported OS: Windows 10 and Windows 11 desktop editions only. The Memory Sentry server is open source under GPL-3.0. No telemetry is uploaded. CPU and memory diagnostics stay on this PC. A separate process is required to call Win32 working-set APIs.',
     confirmRestore: 'Restore the original Windows working-set limits for Spotify processes now? If Spotify is still hidden, automatic optimization may apply adaptive limits again after the configured delay.',
-        confirmRestoreManual: 'Restore original Windows limits now and remove all saved manual process limits?',
+        confirmRestoreManual: 'Restore original Windows limits now and remove all saved process overrides? Role defaults will apply again the next time Spotify enters the background.',
     restoreFailed: 'Could not restore the original limits.', saveFailed: 'Could not save settings.', helperApiError: 'The local server returned an error.',
     window: { foreground: 'Spotify in foreground', 'background-visible': 'Spotify visible in background', minimized: 'Spotify minimized', hidden: 'Spotify window hidden', 'not-running': 'Spotify is not running', 'window-not-found': 'Spotify found; window not located', 'window-check-error': 'Window state unavailable', 'not-detected': 'Waiting for detection' }
   },
   pt: {
     kicker: 'SPICETIFY · FERRAMENTA DE RAM PARA WINDOWS · RELEASE CANDIDATE v1.0.0-rc.1', title: 'Memory Sentry',
-    intro: 'Gerenciamento de memória para o Spotify Desktop. Escolha uma política automática que adapta os limites quando minimizado ou desative-a para definir um limite de working set para cada processo. Os limites originais do Windows são registrados antes de qualquer alteração.',
+    intro: 'Gerenciamento de memória para o Spotify Desktop. Escolha uma política automática que aplica limites quando minimizado, oculto ou em segundo plano, ou desative-a para definir um limite de working set por processo. Os limites originais do Windows são registrados antes de qualquer alteração.',
     connected: 'Servidor conectado', unavailable: 'Conexão indisponível', waiting: 'Aguardando servidor',
     helperMissingTitle: 'O servidor do Memory Sentry não está conectado',
     helperMissingBody: 'A listagem do Marketplace apenas leva ao projeto e não instala o Memory Sentry. Use o instalador oficial em GitHub Releases para instalar ou reparar o servidor do Memory Sentry.',
-    helperButton: 'Baixar instalador oficial', installGuideButton: 'Guia de instalação', safety: 'Em PCs compatíveis com Windows 10/11 x64, a otimização automática busca reduzir a RAM residente do Spotify enquanto minimizado ou oculto; a economia varia conforme o PC e a carga. Processos de áudio são protegidos automaticamente, mas podem receber limite no modo manual. Um limite manual abaixo do padrão do processo pode causar falhas. Isso altera a memória residente (working set), não a memória comprometida; as páginas removidas normalmente ficam em cache na RAM e podem voltar sem acesso ao disco. Em PCs muito fracos, a janela pode ficar preta por alguns instantes ao restaurar; isso não prova uma recarga se a interface volta ao estado anterior. A entrada pode demorar alguns segundos para responder.',
+    helperButton: 'Baixar instalador oficial', installGuideButton: 'Guia de instalação', safety: 'Em PCs compatíveis com Windows 10/11 x64, a otimização automática busca reduzir a RAM residente do Spotify enquanto minimizado, oculto ou em segundo plano; a economia varia conforme o PC e a carga. Main e Áudio têm teto automático de 36 MB; o Áudio é fixo e o Main só pode se adaptar abaixo desse teto. Um limite manual abaixo do padrão do processo pode causar falhas. Um teto de working set não necessariamente reduz a memória residente imediatamente e não altera a memória comprometida. Em PCs muito fracos, a janela pode ficar preta por alguns instantes ao restaurar; isso não prova uma recarga se a interface volta ao estado anterior. A entrada pode demorar alguns segundos para responder.',
     spotifyRam: 'Memória residente do Spotify', ramNote: '{count} processos do Spotify detectados. A soma dos working sets pode contar páginas compartilhadas mais de uma vez.',
-    optimizedRam: 'Memória dos processos gerenciados', managedNote: '{count} processos sem relação com áudio estão elegíveis para otimização.', manualManagedNote: '{count} processos do Spotify estão disponíveis para limites manuais.',
-    activeLimits: 'Limites gerenciados ativos', activeNote: 'Limites de working set por processo atualmente aplicados.', manualLimitsCard: 'Limites manuais ativos', manualActiveNote: 'Os limites manuais não são ajustados automaticamente.',
+    optimizedRam: 'Memória dos processos gerenciados', managedNote: '{count} processos do Spotify estão elegíveis para limites automáticos; Main tem teto de 36 MB e o Áudio fica fixo em 36 MB.', manualManagedNote: '{count} processos do Spotify estão disponíveis para limites manuais.',
+    activeLimits: 'Limites gerenciados ativos', activeNote: 'Limites de working set por processo atualmente aplicados.', manualLimitsCard: 'Limites manuais ativos', manualActiveNote: 'Os padrões da função ou seus limites salvos só se aplicam quando o Spotify está minimizado, oculto ou em segundo plano.',
     pageFaults: 'Falhas de página desde a amostra', pageFaultNote: 'Inclui falhas suaves e duras; não equivale a leituras de disco.',
     pageFaultRate: 'Falhas de página por segundo', pageFaultRateNote: 'Sinal de diagnóstico local; sozinho não comprova acesso ao disco.',
     restoreDuration: 'Duração da restauração dos limites', restoreNote: 'Mede a operação do servidor, não a recuperação completa da interface.',
     adaptiveChanges: 'Ajustes adaptativos', adaptiveNote: 'Mudanças feitas pela política automática por processo.',
     processes: 'Processos monitorados', updated: 'Atualizado {time}', cpu: 'CPU {value}%', privateMemory: 'Privada {value} MB',
-    audioProtected: 'Áudio protegido · sem limite automático', adaptiveAt: 'Limite adaptativo: {value} MB',
+    audioProtected: 'Áudio fixo em 36 MB · sem ajuste adaptativo', adaptiveAt: 'Limite adaptativo: {value} MB',
     willOptimize: 'Pronto para otimização automática', notIncluded: 'Fora da árvore de processos atual',
-    reasonHigh: 'elevado por atividade sustentada de CPU', reasonLow: 'reduzido porque CPU e memória estavam baixas', reasonBaseline: 'usando limite inicial da função', reasonHolding: 'mantendo o limite atual',
+    reasonHigh: 'elevado após CPU alta sustentada com o working set no teto', reasonLow: 'reduzido porque CPU e memória estavam baixas', reasonBaseline: 'usando limite inicial da função', reasonHolding: 'mantendo o limite atual',
     noneDetected: 'Nenhum processo elegível detectado. Abra o Spotify e aguarde a descoberta dos processos. O Memory Sentry não tenta adivinhar identidades de processos desconhecidos.',
     restoreNow: 'Restaurar limites originais agora', restoring: 'Restaurando…', refresh: 'Atualizar dados', lastAdjustment: 'Último ajuste: {time}',
-    lastAction: 'Última ação automática: ajustou {count} processo(s). Os processos de serviço de áudio foram excluídos.',
-    behavior: 'Política de memória', active: 'Política automática ativada', autoExplanation: 'Quando ativada, os limites se adaptam após o Spotify ser minimizado ou ocultado. Desative para usar o modo manual e definir um limite por processo.',
-    manualMode: 'Modo manual', manualExplanation: 'As alterações automáticas ficam desligadas. Defina um limite de working set independente para cada processo detectado; ele continua ativo com o Spotify visível ou minimizado. O áudio só fica protegido no modo automático.',
-    delay: 'Atraso após minimizar/ocultar', delayExplanation: 'Usado somente pela política automática; evita otimizar em minimizações rápidas.',
-    manualLimit: 'Limite manual (MB)', applyManual: 'Aplicar', clearManual: 'Remover limite manual', manualCurrent: 'Padrão (não aplicado): {value} MB', manualActive: 'Limite manual: {value} MB',
+    lastAction: 'Última ação automática: ajustou {count} processo(s). O áudio usa um teto fixo de 36 MB.',
+    behavior: 'Política de memória', active: 'Política automática ativada', autoExplanation: 'Quando ativada, os limites são aplicados após minimizar, ocultar ou colocar o Spotify em segundo plano. Main não passa de 36 MB; o Áudio fica fixo em 36 MB. Desative para usar o modo manual e definir um limite por processo.',
+    manualMode: 'Modo manual', manualExplanation: 'Os padrões por função são aplicados automaticamente quando o Spotify está minimizado, oculto ou em segundo plano: Main/Áudio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB e Crashpad 16 MB. Seus valores individuais substituem esses padrões. Os limites originais são restaurados quando o Spotify volta ao primeiro plano.',
+    delay: 'Atraso após sair do primeiro plano', delayExplanation: 'Usado somente pela política automática; evita otimizar em mudanças rápidas para segundo plano.',
+    manualLimit: 'Limite manual (MB)', applyManual: 'Aplicar', clearManual: 'Remover limite manual', manualCurrent: 'Padrão em segundo plano: {value} MB', manualActive: 'Limite manual ativo: {value} MB', manualConfigured: 'Salvo para segundo plano: {value} MB',
     lowLimitWarning: 'O limite solicitado de {capMB} MB é menor que o padrão deste processo ({defaultMB} MB) e pode causar lentidão, falhas visuais ou erros. Revise o risco antes de continuar. Você poderá prosseguir em {seconds} segundos.',
-    lowLimitTitle: 'Aviso de limite baixo · {role} PID {pid}', waitBeforeApply: 'Aguarde {seconds}s…', confirmLowLimit: 'Aplicar limite menor', cancel: 'Cancelar', limitRange: 'Digite um número inteiro entre 8 e 512 MB.', limitApplied: 'Limite manual aplicado.', limitCleared: 'Limite manual removido.', saveBeforeManual: 'Salve a política acima para ativar os controles manuais dos processos.',
+    lowLimitTitle: 'Aviso de limite baixo · {role} PID {pid}', waitBeforeApply: 'Aguarde {seconds}s…', confirmLowLimit: 'Aplicar limite menor', cancel: 'Cancelar', limitRange: 'Digite um número inteiro entre 8 e 512 MB.', limitApplied: 'Limite manual aplicado para o estado em segundo plano.', limitSavedForBackground: 'Limite manual salvo; será aplicado quando o Spotify sair do primeiro plano.', limitCleared: 'Substituição removida; o padrão da função será aplicado em segundo plano.', saveBeforeManual: 'Salve a política acima para ativar os controles manuais dos processos.',
     releaseMode: 'Liberação de memória', releaseCeiling: 'Libera somente até o teto', releaseAggressive: 'Libera o máximo possível',
     releaseModeExplanation: 'Liberar somente até o teto remove o excesso acima do limite atual e mantém a restauração fluida; liberar o máximo possível recupera mais RAM na hora, mas volta a falhar mais páginas depois.',
     debugMode: 'Modo debug', debugHint: 'Mostra diagnósticos: cartões de telemetria, log de atividade e detalhes por processo.',
@@ -83,7 +83,7 @@ const MSS_TEXT = {
     events: 'Atividade recente', noEvents: 'Ainda não há atividade registrada.', statusError: 'Não foi possível conectar ao servidor local do Memory Sentry. O diagnóstico aparece entre colchetes; consulte startup.log em %LOCALAPPDATA%\\SpicetifyMemorySentry\\logs.',
     footer: 'Compatível apenas com Windows 10 e Windows 11 (desktop). O servidor do Memory Sentry é código aberto sob GPL-3.0. Nenhuma telemetria é enviada. Os diagnósticos de CPU e memória ficam neste PC. Um processo separado é necessário para chamar as APIs Win32 de working set.',
     confirmRestore: 'Restaurar agora os limites originais de working set dos processos do Spotify? Se o Spotify continuar oculto, a otimização automática poderá aplicar limites adaptativos novamente depois do atraso configurado.',
-        confirmRestoreManual: 'Restaurar os limites originais do Windows e remover todos os limites manuais salvos?',
+        confirmRestoreManual: 'Restaurar os limites originais do Windows e remover todas as substituições salvas? Os padrões por função voltarão a ser aplicados quando o Spotify entrar em segundo plano.',
     restoreFailed: 'Não foi possível restaurar os limites originais.', saveFailed: 'Não foi possível salvar as configurações.', helperApiError: 'O servidor local retornou um erro.',
     window: { foreground: 'Spotify em primeiro plano', 'background-visible': 'Spotify visível em segundo plano', minimized: 'Spotify minimizado', hidden: 'Janela do Spotify oculta', 'not-running': 'Spotify não está aberto', 'window-not-found': 'Spotify detectado; janela não localizada', 'window-check-error': 'Estado da janela indisponível', 'not-detected': 'Aguardando detecção' }
   }
@@ -258,8 +258,10 @@ function MSSApp() {
     setManualMessage(null);
     try {
       await MSSRequest('/api/action', { method: 'POST', body: { action: 'setManualCap', pid: process.pid, creation: process.creation, capMB } });
-      setStatus(await MSSRequest('/api/status'));
-      setManualMessage({ text: tx('limitApplied'), error: false });
+      const updatedStatus = await MSSRequest('/api/status');
+      setStatus(updatedStatus);
+      const background = ['minimized', 'hidden', 'background-visible'].includes(updatedStatus.spotify?.windowState);
+      setManualMessage({ text: tx(background ? 'limitApplied' : 'limitSavedForBackground'), error: false });
     } catch (err) {
       setManualMessage({ text: err?.message || tx('helperApiError'), error: true });
     } finally { setBusy(false); }
@@ -332,10 +334,16 @@ function MSSApp() {
       h('div', { className: 'mss-section-head' }, h('h2', { className: 'mss-h2' }, tx('processes')), h('span', { className: 'mss-small' }, tx('updated', { time: MSSDate(memory.sampledAt) }))),
       targets.length ? h('div', { className: 'mss-list' }, targets.map(process => {
         const key = `${process.pid}:${process.creation}`;
-        const statusText = process.protectedAudio ? tx('audioProtected') : (process.capped ? tx(process.adaptiveStatus === 'sustained-high-cpu' ? 'reasonHigh' : (process.adaptiveStatus === 'low-cpu-and-memory-headroom' ? 'reasonLow' : (process.adaptiveStatus === 'baseline' ? 'reasonBaseline' : 'reasonHolding'))) : (process.included ? tx('willOptimize') : tx('notIncluded')));
+        const statusText = process.protectedAudio
+          ? (config.autoOptimize ? tx('audioProtected') : (process.capped ? tx('manualActive', { value: process.limitMB }) : tx('manualCurrent', { value: process.defaultLimitMB })))
+          : (process.capped ? tx(process.adaptiveStatus === 'sustained-high-cpu' ? 'reasonHigh' : (process.adaptiveStatus === 'low-cpu-and-memory-headroom' ? 'reasonLow' : (process.adaptiveStatus === 'baseline' ? 'reasonBaseline' : 'reasonHolding'))) : (process.included ? tx('willOptimize') : tx('notIncluded')));
         const meta = [debug && Number.isFinite(process.cpuPercent) ? tx('cpu', { value: Number(process.cpuPercent).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 }) }) : null, debug && process.privateMB != null ? tx('privateMemory', { value: MSSFormatMB(process.privateMB) }) : null, debug ? statusText : null].filter(Boolean).join(' · ');
         const defaultMB = Number(process.defaultLimitMB || 36);
-        const capText = process.manualCapMB != null ? tx('manualActive', { value: process.manualCapMB }) : tx('manualCurrent', { value: defaultMB });
+        const capText = process.capped && process.manual
+          ? tx('manualActive', { value: process.limitMB ?? defaultMB })
+          : process.manualCapMB != null
+            ? tx('manualConfigured', { value: process.manualCapMB })
+            : tx('manualCurrent', { value: defaultMB });
         return h('div', { className: 'mss-process', key },
           h('div', null, h('div', { className: 'mss-process-name' }, `${MSSRoleLabel(process.role)} · PID ${process.pid}`), meta ? h('div', { className: 'mss-process-meta' }, meta) : null),
           h('span', { className: 'mss-tag' }, process.manual ? (MSS_PT ? 'Manual' : 'Manual') : (process.protectedAudio ? (MSS_PT ? 'Áudio' : 'Audio') : (process.capped ? (MSS_PT ? 'Adaptativo' : 'Adaptive') : process.role))),

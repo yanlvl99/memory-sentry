@@ -3,10 +3,10 @@
 
 use crate::platform;
 use memory_sentry_core::{
-    decide_adjustment, estimate_cpu_percent, AdjustmentDirection, ProcessRole,
-    ADJUSTMENT_COOLDOWN_MS, HIGH_CPU_DURATION_MS, HIGH_CPU_PERCENT,
-    LOW_CPU_DURATION_MS, LOW_CPU_PERCENT, LOW_WORKING_SET_MARGIN_MB,
-    INCREASE_STEP_MB, MAX_CAP_MB, MIN_CAP_MB, DECREASE_STEP_MB,
+    decide_adjustment, estimate_cpu_percent, working_set_at_ceiling, AdjustmentDirection,
+    ProcessRole, ADJUSTMENT_COOLDOWN_MS, DECREASE_STEP_MB, HIGH_CPU_DURATION_MS, HIGH_CPU_PERCENT,
+    INCREASE_STEP_MB, LOW_CPU_DURATION_MS, LOW_CPU_PERCENT, LOW_WORKING_SET_MARGIN_MB, MAX_CAP_MB,
+    MIN_CAP_MB,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
@@ -1252,9 +1252,6 @@ fn apply_initial_cap(
     role: ProcessRole,
     now: u64,
 ) -> Result<bool, String> {
-    if role == ProcessRole::Audio {
-        return Ok(false);
-    }
     if state.active_caps.get(&process.pid).map(|r| r.creation) == Some(process.creation) {
         ensure_profile(state, process.pid, process.creation, role, now);
         return Ok(false);
@@ -1315,7 +1312,7 @@ fn apply_initial_cap(
     log_event(
         state,
         format!(
-            "Applied adaptive cap to {} PID {}: {} MB before, {} MB after{}.",
+            "Applied automatic cap to {} PID {}: {} MB before, {} MB after{}.",
             role_name(role),
             process.pid,
             before
@@ -1329,6 +1326,53 @@ fn apply_initial_cap(
             } else {
                 ""
             }
+        ),
+        "info",
+    );
+    Ok(true)
+}
+
+fn enforce_fixed_audio_cap(
+    state: &mut AppState,
+    process: &platform::ProcessRow,
+) -> Result<bool, String> {
+    let Some(record) = state
+        .active_caps
+        .get(&process.pid)
+        .filter(|record| record.creation == process.creation && !record.manual)
+        .cloned()
+    else {
+        return Ok(false);
+    };
+    if record.applied_maximum_mb == Some(36) {
+        return Ok(false);
+    }
+
+    let cap_bytes = 36usize * 1024 * 1024;
+    let minimum = platform::MIN_WORKING_SET_BYTES.min(cap_bytes);
+    platform::set_working_set_limits(
+        process.pid,
+        process.creation,
+        minimum,
+        cap_bytes,
+        platform::HARD_CAP_FLAGS,
+    )?;
+    if let Some(record) = state.active_caps.get_mut(&process.pid) {
+        record.applied_maximum_mb = Some(36);
+        record.role = role_name(ProcessRole::Audio).to_string();
+    }
+    if let Some(profile) = state.profiles.get_mut(&process.pid) {
+        profile.current_cap_mb = 36;
+        profile.last_reason = "fixed-audio-ceiling".to_string();
+    }
+    if !persist_or_log(state) {
+        return Err("Audio cap was applied, but the recovery backup update failed.".to_string());
+    }
+    log_event(
+        state,
+        format!(
+            "Applied fixed 36 MB automatic Audio ceiling to PID {}.",
+            process.pid
         ),
         "info",
     );
@@ -1527,14 +1571,21 @@ fn update_caps(state: &mut AppState, now: u64) {
             profile.last_evaluated_snapshot_at_ms = state.snapshot_at_ms;
             profile.last_cpu_percent = cpu;
             profile.last_working_set_mb = working_set;
-            if let Some(cpu) = cpu {
-                if cpu >= HIGH_CPU_PERCENT {
+            match cpu {
+                Some(cpu)
+                    if cpu >= HIGH_CPU_PERCENT
+                        && working_set
+                            .map(|ws| working_set_at_ceiling(ws, current_cap))
+                            .unwrap_or(false) =>
+                {
                     profile.high_cpu_ms = profile.high_cpu_ms.saturating_add(interval);
                     profile.low_cpu_ms = 0;
-                } else if cpu <= LOW_CPU_PERCENT {
+                }
+                Some(cpu) if cpu <= LOW_CPU_PERCENT => {
                     profile.low_cpu_ms = profile.low_cpu_ms.saturating_add(interval);
                     profile.high_cpu_ms = 0;
-                } else {
+                }
+                _ => {
                     profile.high_cpu_ms = 0;
                     profile.low_cpu_ms = 0;
                 }
@@ -1610,15 +1661,7 @@ fn reconcile_manual_caps(state: &mut AppState) {
         .collect();
     let records: Vec<BackupRecord> = state.active_caps.values().cloned().collect();
     for record in records {
-        let configured = state
-            .settings
-            .manual_caps
-            .get(&(record.pid, record.creation))
-            .is_some();
-        if !wanted.contains(&target_key(record.pid, record.creation))
-            || !configured
-            || !record.manual
-        {
+        if !wanted.contains(&target_key(record.pid, record.creation)) || !record.manual {
             if let Err(error) = restore_one_record(state, &record, "manual policy reconciliation") {
                 log_event(
                     state,
@@ -1632,14 +1675,14 @@ fn reconcile_manual_caps(state: &mut AppState) {
         }
     }
     for (process, role) in targets {
-        let Some(cap_mb) = state
-            .settings
-            .manual_caps
-            .get(&(process.pid, process.creation))
-            .copied()
-        else {
-            continue;
-        };
+        let cap_mb = manual_cap_for(
+            role,
+            state
+                .settings
+                .manual_caps
+                .get(&(process.pid, process.creation))
+                .copied(),
+        );
         let current = state.active_caps.get(&process.pid).filter(|record| {
             record.creation == process.creation
                 && record.manual
@@ -1658,13 +1701,27 @@ fn reconcile_manual_caps(state: &mut AppState) {
     }
 }
 
+fn should_manage_limits_in_background(window_state: &str) -> bool {
+    matches!(window_state, "minimized" | "hidden" | "background-visible")
+}
+
 fn maybe_auto_optimize(state: &mut AppState, now: u64) {
     if !state.settings.auto_optimize {
         state.hidden_since_ms = 0;
-        reconcile_manual_caps(state);
+        if should_manage_limits_in_background(&state.window_state) {
+            reconcile_manual_caps(state);
+        } else if !state.active_caps.is_empty()
+            && now.saturating_sub(state.last_restore_attempt_at_ms) >= 1500
+        {
+            state.last_restore_attempt_at_ms = now;
+            restore_all(
+                state,
+                &format!("manual policy window {}", state.window_state),
+            );
+        }
         return;
     }
-    let hidden = state.window_state == "minimized" || state.window_state == "hidden";
+    let hidden = should_manage_limits_in_background(&state.window_state);
     if !hidden {
         state.hidden_since_ms = 0;
         if !state.active_caps.is_empty()
@@ -1699,7 +1756,6 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
     let targets = descendants(state);
     let wanted: BTreeSet<String> = targets
         .iter()
-        .filter(|(_, role)| *role != ProcessRole::Audio)
         .map(|(p, _)| target_key(p.pid, p.creation))
         .collect();
     let no_longer_eligible: Vec<BackupRecord> = state
@@ -1737,20 +1793,37 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
     let mut applied = 0usize;
     let mut failures = Vec::new();
     for (process, role) in targets {
-        if role == ProcessRole::Audio { continue; }
         if state.active_caps.get(&process.pid).map(|r| r.creation) == Some(process.creation) {
-            ensure_profile(state, process.pid, process.creation, role, now);
+            if role == ProcessRole::Audio {
+                if let Err(error) = enforce_fixed_audio_cap(state, &process) {
+                    failures.push(format!("Audio PID {}: {error}", process.pid));
+                }
+            } else {
+                ensure_profile(state, process.pid, process.creation, role, now);
+            }
             continue;
         }
         let retry_key = target_key(process.pid, process.creation);
-        if state.target_retry_at_ms.get(&retry_key).copied().unwrap_or(0) > now { continue; }
-        state.target_retry_at_ms.insert(retry_key.clone(), now + TARGET_RETRY_DELAY_MS);
+        if state
+            .target_retry_at_ms
+            .get(&retry_key)
+            .copied()
+            .unwrap_or(0)
+            > now
+        {
+            continue;
+        }
+        state
+            .target_retry_at_ms
+            .insert(retry_key.clone(), now + TARGET_RETRY_DELAY_MS);
         match apply_initial_cap(state, &process, role, now) {
             Ok(true) => {
                 state.target_retry_at_ms.remove(&retry_key);
                 applied += 1;
             }
-            Ok(false) => { state.target_retry_at_ms.remove(&retry_key); }
+            Ok(false) => {
+                state.target_retry_at_ms.remove(&retry_key);
+            }
             Err(error) => failures.push(format!("PID {}: {error}", process.pid)),
         }
     }
@@ -1821,11 +1894,7 @@ fn status_payload(state: &AppState) -> String {
         .iter()
         .filter_map(|p| p.working_set_mb)
         .sum();
-    let target_total_mb: f64 = targets
-        .iter()
-        .filter(|(_, role)| *role != ProcessRole::Audio)
-        .filter_map(|(p, _)| p.working_set_mb)
-        .sum();
+    let target_total_mb: f64 = targets.iter().filter_map(|(p, _)| p.working_set_mb).sum();
     let capped_count = state
         .active_caps
         .values()
@@ -1844,7 +1913,8 @@ fn status_payload(state: &AppState) -> String {
         let capped = record.is_some();
         let protected_audio = *role == ProcessRole::Audio;
         let current_cap = record.and_then(|r| r.applied_maximum_mb)
-            .or_else(|| profile.map(|p| p.current_cap_mb));
+            .or_else(|| profile.map(|p| p.current_cap_mb))
+            .or_else(|| (state.settings.auto_optimize && protected_audio).then_some(36));
         let default_cap = role.manual_default_cap_mb();
         let manual_cap = state.settings.manual_caps.get(&(p.pid, p.creation)).copied();
         let adaptive_status = profile.map(|p| p.last_reason.as_str()).unwrap_or("baseline");
@@ -1859,7 +1929,7 @@ fn status_payload(state: &AppState) -> String {
             p.error_code,
             capped,
             record.map(|r| r.manual).unwrap_or(false),
-            !protected_audio,
+            true,
             protected_audio,
             current_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
             manual_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
@@ -1921,7 +1991,7 @@ fn status_payload(state: &AppState) -> String {
     );
 
     format!(
-        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{},\"audioProtected\":true}}}}",
+        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{},\"audioProtected\":true,\"audioFixedCapMB\":36}}}}",
         json_quote(VERSION),
         json_quote(&state.started_at),
         state.root_pid.is_some(),
@@ -2120,20 +2190,22 @@ fn set_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
         }
         return Err(error);
     }
-    if let Err(error) = apply_manual_cap(state, &process, role, cap_mb) {
-        if let Some(previous) = previous {
-            state.settings.manual_caps.insert(key, previous);
-        } else {
-            state.settings.manual_caps.remove(&key);
+    if should_manage_limits_in_background(&state.window_state) {
+        if let Err(error) = apply_manual_cap(state, &process, role, cap_mb) {
+            if let Some(previous) = previous {
+                state.settings.manual_caps.insert(key, previous);
+            } else {
+                state.settings.manual_caps.remove(&key);
+            }
+            if let Err(save_error) = write_settings(&state.settings_path, &state.settings) {
+                log_event(
+                    state,
+                    format!("Could not roll back failed manual setting: {save_error}"),
+                    "error",
+                );
+            }
+            return Err(error);
         }
-        if let Err(save_error) = write_settings(&state.settings_path, &state.settings) {
-            log_event(
-                state,
-                format!("Could not roll back failed manual setting: {save_error}"),
-                "error",
-            );
-        }
-        return Err(error);
     }
     Ok(())
 }
@@ -2159,13 +2231,15 @@ fn clear_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
         state.settings.manual_caps.insert(key, previous.unwrap());
         return Err(error);
     }
-    if let Some(record) = state
+    if should_manage_limits_in_background(&state.window_state) {
+        reconcile_manual_caps(state);
+    } else if let Some(record) = state
         .active_caps
         .get(&pid)
         .filter(|record| record.creation == creation && record.manual)
         .cloned()
     {
-        restore_one_record(state, &record, "manual limit cleared")?;
+        restore_one_record(state, &record, "manual override cleared in foreground")?;
     }
     Ok(())
 }
@@ -2200,9 +2274,7 @@ fn update_config(state: &mut AppState, body: &str) -> Result<(), String> {
         ),
         "info",
     );
-    if !state.settings.auto_optimize {
-        reconcile_manual_caps(state);
-    }
+    maybe_auto_optimize(state, now_ms());
     Ok(())
 }
 
@@ -2513,6 +2585,27 @@ pub fn launch_monitor() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manual_policy_uses_role_defaults_and_honors_saved_overrides() {
+        assert_eq!(manual_cap_for(ProcessRole::Main, None), 36);
+        assert_eq!(manual_cap_for(ProcessRole::Audio, None), 36);
+        assert_eq!(manual_cap_for(ProcessRole::Gpu, None), 28);
+        assert_eq!(manual_cap_for(ProcessRole::Renderer, None), 28);
+        assert_eq!(manual_cap_for(ProcessRole::Utility, None), 24);
+        assert_eq!(manual_cap_for(ProcessRole::Helper, None), 24);
+        assert_eq!(manual_cap_for(ProcessRole::Crashpad, None), 16);
+        assert_eq!(manual_cap_for(ProcessRole::Renderer, Some(40)), 40);
+    }
+
+    #[test]
+    fn managed_limits_are_active_only_outside_the_foreground() {
+        assert!(should_manage_limits_in_background("minimized"));
+        assert!(should_manage_limits_in_background("hidden"));
+        assert!(should_manage_limits_in_background("background-visible"));
+        assert!(!should_manage_limits_in_background("foreground"));
+        assert!(!should_manage_limits_in_background("window-not-found"));
+    }
 
     #[test]
     fn manual_caps_are_persisted_by_pid_and_full_creation_identity() {
