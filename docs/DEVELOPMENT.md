@@ -28,6 +28,16 @@ The scripts/build-package.ps1 script creates dist/stage, copies the compiled exe
 
 Do not put built EXEs, Setup programs, ZIP files, Git bundles, local publishing scripts, checksums, secrets or local logs into source commits.
 
+## Swap a server build while testing
+
+To test a new server build without restarting Spotify or the plugin, run:
+
+    powershell -ExecutionPolicy Bypass -File scripts\swap-server.ps1
+
+The script builds the release binary (pass `-SkipBuild` to reuse the last build) and runs `memory-sentry-native.exe --swap <exe>`. The running instance restores its limits and exits, the new build replaces it in `%LOCALAPPDATA%\SpicetifyMemorySentry`, and the monitor relaunches. The plugin reconnects by itself on its next poll, so Spotify stays open throughout.
+
+The release mode selector in the dashboard controls whether trimming releases memory only down to the current ceiling (`trimToCap`, default) or as much unused memory as possible; the change is saved through `/api/config` and takes effect on the next adjustment.
+
 ## Architecture
 
 - app/index.js: Spicetify plugin installed by the official per-user Setup EXE; automatic English/Brazilian Portuguese localization and missing-server help.

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add a release mode setting so trimming can release memory only down to the current ceiling (default) or as much unused memory as possible, selectable from the dashboard.
+- Add a `--swap <exe>` server command and `scripts/swap-server.ps1` so a new server build replaces the running one while Spotify and the plugin stay open.
+
 - Clarify that the supported release requires Spotify Desktop and Spicetify CLI, distinguish the Spicetify Custom App from the native Rust companion, and add dynamic release/version/download/CI/license badges to the README.
 
 - Convert the README's privacy, security, installation, troubleshooting and migration references into working relative Markdown links; fix the development guide's same-directory documentation links.
