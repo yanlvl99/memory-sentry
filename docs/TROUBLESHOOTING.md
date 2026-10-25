@@ -63,4 +63,4 @@ After uninstall, diagnostic logs that existed are copied to:
 
 %LOCALAPPDATA%\\MemorySentry\\logs
 
-The helper does not upload logs or metrics. Review the logs for personal file paths before attaching them to a public issue.
+The server does not upload logs or metrics. Review the logs for personal file paths before attaching them to a public issue.
