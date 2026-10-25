@@ -36,7 +36,7 @@ To test a new server build without restarting Spotify or the plugin, run:
 
 The script builds the release binary (pass `-SkipBuild` to reuse the last build) and runs `memory-sentry-native.exe --swap <exe>`. The running instance restores its limits and exits, the new build replaces it in `%LOCALAPPDATA%\SpicetifyMemorySentry`, and the monitor relaunches. The plugin reconnects by itself on its next poll, so Spotify stays open throughout.
 
-The release mode selector in the dashboard controls whether trimming releases memory only down to the current ceiling (`trimToCap`, default) or as much unused memory as possible; the change is saved through `/api/config` and takes effect on the next adjustment.
+The release mode selector in the dashboard controls whether trimming releases memory only down to the current ceiling (`trimToCap`, default) or as much unused memory as possible. The setting is saved through `/api/config`; aggressive mode requests a one-time trim when applying a manual limit or lowering an automatic ceiling.
 
 ## Architecture
 
