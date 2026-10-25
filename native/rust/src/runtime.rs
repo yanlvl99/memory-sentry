@@ -38,6 +38,7 @@ struct Settings {
     token: String,
     auto_optimize: bool,
     hidden_delay_seconds: u64,
+    trim_to_cap: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -236,15 +237,16 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
     let auto_optimize = parse_json_bool(&raw, "autoOptimize").unwrap_or(true);
     let hidden_delay_seconds = parse_json_number(&raw, "hiddenDelaySeconds")
         .unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS).clamp(1, 30);
-    Ok(Settings { port, token, auto_optimize, hidden_delay_seconds })
+    let trim_to_cap = parse_json_bool(&raw, "trimToCap").unwrap_or(true);
+    Ok(Settings { port, token, auto_optimize, hidden_delay_seconds, trim_to_cap })
 }
 
 fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
     if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
     let temp = path.with_extension("json.tmp");
     let contents = format!(
-        "{{\n  \"port\": {},\n  \"token\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"version\": \"{}\"\n}}\n",
-        settings.port, json_quote(&settings.token), settings.auto_optimize, settings.hidden_delay_seconds, VERSION
+        "{{\n  \"port\": {},\n  \"token\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"version\": \"{}\"\n}}\n",
+        settings.port, json_quote(&settings.token), settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, VERSION
     );
     let mut file = File::create(&temp).map_err(|e| format!("Could not stage settings: {e}"))?;
     file.write_all(contents.as_bytes()).map_err(|e| e.to_string())?;
@@ -475,6 +477,7 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
         token,
         auto_optimize: parse_json_bool(&existing_raw, "autoOptimize").unwrap_or(true),
         hidden_delay_seconds: parse_json_number(&existing_raw, "hiddenDelaySeconds").unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS).clamp(1, 30),
+        trim_to_cap: parse_json_bool(&existing_raw, "trimToCap").unwrap_or(true),
     };
     write_settings(&settings_path, &settings)?;
     // Start the local API before "spicetify apply" restarts Spotify, so the
@@ -1037,7 +1040,7 @@ fn apply_initial_cap(state: &mut AppState, process: &platform::ProcessRow, role:
     }
     ensure_profile(state, process.pid, process.creation, role, now);
     let mut trimmed = false;
-    if before.map(|mb| mb > baseline as f64).unwrap_or(false) {
+    if !state.settings.trim_to_cap && before.map(|mb| mb > baseline as f64).unwrap_or(false) {
         trimmed = platform::empty_working_set(process.pid, process.creation).is_ok();
     }
     let after = platform::inspect_process(process.pid).ok().map(|m| m.working_set_mb);
@@ -1158,7 +1161,7 @@ fn update_caps(state: &mut AppState, now: u64) {
                     state.telemetry.adaptive_adjustments += 1;
                     state.telemetry.last_adaptive_adjustment_at = Some(iso_now());
                     let mut trimmed = false;
-                    if next_cap < old_cap && ws > next_cap as f64 + 4.0 && now.saturating_sub(profile.last_trim_at_ms) >= TRIM_COOLDOWN_MS {
+                    if !state.settings.trim_to_cap && next_cap < old_cap && ws > next_cap as f64 + 4.0 && now.saturating_sub(profile.last_trim_at_ms) >= TRIM_COOLDOWN_MS {
                         trimmed = platform::empty_working_set(process.pid, process.creation).is_ok();
                         if let Some(p) = state.profiles.get_mut(&process.pid) { p.last_trim_at_ms = now; }
                     }
@@ -1286,8 +1289,8 @@ fn refresh_memory(state: &mut AppState, now: u64) {
 
 fn public_config(settings: &Settings) -> String {
     format!(
-        "{{\"autoOptimize\":{},\"hiddenDelaySeconds\":{},\"policy\":{{\"minMB\":{},\"maxMB\":{},\"cpuHighPercent\":{}}}}}",
-        settings.auto_optimize, settings.hidden_delay_seconds, MIN_CAP_MB, MAX_CAP_MB, HIGH_CPU_PERCENT
+        "{{\"autoOptimize\":{},\"hiddenDelaySeconds\":{},\"trimToCap\":{},\"policy\":{{\"minMB\":{},\"maxMB\":{},\"cpuHighPercent\":{}}}}}",
+        settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, MIN_CAP_MB, MAX_CAP_MB, HIGH_CPU_PERCENT
     )
 }
 
@@ -1507,10 +1510,11 @@ fn write_http_response(mut stream: TcpStream, status: u16, reason: &str, body: &
 
 fn update_config(state: &mut AppState, body: &str) -> Result<(), String> {
     if let Some(value) = parse_json_bool(body, "autoOptimize") { state.settings.auto_optimize = value; }
+    if let Some(value) = parse_json_bool(body, "trimToCap") { state.settings.trim_to_cap = value; }
     state.settings.hidden_delay_seconds = parse_json_number(body, "hiddenDelaySeconds")
         .unwrap_or(state.settings.hidden_delay_seconds).clamp(1, 30);
     write_settings(&state.settings_path, &state.settings)?;
-    log_event(state, format!("Settings updated: autoOptimize={}, hiddenDelaySeconds={}.", state.settings.auto_optimize, state.settings.hidden_delay_seconds), "info");
+    log_event(state, format!("Settings updated: autoOptimize={}, hiddenDelaySeconds={}, trimToCap={}.", state.settings.auto_optimize, state.settings.hidden_delay_seconds, state.settings.trim_to_cap), "info");
     if !state.settings.auto_optimize && !state.active_caps.is_empty() {
         restore_all(state, "automatic optimization disabled");
     }
