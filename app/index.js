@@ -166,7 +166,7 @@ function MSSApp() {
   const [busy, setBusy] = R.useState(false);
   const [saving, setSaving] = R.useState(false);
   const [settingsLoaded, setSettingsLoaded] = R.useState(false);
-  const [config, setConfig] = R.useState({ autoOptimize: true, hiddenDelaySeconds: 2 });
+  const [config, setConfig] = R.useState({ autoOptimize: true, hiddenDelaySeconds: 2, trimToCap: true });
 
   R.useEffect(() => {
     let alive = true;
@@ -175,7 +175,7 @@ function MSSApp() {
         const data = await MSSRequest('/api/status');
         if (!alive) return;
         setStatus(data); setError('');
-        if (!settingsLoaded && data.config) { setConfig({ autoOptimize: data.config.autoOptimize !== false, hiddenDelaySeconds: data.config.hiddenDelaySeconds || 2 }); setSettingsLoaded(true); }
+        if (!settingsLoaded && data.config) { setConfig({ autoOptimize: data.config.autoOptimize !== false, hiddenDelaySeconds: data.config.hiddenDelaySeconds || 2, trimToCap: data.config.trimToCap !== false }); setSettingsLoaded(true); }
       } catch (err) {
         if (alive) {
           const detail = err && err.message ? String(err.message) : String(err || 'Unknown error');
@@ -193,7 +193,7 @@ function MSSApp() {
     setSaving(true);
     try {
       const result = await MSSRequest('/api/config', { method: 'POST', body: config });
-      setConfig({ autoOptimize: result.config.autoOptimize, hiddenDelaySeconds: result.config.hiddenDelaySeconds });
+      setConfig({ autoOptimize: result.config.autoOptimize, hiddenDelaySeconds: result.config.hiddenDelaySeconds, trimToCap: result.config.trimToCap !== false });
       setStatus(await MSSRequest('/api/status')); setError('');
     } catch (_) { setError(tx('saveFailed')); }
     finally { setSaving(false); }
@@ -253,7 +253,8 @@ function MSSApp() {
     h('section', { className: 'mss-section' },
       h('div', { className: 'mss-section-head' }, h('h2', { className: 'mss-h2' }, tx('behavior')), h('span', { className: 'mss-small' }, helperRunning ? `${status?.helper?.runtime || 'Server'} ${status?.helper?.version || ''}` : (MSS_PT ? 'Servidor' : 'Server'))),
       h('label', { className: 'mss-check', style: { marginBottom: '18px' } }, h('input', { type: 'checkbox', checked: Boolean(config.autoOptimize), onChange: event => setField('autoOptimize', event.target.checked) }), h('span', null, h('strong', null, tx('active')), h('br'), h('span', { className: 'mss-small' }, tx('autoExplanation')))),
-      h('div', { className: 'mss-settings' }, h('label', { className: 'mss-setting' }, h('span', { className: 'mss-setting-label' }, tx('delay')), h('select', { className: 'mss-select', value: String(config.hiddenDelaySeconds), onChange: event => setField('hiddenDelaySeconds', Number(event.target.value)) }, [1, 2, 3, 5, 8, 10, 15, 20, 30].map(n => h('option', { key: n, value: String(n) }, tx('seconds', { value: n })))), h('span', { className: 'mss-small' }, tx('delayExplanation')))),
+      h('div', { className: 'mss-settings' }, h('label', { className: 'mss-setting' }, h('span', { className: 'mss-setting-label' }, tx('delay')), h('select', { className: 'mss-select', value: String(config.hiddenDelaySeconds), onChange: event => setField('hiddenDelaySeconds', Number(event.target.value)) }, [1, 2, 3, 5, 8, 10, 15, 20, 30].map(n => h('option', { key: n, value: String(n) }, tx('seconds', { value: n })))), h('span', { className: 'mss-small' }, tx('delayExplanation'))),
+        h('label', { className: 'mss-setting' }, h('span', { className: 'mss-setting-label' }, tx('releaseMode')), h('select', { className: 'mss-select', value: config.trimToCap !== false ? 'ceiling' : 'aggressive', onChange: event => setField('trimToCap', event.target.value === 'ceiling') }, h('option', { value: 'ceiling' }, tx('releaseCeiling')), h('option', { value: 'aggressive' }, tx('releaseAggressive'))), h('span', { className: 'mss-small' }, tx('releaseModeExplanation')))),
       h('div', { className: 'mss-actions' }, h('button', { className: 'mss-btn mss-btn-primary', disabled: saving || !helperRunning, onClick: saveSettings }, saving ? tx('saving') : tx('save')), h('span', { className: 'mss-small' }, tx('savedLocal')))
     ),
     h('section', { className: 'mss-section' }, h('div', { className: 'mss-section-head' }, h('h2', { className: 'mss-h2' }, tx('events')), h('span', { className: 'mss-small' }, status?.helper ? `${status.helper.runtime || 'Server'} ${status.helper.version || ''}` : (MSS_PT ? 'Servidor' : 'Server'))),
