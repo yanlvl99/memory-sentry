@@ -1,5 +1,5 @@
 // Memory Sentry Custom App. Source and default locale are English; Portuguese is selected automatically.
-// The installer replaces __MSS_TOKEN__ with a random per-install local API token.
+// The installer replaces __MSS_TOKEN__ with an internal per-install access token.
 const MSSReact = Spicetify.React;
 const h = MSSReact.createElement;
 const MSS_API = 'http://127.0.0.1:38472';
