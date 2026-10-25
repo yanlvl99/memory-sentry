@@ -624,6 +624,57 @@ pub fn prepare_upgrade() -> Result<(), String> {
     Ok(())
 }
 
+/// Replace the installed server with a new build while Spotify keeps running.
+/// The running instance restores its limits and exits, the new executable is put in
+/// place, and the monitor is relaunched; the plugin reconnects on its next poll.
+pub fn swap_server(new_exe_arg: &str) -> Result<(), String> {
+    let source = PathBuf::from(new_exe_arg);
+    if !source.is_file() {
+        return Err(format!("New server executable not found at {}.", source.display()));
+    }
+    let base = install_dir()?;
+    let settings_path = base.join("settings.json");
+    let installed_exe = base.join("MemorySentry.exe");
+    let pid_file = base.join("helper.pid");
+
+    // Stop the running instance first; it restores limits before exiting.
+    if settings_path.exists() {
+        let settings = load_settings(&settings_path)?;
+        let _ = request_shutdown(settings.port, &settings.token);
+        thread::sleep(Duration::from_millis(400));
+    }
+    for _ in 0..50 {
+        let active_pid = fs::read_to_string(&pid_file).ok().and_then(|s| s.trim().parse::<u32>().ok());
+        if active_pid.map(|pid| platform::process_matches_executable(pid, &installed_exe)).unwrap_or(false) {
+            thread::sleep(Duration::from_millis(100));
+        } else {
+            break;
+        }
+    }
+    if let Some(pid) = fs::read_to_string(&pid_file).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
+        if platform::process_matches_executable(pid, &installed_exe) {
+            return Err(format!("Memory Sentry is still active (PID {pid}) after the shutdown request. Nothing was replaced."));
+        }
+    }
+
+    // In-place swap is only possible after the old process released the executable.
+    let same_file = source.canonicalize().ok().map(|value| installed_exe.canonicalize().ok() == Some(value)).unwrap_or(false);
+    if !same_file {
+        fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+        fs::copy(&source, &installed_exe).map_err(|e| format!("Could not replace {}: {e}", installed_exe.display()))?;
+    }
+
+    let launch = Command::new(&installed_exe).arg("--launch").stdin(Stdio::null())
+        .stdout(Stdio::null()).stderr(Stdio::null()).status()
+        .map_err(|e| format!("Could not relaunch the server: {e}"))?;
+    if !launch.success() {
+        return Err("The new server did not pass its local API health check. See logs\\startup.log.".to_string());
+    }
+    println!("Memory Sentry server swapped to the new build at {}.", installed_exe.display());
+    println!("Spotify was not restarted. The plugin reconnects by itself within a few seconds.");
+    Ok(())
+}
+
 pub fn pre_uninstall() -> Result<(), String> {
     // Do not make the user close Spotify just to uninstall. Restore and stop the helper first,
     // remove its logon launch registration, then let spicetify apply refresh/restart Spotify.

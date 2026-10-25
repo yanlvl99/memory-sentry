@@ -57,7 +57,8 @@ fn main() {
             [command] if command == "--pre-uninstall" => runtime::pre_uninstall(),
             [command] if command == "--restore-limits" => runtime::restore_limits_command(),
             [command, app_dir] if command == "--configure" => runtime::configure_install(app_dir),
-            _ => Err("Unknown arguments. Supported commands: --version, --self-test, --check-os, --check-install, --check-spicetify, --monitor, --launch, --prepare-upgrade, --configure <custom-app-folder>, --pre-uninstall, --restore-limits.".to_string()),
+            [command, new_exe] if command == "--swap" => runtime::swap_server(new_exe),
+            _ => Err("Unknown arguments. Supported commands: --version, --self-test, --check-os, --check-install, --check-spicetify, --monitor, --launch, --prepare-upgrade, --swap <new-server-exe>, --configure <custom-app-folder>, --pre-uninstall, --restore-limits.".to_string()),
         };
         if let Err(error) = result {
             if args.first().map(String::as_str) == Some("--configure") {
