@@ -33,12 +33,12 @@ check('obsolete mockup preview files were removed', !fs.existsSync(path.join(roo
 check('sharp Marketplace preview uses the exact COM.png capture', read('assets/marketplace-preview-sharp.svg').includes(fs.readFileSync(path.join(root, 'COM.png')).toString('base64')) && /feConvolveMatrix/.test(read('assets/marketplace-preview-sharp.svg')));
 check('README sharp views use the exact COM/SEM captures', read('assets/COM-sharp.svg').includes(fs.readFileSync(path.join(root, 'COM.png')).toString('base64')) && read('assets/SEM-sharp.svg').includes(fs.readFileSync(path.join(root, 'SEM.png')).toString('base64')) && /feConvolveMatrix/.test(read('assets/COM-sharp.svg')) && /feConvolveMatrix/.test(read('assets/SEM-sharp.svg')));
 check('README discloses that screenshot comparisons are not controlled benchmarks', /not a controlled benchmark/i.test(read('README.md')) && /COM\.png/.test(read('README.md')) && /SEM\.png/.test(read('README.md')));
-check('Marketplace description discloses separate helper', /native companion installer/i.test(marketplaceManifest.description));
+check('Marketplace description discloses separate server', /server is installed separately/i.test(marketplaceManifest.description));
 check('Marketplace listing explicitly limits support to Windows 10 and 11', /Windows 10 and Windows 11 only/i.test(marketplaceManifest.description));
 check('official Setup declares supported Windows 10/11 desktop only', /Windows 10/.test(read('installer/inno/MemorySentry.iss')) && /Windows 11/.test(read('installer/inno/MemorySentry.iss')) && /detect_supported_client_os/.test(read('native/rust/src/runtime.rs')));
 check('local publishing helper and generated archives are ignored', /\/PUSH-TO-GITHUB\.bat/.test(read('.gitignore')) && /\*\.bundle/.test(read('.gitignore')) && /\*\.zip/.test(read('.gitignore')));
 check('development guide documents Rust build and package validation without local publishing scripts', /cargo test/.test(read('docs/DEVELOPMENT.md')) && /scripts\/build-package\.ps1/.test(read('docs/DEVELOPMENT.md')) && !/PUSH-TO-GITHUB\.bat/i.test(read('docs/DEVELOPMENT.md')));
-check('README explains native companion requirement', /native companion/i.test(read('README.md')) && /separate per-user process/i.test(read('README.md')));
+check('README explains server requirement', /Memory Sentry server/i.test(read('README.md')) && /separate per-user process/i.test(read('README.md')));
 check('README documents adaptive CPU and headroom rules', /six seconds/i.test(read('README.md')) && /ten seconds/i.test(read('README.md')));
 check('README documents unsigned SmartScreen limitations', /No unsigned release can guarantee zero SmartScreen/i.test(read('README.md')));
 check('GPL-3.0 license is present', /GNU GENERAL PUBLIC LICENSE/i.test(read('LICENSE')) && /Version 3, 29 June 2007/i.test(read('LICENSE')));
