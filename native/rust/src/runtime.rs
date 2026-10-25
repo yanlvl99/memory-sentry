@@ -2789,9 +2789,19 @@ fn update_config(state: &mut AppState, body: &str) -> Result<(), String> {
                 "policy mode changed"
             },
         );
-        if failed > 0 {
+        if failed > 0 && !disabling {
             return Err("The setting was not changed because some original process limits could not be restored.".to_string());
         }
+        if failed > 0 {
+            log_event(
+                state,
+                format!("Memory Sentry is disabled; retrying restoration of {failed} remaining process limit(s)."),
+                "warn",
+            );
+        }
+    }
+    if policy_changed {
+        state.hidden_since_ms = 0;
     }
     write_settings(&state.settings_path, &next)?;
     state.settings = next;

@@ -15,7 +15,7 @@ const MSS_TEXT = {
     kicker: 'SPICETIFY · WINDOWS MEMORY TOOL · RELEASE CANDIDATE v1.0.0-rc.1', title: 'Memory Sentry',
     intro: 'Memory management for Spotify Desktop. Choose an automatic policy that applies limits when minimized, hidden, or in the background, or turn it off to set a working-set limit for each Spotify process. Original Windows limits are recorded before changes.',
     connected: 'Server connected', unavailable: 'Connection unavailable', waiting: 'Waiting for server',
-    pluginEnabled: 'Memory Sentry on', pluginDisabled: 'Memory Sentry off', pluginToggleHint: 'Turn memory management on or off; disabling restores original process limits.', pluginDisabledNote: 'Memory Sentry is off. Original limits are restored and no automatic or manual caps will be applied.', pluginActivatedFlash: 'MEMORY SENTRY ACTIVATED', pluginDisabledFlash: 'MEMORY SENTRY DEACTIVATED',
+    pluginEnabled: 'Memory Sentry on', pluginDisabled: 'Memory Sentry off', pluginToggleHint: 'Turn memory management on or off; disabling restores original process limits.', pluginDisabledNote: 'Memory Sentry is off. Original limits are restored and no automatic or manual caps will be applied.', pluginActivatedFlash: 'MEMORY SENTRY ACTIVATED', pluginDisabledFlash: 'MEMORY SENTRY DEACTIVATED', pluginDisabledRestoring: 'Memory Sentry is off. It is retrying restoration of the original limits for {count} process(es); no new limits will be applied.',
     helperMissingTitle: 'Memory Sentry server is not connected',
     helperMissingBody: 'The Marketplace listing only links to this project and cannot install Memory Sentry. Use the official Setup from GitHub Releases to install or repair the Memory Sentry server.',
     helperButton: 'Download official setup', installGuideButton: 'Installation guide', safety: 'On supported Windows 10/11 x64 PCs, automatic optimization is intended to reduce Spotify resident RAM while minimized, hidden, or in the background; actual savings vary by PC and workload. Main and Audio processes have a 36 MB automatic ceiling; Audio is fixed while Main may adapt only below that ceiling. A manual limit below the process default can cause failures. A working-set ceiling does not necessarily reduce resident memory immediately; this changes resident working-set memory, not committed memory. Very low-end PCs may briefly show a black window on restore; that alone does not prove a reload if the previous UI state returns. Input may take a few seconds to respond.',
@@ -52,7 +52,7 @@ const MSS_TEXT = {
     kicker: 'SPICETIFY · FERRAMENTA DE RAM PARA WINDOWS · RELEASE CANDIDATE v1.0.0-rc.1', title: 'Memory Sentry',
     intro: 'Gerenciamento de memória para o Spotify Desktop. Escolha uma política automática que aplica limites quando minimizado, oculto ou em segundo plano, ou desative-a para definir um limite de working set por processo. Os limites originais do Windows são registrados antes de qualquer alteração.',
     connected: 'Servidor conectado', unavailable: 'Conexão indisponível', waiting: 'Aguardando servidor',
-    pluginEnabled: 'Memory Sentry ativado', pluginDisabled: 'Memory Sentry desativado', pluginToggleHint: 'Ativa ou desativa o gerenciamento de memória; ao desativar, restaura os limites originais.', pluginDisabledNote: 'O Memory Sentry está desativado. Os limites originais foram restaurados e nenhum limite será aplicado.', pluginActivatedFlash: 'MEMORY SENTRY ATIVADO', pluginDisabledFlash: 'MEMORY SENTRY DESATIVADO',
+    pluginEnabled: 'Memory Sentry ativado', pluginDisabled: 'Memory Sentry desativado', pluginToggleHint: 'Ativa ou desativa o gerenciamento de memória; ao desativar, restaura os limites originais.', pluginDisabledNote: 'O Memory Sentry está desativado. Os limites originais foram restaurados e nenhum limite será aplicado.', pluginActivatedFlash: 'MEMORY SENTRY ATIVADO', pluginDisabledFlash: 'MEMORY SENTRY DESATIVADO', pluginDisabledRestoring: 'O Memory Sentry está desativado. Tentando restaurar os limites originais de {count} processo(s); nenhum novo limite será aplicado.',
     helperMissingTitle: 'O servidor do Memory Sentry não está conectado',
     helperMissingBody: 'A listagem do Marketplace apenas leva ao projeto e não instala o Memory Sentry. Use o instalador oficial em GitHub Releases para instalar ou reparar o servidor do Memory Sentry.',
     helperButton: 'Baixar instalador oficial', installGuideButton: 'Guia de instalação', safety: 'Em PCs compatíveis com Windows 10/11 x64, a otimização automática busca reduzir a RAM residente do Spotify enquanto minimizado, oculto ou em segundo plano; a economia varia conforme o PC e a carga. Main e Áudio têm teto automático de 36 MB; o Áudio é fixo e o Main só pode se adaptar abaixo desse teto. Um limite manual abaixo do padrão do processo pode causar falhas. Um teto de working set não necessariamente reduz a memória residente imediatamente e não altera a memória comprometida. Em PCs muito fracos, a janela pode ficar preta por alguns instantes ao restaurar; isso não prova uma recarga se a interface volta ao estado anterior. A entrada pode demorar alguns segundos para responder.',
@@ -190,6 +190,7 @@ function MSSApp() {
   const R = MSSReact;
   const [status, setStatus] = R.useState(null);
   const [error, setError] = R.useState('');
+  const [settingsError, setSettingsError] = R.useState('');
   const [busy, setBusy] = R.useState(false);
   const [saving, setSaving] = R.useState(false);
   const [settingsLoaded, setSettingsLoaded] = R.useState(false);
@@ -399,13 +400,15 @@ function MSSApp() {
     };
   }, [manualWarning?.readyAt]);
 
-  function setField(key, value) {
+  async function setField(key, value) {
+    const previousConfig = config;
     const nextConfig = { ...config, [key]: value };
     setConfig(nextConfig);
-    saveSettings(nextConfig);
+    if (!await saveSettings(nextConfig)) setConfig(previousConfig);
   }
   async function saveSettings(nextConfig = config) {
     setSaving(true);
+    setSettingsError('');
     try {
       const result = await MSSRequest('/api/config', { method: 'POST', body: nextConfig });
       const savedConfig = { enabled: typeof result.config?.enabled === 'boolean' ? result.config.enabled : nextConfig.enabled !== false, autoOptimize: result.config.autoOptimize, hiddenDelaySeconds: result.config.hiddenDelaySeconds, trimToCap: result.config.trimToCap !== false };
@@ -414,8 +417,8 @@ function MSSApp() {
       setError('');
       try { setStatus(await MSSRequest('/api/status')); } catch (_) { }
       return true;
-    } catch (_) {
-      setError(tx('saveFailed'));
+    } catch (err) {
+      setSettingsError(err?.message || tx('saveFailed'));
       return false;
     } finally { setSaving(false); }
   }
