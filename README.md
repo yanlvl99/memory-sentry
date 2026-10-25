@@ -33,6 +33,16 @@ Memory Sentry is designed to work across supported Windows 10/11 x64 desktop PCs
 
 When Spotify is restored, the intended behavior is to return to the previous interface state without deliberately reloading the page, while playback continues. On very low-end PCs, the window can sometimes appear black temporarily while the interface becomes visible again. **A temporary black screen does not by itself prove that the page reloaded**: if the previous page and state return as they were, the UI state was retained. Keyboard or mouse input can also take a few seconds to respond. Persistent black screens, crashes, playback interruption, or state loss should still be reported and tested. The Windows 10/11 compatibility and recovery test matrix remains open.
 
+## What "memory reduction" means here
+
+Memory Sentry changes **how much of each eligible Spotify process stays resident in physical RAM**. It does not free, decommit, or reduce that process's committed memory, so the process's commit charge normally stays the same even when the working-set figure drops.
+
+Lowering the ceiling or trimming the working set removes pages from the process's working set, but Windows keeps them on its transition/standby lists in RAM. Clean pages, such as code, DLLs, and file-backed data, usually come back on demand through a soft page fault without reading from disk. Private pages that were modified can later be written to the pagefile if Windows needs their physical frames for something else. On a PC under real memory pressure, reusing those pages can require a hard page fault and disk I/O, which is why the interface or input may take longer to respond after restore.
+
+This is not a one-shot "RAM optimizer": the server changes limits adaptively, only for Spotify's process tree, excludes the audio service, and records the original limits so they can be restored. Task Manager's **Memory** column and the dashboard show working-set/resident memory, not committed memory; compare the **Commit size** column separately if you need to verify that committed memory was not reduced.
+
+Windows 10 and Windows 11 may also keep some trimmed pages in memory compression, so the exact mix of standby pages, compressed pages, and pagefile-backed pages depends on the system and memory pressure.
+
 > **1.0.0-rc.1 release candidate — still experimental.** On supported Windows 10/11 x64 desktop PCs, optimization is intended to cut Spotify's resident memory substantially while minimized or hidden. The amount and restore behavior vary by machine. Very low-end PCs may briefly show a black window during restore; this does not necessarily mean the page reloaded if it returns to the previous state. The full Windows 10/11 release test matrix remains open, so this is not a stable-release claim.
 
 ## The only supported installation method
