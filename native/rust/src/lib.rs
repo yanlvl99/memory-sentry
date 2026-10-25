@@ -97,7 +97,11 @@ pub struct Adjustment {
     pub reason: AdjustmentReason,
 }
 
-pub fn estimate_cpu_percent(previous_cpu_ms: u64, current_cpu_ms: u64, elapsed_ms: u64) -> Option<f64> {
+pub fn estimate_cpu_percent(
+    previous_cpu_ms: u64,
+    current_cpu_ms: u64,
+    elapsed_ms: u64,
+) -> Option<f64> {
     if elapsed_ms == 0 || current_cpu_ms < previous_cpu_ms {
         return None;
     }
