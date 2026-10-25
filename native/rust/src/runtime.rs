@@ -3254,6 +3254,14 @@ mod tests {
     }
 
     #[test]
+    fn background_delay_is_shared_by_automatic_and_manual_management() {
+        assert!(!background_delay_elapsed(0, 10_000, 2));
+        assert!(!background_delay_elapsed(10_000, 11_999, 2));
+        assert!(background_delay_elapsed(10_000, 12_000, 2));
+        assert!(background_delay_elapsed(10_000, 15_000, 2));
+    }
+
+    #[test]
     fn managed_limits_are_active_only_outside_the_foreground() {
         assert!(should_manage_limits_in_background("minimized"));
         assert!(should_manage_limits_in_background("hidden"));
