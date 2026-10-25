@@ -21,6 +21,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const VERSION: &str = "1.0.0-rc.1";
 const DEFAULT_PORT: u16 = 38472;
 const DEFAULT_HIDDEN_DELAY_SECONDS: u64 = 2;
+const MIN_MANUAL_CAP_MB: u32 = 8;
+const MAX_MANUAL_CAP_MB: u32 = 512;
 const MAX_HTTP_HEADER_BYTES: usize = 16 * 1024;
 const MAX_HTTP_BODY_BYTES: usize = 32 * 1024;
 const SNAPSHOT_INTERVAL_MS: u64 = 2500;
@@ -39,6 +41,7 @@ struct Settings {
     auto_optimize: bool,
     hidden_delay_seconds: u64,
     trim_to_cap: bool,
+    manual_caps: BTreeMap<(u32, u64), u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -51,6 +54,7 @@ struct BackupRecord {
     flags: u32,
     applied_maximum_mb: Option<u32>,
     applied_at: String,
+    manual: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -218,6 +222,9 @@ fn parse_json_number(text: &str, key: &str) -> Option<u64> {
     let pos = text.find(&marker)? + marker.len();
     let tail = text[pos..].trim_start().strip_prefix(':')?.trim_start();
     let end = tail.find(|c: char| !c.is_ascii_digit()).unwrap_or(tail.len());
+    if end == 0 || tail[end..].chars().next().map(|ch| !ch.is_ascii_whitespace() && !matches!(ch, ',' | '}' | ']')).unwrap_or(false) {
+        return None;
+    }
     tail[..end].parse().ok()
 }
 
@@ -228,6 +235,95 @@ fn parse_json_bool(text: &str, key: &str) -> Option<bool> {
     if tail.starts_with("true") { Some(true) } else if tail.starts_with("false") { Some(false) } else { None }
 }
 
+fn parse_json_string_array(text: &str, key: &str) -> Option<Vec<String>> {
+    let marker = format!("\"{key}\"");
+    let pos = text.find(&marker)? + marker.len();
+    let mut chars = text[pos..]
+        .trim_start()
+        .strip_prefix(':')?
+        .trim_start()
+        .chars();
+    if chars.next()? != '[' {
+        return None;
+    }
+    let mut values = Vec::new();
+    loop {
+        while chars
+            .clone()
+            .next()
+            .map(char::is_whitespace)
+            .unwrap_or(false)
+        {
+            chars.next();
+        }
+        match chars.next()? {
+            ']' => return Some(values),
+            '"' => {
+                let mut value = String::new();
+                let mut escaped = false;
+                loop {
+                    let ch = chars.next()?;
+                    if escaped {
+                        value.push(match ch {
+                            'n' => '\n',
+                            'r' => '\r',
+                            't' => '\t',
+                            other => other,
+                        });
+                        escaped = false;
+                    } else if ch == '\\' {
+                        escaped = true;
+                    } else if ch == '"' {
+                        values.push(value);
+                        break;
+                    } else {
+                        value.push(ch);
+                    }
+                }
+                while chars
+                    .clone()
+                    .next()
+                    .map(char::is_whitespace)
+                    .unwrap_or(false)
+                {
+                    chars.next();
+                }
+                match chars.next()? {
+                    ',' => {}
+                    ']' => return Some(values),
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        }
+    }
+}
+
+fn parse_manual_caps(text: &str) -> BTreeMap<(u32, u64), u32> {
+    parse_json_string_array(text, "manualCaps")
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|entry| {
+            let mut parts = entry.split(':');
+            let (Ok(pid), Ok(creation), Ok(cap_mb)) = (
+                parts.next()?.parse::<u32>(),
+                parts.next()?.parse::<u64>(),
+                parts.next()?.parse::<u32>(),
+            ) else {
+                return None;
+            };
+            if parts.next().is_some()
+                || pid == 0
+                || creation == 0
+                || !(MIN_MANUAL_CAP_MB..=MAX_MANUAL_CAP_MB).contains(&cap_mb)
+            {
+                return None;
+            }
+            Some(((pid, creation), cap_mb))
+        })
+        .collect()
+}
+
 fn load_settings(path: &Path) -> Result<Settings, String> {
     let raw = fs::read_to_string(path)
         .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
@@ -235,23 +331,43 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
     if token.len() < 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("settings.json token is invalid".to_string());
     }
-    let port = parse_json_number(&raw, "port").unwrap_or(DEFAULT_PORT as u64).clamp(1, 65535) as u16;
+    let port = parse_json_number(&raw, "port")
+        .unwrap_or(DEFAULT_PORT as u64)
+        .clamp(1, 65535) as u16;
     let auto_optimize = parse_json_bool(&raw, "autoOptimize").unwrap_or(true);
     let hidden_delay_seconds = parse_json_number(&raw, "hiddenDelaySeconds")
-        .unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS).clamp(1, 30);
+        .unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS)
+        .clamp(1, 30);
     let trim_to_cap = parse_json_bool(&raw, "trimToCap").unwrap_or(true);
-    Ok(Settings { port, token, auto_optimize, hidden_delay_seconds, trim_to_cap })
+    let manual_caps = parse_manual_caps(&raw);
+    Ok(Settings {
+        port,
+        token,
+        auto_optimize,
+        hidden_delay_seconds,
+        trim_to_cap,
+        manual_caps,
+    })
 }
 
 fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
-    if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     let temp = path.with_extension("json.tmp");
+    let manual_caps = settings
+        .manual_caps
+        .iter()
+        .map(|((pid, creation), cap)| json_quote(&format!("{pid}:{creation}:{cap}")))
+        .collect::<Vec<_>>()
+        .join(", ");
     let contents = format!(
-        "{{\n  \"port\": {},\n  \"token\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"version\": \"{}\"\n}}\n",
-        settings.port, json_quote(&settings.token), settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, VERSION
+        "{{\n  \"port\": {},\n  \"token\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"manualCaps\": [{}],\n  \"version\": \"{}\"\n}}\n",
+        settings.port, json_quote(&settings.token), settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, manual_caps, VERSION
     );
     let mut file = File::create(&temp).map_err(|e| format!("Could not stage settings: {e}"))?;
-    file.write_all(contents.as_bytes()).map_err(|e| e.to_string())?;
+    file.write_all(contents.as_bytes())
+        .map_err(|e| e.to_string())?;
     file.sync_all().map_err(|e| e.to_string())?;
     replace_file(&temp, path)?;
     Ok(())
@@ -308,20 +424,42 @@ fn load_backup_file(path: &Path) -> Vec<BackupRecord> {
     ];
     let mut records = BTreeMap::<(u32, u64), BackupRecord>::new();
     for candidate in candidates {
-        let Ok(raw) = fs::read_to_string(&candidate) else { continue; };
+        let Ok(raw) = fs::read_to_string(&candidate) else {
+            continue;
+        };
         for line in raw.lines() {
-            if line.starts_with('#') || line.trim().is_empty() { continue; }
+            if line.starts_with('#') || line.trim().is_empty() {
+                continue;
+            }
             let fields: Vec<&str> = line.split('\t').collect();
-            if fields.len() < 8 { continue; }
+            if fields.len() < 8 {
+                continue;
+            }
             let (Ok(pid), Ok(creation), Ok(minimum), Ok(maximum), Ok(flags)) = (
-                fields[0].parse::<u32>(), fields[1].parse::<u64>(),
-                fields[3].parse::<usize>(), fields[4].parse::<usize>(), fields[5].parse::<u32>()
-            ) else { continue; };
-            if pid == 0 || creation == 0 { continue; }
+                fields[0].parse::<u32>(),
+                fields[1].parse::<u64>(),
+                fields[3].parse::<usize>(),
+                fields[4].parse::<usize>(),
+                fields[5].parse::<u32>(),
+            ) else {
+                continue;
+            };
+            if pid == 0 || creation == 0 {
+                continue;
+            }
             let record = BackupRecord {
-                pid, creation, role: fields[2].to_string(), minimum, maximum, flags,
+                pid,
+                creation,
+                role: fields[2].to_string(),
+                minimum,
+                maximum,
+                flags,
                 applied_maximum_mb: fields[6].parse::<u32>().ok(),
                 applied_at: fields[7].to_string(),
+                manual: fields
+                    .get(8)
+                    .map(|value| *value == "manual")
+                    .unwrap_or(false),
             };
             records.insert((pid, creation), record);
         }
@@ -341,14 +479,27 @@ fn persist_backups(state: &AppState) -> Result<(), String> {
     let mut contents = format!("{MINIMUM_BACKUP_HEADER}\n");
     for r in state.active_caps.values() {
         contents.push_str(&format!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
-            r.pid, r.creation, r.role, r.minimum, r.maximum, r.flags,
-            r.applied_maximum_mb.map(|v| v.to_string()).unwrap_or_default(),
-            r.applied_at.replace('\t', " ").replace('\r', " ").replace('\n', " ")
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+            r.pid,
+            r.creation,
+            r.role,
+            r.minimum,
+            r.maximum,
+            r.flags,
+            r.applied_maximum_mb
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            r.applied_at
+                .replace('\t', " ")
+                .replace('\r', " ")
+                .replace('\n', " "),
+            if r.manual { "manual" } else { "automatic" }
         ));
     }
-    let mut file = File::create(&temp).map_err(|e| format!("Could not stage recovery data: {e}"))?;
-    file.write_all(contents.as_bytes()).map_err(|e| e.to_string())?;
+    let mut file =
+        File::create(&temp).map_err(|e| format!("Could not stage recovery data: {e}"))?;
+    file.write_all(contents.as_bytes())
+        .map_err(|e| e.to_string())?;
     file.sync_all().map_err(|e| e.to_string())?;
     replace_file(&temp, &state.backup_path)
 }
@@ -438,12 +589,18 @@ fn stop_monitor_after_setup_failure(context: &str) -> String {
 pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
     let (os_name, build) = platform::detect_supported_client_os()?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let base = exe.parent().ok_or("Could not determine installation directory")?.to_path_buf();
+    let base = exe
+        .parent()
+        .ok_or("Could not determine installation directory")?
+        .to_path_buf();
     let settings_path = base.join("settings.json");
     let app_dir = PathBuf::from(app_dir_arg);
     let index_path = app_dir.join("index.js");
     if !index_path.is_file() || !app_dir.join("manifest.json").is_file() {
-        return Err("The Spicetify Custom App package is incomplete (index.js or manifest.json missing).".to_string());
+        return Err(
+            "The Spicetify Custom App package is incomplete (index.js or manifest.json missing)."
+                .to_string(),
+        );
     }
 
     // Legacy Node installations must restore before the Rust companion takes over.
@@ -478,8 +635,11 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
         port: DEFAULT_PORT,
         token,
         auto_optimize: parse_json_bool(&existing_raw, "autoOptimize").unwrap_or(true),
-        hidden_delay_seconds: parse_json_number(&existing_raw, "hiddenDelaySeconds").unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS).clamp(1, 30),
+        hidden_delay_seconds: parse_json_number(&existing_raw, "hiddenDelaySeconds")
+            .unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS)
+            .clamp(1, 30),
         trim_to_cap: parse_json_bool(&existing_raw, "trimToCap").unwrap_or(true),
+        manual_caps: parse_manual_caps(&existing_raw),
     };
     write_settings(&settings_path, &settings)?;
     // Start the local API before "spicetify apply" restarts Spotify, so the
@@ -1086,8 +1246,15 @@ fn persist_or_log(state: &mut AppState) -> bool {
     }
 }
 
-fn apply_initial_cap(state: &mut AppState, process: &platform::ProcessRow, role: ProcessRole, now: u64) -> Result<bool, String> {
-    if role == ProcessRole::Audio { return Ok(false); }
+fn apply_initial_cap(
+    state: &mut AppState,
+    process: &platform::ProcessRow,
+    role: ProcessRole,
+    now: u64,
+) -> Result<bool, String> {
+    if role == ProcessRole::Audio {
+        return Ok(false);
+    }
     if state.active_caps.get(&process.pid).map(|r| r.creation) == Some(process.creation) {
         ensure_profile(state, process.pid, process.creation, role, now);
         return Ok(false);
@@ -1101,9 +1268,15 @@ fn apply_initial_cap(state: &mut AppState, process: &platform::ProcessRow, role:
     let before = process.working_set_mb;
     let baseline = role.baseline_cap_mb().unwrap_or(24);
     let record = BackupRecord {
-        pid: process.pid, creation: process.creation, role: role_name(role).to_string(),
-        minimum: limits.minimum, maximum: limits.maximum, flags: limits.flags,
-        applied_maximum_mb: None, applied_at: iso_now(),
+        pid: process.pid,
+        creation: process.creation,
+        role: role_name(role).to_string(),
+        minimum: limits.minimum,
+        maximum: limits.maximum,
+        flags: limits.flags,
+        applied_maximum_mb: None,
+        applied_at: iso_now(),
+        manual: false,
     };
     state.active_caps.insert(process.pid, record);
     // Recovery must be durable before the native limit is changed.
@@ -1114,7 +1287,11 @@ fn apply_initial_cap(state: &mut AppState, process: &platform::ProcessRow, role:
     let cap_bytes = baseline as usize * 1024 * 1024;
     let minimum = platform::MIN_WORKING_SET_BYTES.min(cap_bytes);
     if let Err(error) = platform::set_working_set_limits(
-        process.pid, process.creation, minimum, cap_bytes, platform::HARD_CAP_FLAGS
+        process.pid,
+        process.creation,
+        minimum,
+        cap_bytes,
+        platform::HARD_CAP_FLAGS,
     ) {
         state.active_caps.remove(&process.pid);
         let _ = persist_or_log(state);
@@ -1132,14 +1309,163 @@ fn apply_initial_cap(state: &mut AppState, process: &platform::ProcessRow, role:
     if !state.settings.trim_to_cap && before.map(|mb| mb > baseline as f64).unwrap_or(false) {
         trimmed = platform::empty_working_set(process.pid, process.creation).is_ok();
     }
-    let after = platform::inspect_process(process.pid).ok().map(|m| m.working_set_mb);
-    log_event(state, format!(
-        "Applied adaptive cap to {} PID {}: {} MB before, {} MB after{}.",
-        role_name(role), process.pid, before.map(|v| format!("{v:.1}")).unwrap_or_else(|| "unknown".to_string()),
-        after.map(|v| format!("{v:.1}")).unwrap_or_else(|| "unknown".to_string()),
-        if trimmed { ", one-time trim requested" } else { "" }
-    ), "info");
+    let after = platform::inspect_process(process.pid)
+        .ok()
+        .map(|m| m.working_set_mb);
+    log_event(
+        state,
+        format!(
+            "Applied adaptive cap to {} PID {}: {} MB before, {} MB after{}.",
+            role_name(role),
+            process.pid,
+            before
+                .map(|v| format!("{v:.1}"))
+                .unwrap_or_else(|| "unknown".to_string()),
+            after
+                .map(|v| format!("{v:.1}"))
+                .unwrap_or_else(|| "unknown".to_string()),
+            if trimmed {
+                ", one-time trim requested"
+            } else {
+                ""
+            }
+        ),
+        "info",
+    );
     Ok(true)
+}
+
+fn apply_manual_cap(
+    state: &mut AppState,
+    process: &platform::ProcessRow,
+    role: ProcessRole,
+    cap_mb: u32,
+) -> Result<(), String> {
+    if !(MIN_MANUAL_CAP_MB..=MAX_MANUAL_CAP_MB).contains(&cap_mb) {
+        return Err(format!(
+            "Manual limits must be between {MIN_MANUAL_CAP_MB} and {MAX_MANUAL_CAP_MB} MB."
+        ));
+    }
+    let previous = state
+        .active_caps
+        .get(&process.pid)
+        .filter(|record| record.creation == process.creation)
+        .cloned();
+    if state.active_caps.get(&process.pid).is_some() && previous.is_none() {
+        state.active_caps.remove(&process.pid);
+        if !persist_or_log(state) {
+            return Err(
+                "Could not clear stale recovery data; no manual limit was changed.".to_string(),
+            );
+        }
+    }
+    let mut record = if let Some(record) = previous.clone() {
+        record
+    } else {
+        let limits = platform::read_original_limits(process.pid, process.creation)?;
+        BackupRecord {
+            pid: process.pid,
+            creation: process.creation,
+            role: role_name(role).to_string(),
+            minimum: limits.minimum,
+            maximum: limits.maximum,
+            flags: limits.flags,
+            applied_maximum_mb: None,
+            applied_at: iso_now(),
+            manual: true,
+        }
+    };
+    record.role = role_name(role).to_string();
+    record.applied_maximum_mb = Some(cap_mb);
+    record.applied_at = iso_now();
+    record.manual = true;
+    state.active_caps.insert(process.pid, record);
+    if !persist_or_log(state) {
+        if let Some(previous) = previous {
+            state.active_caps.insert(process.pid, previous);
+        } else {
+            state.active_caps.remove(&process.pid);
+        }
+        return Err("Recovery data could not be saved; no memory limit was changed.".to_string());
+    }
+    let cap_bytes = cap_mb as usize * 1024 * 1024;
+    let minimum = platform::MIN_WORKING_SET_BYTES.min(cap_bytes);
+    if let Err(error) = platform::set_working_set_limits(
+        process.pid,
+        process.creation,
+        minimum,
+        cap_bytes,
+        platform::HARD_CAP_FLAGS,
+    ) {
+        if let Some(previous) = previous {
+            state.active_caps.insert(process.pid, previous);
+        } else {
+            state.active_caps.remove(&process.pid);
+        }
+        let _ = persist_or_log(state);
+        return Err(error);
+    }
+    log_event(
+        state,
+        format!(
+            "Applied manual {} limit to PID {}: {cap_mb} MB.",
+            role_name(role),
+            process.pid
+        ),
+        "info",
+    );
+    Ok(())
+}
+
+fn restore_one_record(
+    state: &mut AppState,
+    record: &BackupRecord,
+    reason: &str,
+) -> Result<(), String> {
+    match platform::restore_working_set_limits(
+        record.pid,
+        record.creation,
+        record.minimum,
+        record.maximum,
+        record.flags,
+    ) {
+        Ok(platform::RestoreOutcome::Restored) => {
+            log_event(
+                state,
+                format!(
+                    "Restored original working-set limits for {} PID {} ({reason}).",
+                    record.role, record.pid
+                ),
+                "info",
+            );
+        }
+        Ok(platform::RestoreOutcome::ProcessGone) => {
+            log_event(
+                state,
+                format!("Removed recovery for exited PID {} ({reason}).", record.pid),
+                "warn",
+            );
+        }
+        Ok(platform::RestoreOutcome::PidReused) => {
+            log_event(
+                state,
+                format!(
+                    "PID {} was reused; did not touch the new process ({reason}).",
+                    record.pid
+                ),
+                "warn",
+            );
+        }
+        Err(error) => return Err(error),
+    }
+    state.active_caps.remove(&record.pid);
+    state.profiles.remove(&record.pid);
+    if !persist_or_log(state) {
+        return Err(
+            "Original limits were restored, but recovery data could not be updated.".to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn restore_all(state: &mut AppState, reason: &str) -> (usize, usize) {
@@ -1270,47 +1596,140 @@ fn update_caps(state: &mut AppState, now: u64) {
     }
 }
 
+fn reconcile_manual_caps(state: &mut AppState) {
+    if !state.snapshot_ok
+        || state.snapshot_at_ms == 0
+        || now_ms().saturating_sub(state.snapshot_at_ms) > SNAPSHOT_STALE_MS
+    {
+        return;
+    }
+    let targets = descendants(state);
+    let wanted: BTreeSet<String> = targets
+        .iter()
+        .map(|(process, _)| target_key(process.pid, process.creation))
+        .collect();
+    let records: Vec<BackupRecord> = state.active_caps.values().cloned().collect();
+    for record in records {
+        let configured = state
+            .settings
+            .manual_caps
+            .get(&(record.pid, record.creation))
+            .is_some();
+        if !wanted.contains(&target_key(record.pid, record.creation))
+            || !configured
+            || !record.manual
+        {
+            if let Err(error) = restore_one_record(state, &record, "manual policy reconciliation") {
+                log_event(
+                    state,
+                    format!(
+                        "Could not restore PID {} during manual policy reconciliation: {error}",
+                        record.pid
+                    ),
+                    "error",
+                );
+            }
+        }
+    }
+    for (process, role) in targets {
+        let Some(cap_mb) = state
+            .settings
+            .manual_caps
+            .get(&(process.pid, process.creation))
+            .copied()
+        else {
+            continue;
+        };
+        let current = state.active_caps.get(&process.pid).filter(|record| {
+            record.creation == process.creation
+                && record.manual
+                && record.applied_maximum_mb == Some(cap_mb)
+        });
+        if current.is_some() {
+            continue;
+        }
+        if let Err(error) = apply_manual_cap(state, &process, role, cap_mb) {
+            log_event(
+                state,
+                format!("Manual limit skipped for PID {}: {error}", process.pid),
+                "warn",
+            );
+        }
+    }
+}
+
 fn maybe_auto_optimize(state: &mut AppState, now: u64) {
+    if !state.settings.auto_optimize {
+        state.hidden_since_ms = 0;
+        reconcile_manual_caps(state);
+        return;
+    }
     let hidden = state.window_state == "minimized" || state.window_state == "hidden";
     if !hidden {
         state.hidden_since_ms = 0;
-        if !state.active_caps.is_empty() && now.saturating_sub(state.last_restore_attempt_at_ms) >= 1500 {
+        if !state.active_caps.is_empty()
+            && now.saturating_sub(state.last_restore_attempt_at_ms) >= 1500
+        {
             state.last_restore_attempt_at_ms = now;
             restore_all(state, &format!("window {}", state.window_state));
         }
         return;
     }
-    if !state.settings.auto_optimize {
-        if !state.active_caps.is_empty() && now.saturating_sub(state.last_restore_attempt_at_ms) >= 1500 {
-            state.last_restore_attempt_at_ms = now;
-            restore_all(state, "automatic optimization disabled");
-        }
-        state.hidden_since_ms = 0;
-        return;
-    }
+
     if state.hidden_since_ms == 0 {
         state.hidden_since_ms = now;
-        log_event(state, format!("Spotify entered {}; optimization waits {} second(s).", state.window_state, state.settings.hidden_delay_seconds), "info");
+        log_event(
+            state,
+            format!(
+                "Spotify entered {}; optimization waits {} second(s).",
+                state.window_state, state.settings.hidden_delay_seconds
+            ),
+            "info",
+        );
     }
-    if now.saturating_sub(state.hidden_since_ms) < state.settings.hidden_delay_seconds * 1000 { return; }
-    if !state.snapshot_ok || state.snapshot_at_ms == 0 || now.saturating_sub(state.snapshot_at_ms) > SNAPSHOT_STALE_MS { return; }
+    if now.saturating_sub(state.hidden_since_ms) < state.settings.hidden_delay_seconds * 1000 {
+        return;
+    }
+    if !state.snapshot_ok
+        || state.snapshot_at_ms == 0
+        || now.saturating_sub(state.snapshot_at_ms) > SNAPSHOT_STALE_MS
+    {
+        return;
+    }
     let targets = descendants(state);
-    let wanted: BTreeSet<String> = targets.iter()
+    let wanted: BTreeSet<String> = targets
+        .iter()
         .filter(|(_, role)| *role != ProcessRole::Audio)
         .map(|(p, _)| target_key(p.pid, p.creation))
         .collect();
-    let no_longer_eligible: Vec<BackupRecord> = state.active_caps.values()
+    let no_longer_eligible: Vec<BackupRecord> = state
+        .active_caps
+        .values()
         .filter(|record| !wanted.contains(&target_key(record.pid, record.creation)))
-        .cloned().collect();
+        .cloned()
+        .collect();
     if !no_longer_eligible.is_empty() {
         for record in no_longer_eligible {
-            let outcome = platform::restore_working_set_limits(record.pid, record.creation, record.minimum, record.maximum, record.flags);
+            let outcome = platform::restore_working_set_limits(
+                record.pid,
+                record.creation,
+                record.minimum,
+                record.maximum,
+                record.flags,
+            );
             match outcome {
                 Ok(_) => {
                     state.active_caps.remove(&record.pid);
                     state.profiles.remove(&record.pid);
                 }
-                Err(error) => log_event(state, format!("Could not restore no-longer-eligible PID {}: {error}", record.pid), "error"),
+                Err(error) => log_event(
+                    state,
+                    format!(
+                        "Could not restore no-longer-eligible PID {}: {error}",
+                        record.pid
+                    ),
+                    "error",
+                ),
             }
         }
         let _ = persist_or_log(state);
@@ -1337,8 +1756,15 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
     }
     update_caps(state, now_ms());
     if applied > 0 || !failures.is_empty() {
-        state.last_action = Some(LastAction { time: iso_now(), reason: "automatic".to_string(), applied, failures: failures.clone() });
-        for failure in failures.iter().take(6) { log_event(state, failure.clone(), "warn"); }
+        state.last_action = Some(LastAction {
+            time: iso_now(),
+            reason: "automatic".to_string(),
+            applied,
+            failures: failures.clone(),
+        });
+        for failure in failures.iter().take(6) {
+            log_event(state, failure.clone(), "warn");
+        }
     }
 }
 
@@ -1389,9 +1815,28 @@ fn public_config(settings: &Settings) -> String {
 fn status_payload(state: &AppState) -> String {
     let targets = descendants(state);
     let process_count = state.snapshot.processes.len();
-    let spotify_total_mb: f64 = state.snapshot.processes.iter().filter_map(|p| p.working_set_mb).sum();
-    let target_total_mb: f64 = targets.iter().filter(|(_, role)| *role != ProcessRole::Audio).filter_map(|(p, _)| p.working_set_mb).sum();
-    let capped_count = state.active_caps.values().filter(|r| state.snapshot.processes.iter().any(|p| p.pid == r.pid && p.creation == r.creation)).count();
+    let spotify_total_mb: f64 = state
+        .snapshot
+        .processes
+        .iter()
+        .filter_map(|p| p.working_set_mb)
+        .sum();
+    let target_total_mb: f64 = targets
+        .iter()
+        .filter(|(_, role)| *role != ProcessRole::Audio)
+        .filter_map(|(p, _)| p.working_set_mb)
+        .sum();
+    let capped_count = state
+        .active_caps
+        .values()
+        .filter(|r| {
+            state
+                .snapshot
+                .processes
+                .iter()
+                .any(|p| p.pid == r.pid && p.creation == r.creation)
+        })
+        .count();
 
     let target_json: Vec<String> = targets.iter().map(|(p, role)| {
         let record = state.active_caps.get(&p.pid).filter(|r| r.creation == p.creation);
@@ -1400,10 +1845,12 @@ fn status_payload(state: &AppState) -> String {
         let protected_audio = *role == ProcessRole::Audio;
         let current_cap = record.and_then(|r| r.applied_maximum_mb)
             .or_else(|| profile.map(|p| p.current_cap_mb));
+        let default_cap = role.manual_default_cap_mb();
+        let manual_cap = state.settings.manual_caps.get(&(p.pid, p.creation)).copied();
         let adaptive_status = profile.map(|p| p.last_reason.as_str()).unwrap_or("baseline");
         format!(
-            "{{\"pid\":{},\"role\":{},\"workingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"included\":{},\"protectedAudio\":{},\"limitMB\":{},\"adaptiveStatus\":{}}}",
-            p.pid, json_quote(role_name(*role)),
+            "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"protectedAudio\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{}}}",
+            p.pid, json_quote(&p.creation.to_string()), json_quote(role_name(*role)),
             json_optional_number(p.working_set_mb),
             json_optional_number(p.private_mb),
             json_optional_number(p.cpu_percent),
@@ -1411,24 +1858,50 @@ fn status_payload(state: &AppState) -> String {
             json_optional_u64(p.page_faults_delta),
             p.error_code,
             capped,
+            record.map(|r| r.manual).unwrap_or(false),
             !protected_audio,
             protected_audio,
             current_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
+            manual_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
+            default_cap,
             json_quote(adaptive_status)
         )
     }).collect();
 
-    let events: Vec<String> = state.recent_events.iter().rev().map(|e| {
-        format!("{{\"time\":{},\"level\":{},\"message\":{}}}", json_quote(&e.time), json_quote(&e.level), json_quote(&e.message))
-    }).collect();
+    let events: Vec<String> = state
+        .recent_events
+        .iter()
+        .rev()
+        .map(|e| {
+            format!(
+                "{{\"time\":{},\"level\":{},\"message\":{}}}",
+                json_quote(&e.time),
+                json_quote(&e.level),
+                json_quote(&e.message)
+            )
+        })
+        .collect();
 
-    let last_action = state.last_action.as_ref().map(|action| {
-        let failure_json: Vec<String> = action.failures.iter().map(|e| json_quote(e)).collect();
-        format!("{{\"time\":{},\"reason\":{},\"applied\":{},\"processes\":[],\"failures\":[{}]}}",
-            json_quote(&action.time), json_quote(&action.reason), action.applied, failure_json.join(","))
-    }).unwrap_or_else(|| "null".to_string());
+    let last_action = state
+        .last_action
+        .as_ref()
+        .map(|action| {
+            let failure_json: Vec<String> = action.failures.iter().map(|e| json_quote(e)).collect();
+            format!(
+                "{{\"time\":{},\"reason\":{},\"applied\":{},\"processes\":[],\"failures\":[{}]}}",
+                json_quote(&action.time),
+                json_quote(&action.reason),
+                action.applied,
+                failure_json.join(",")
+            )
+        })
+        .unwrap_or_else(|| "null".to_string());
 
-    let hidden_seconds = if state.hidden_since_ms > 0 { now_ms().saturating_sub(state.hidden_since_ms) / 1000 } else { 0 };
+    let hidden_seconds = if state.hidden_since_ms > 0 {
+        now_ms().saturating_sub(state.hidden_since_ms) / 1000
+    } else {
+        0
+    };
     let memory = format!(
         "{{\"spotifyTotalMB\":{},\"targetTotalMB\":{},\"processCount\":{},\"targetCount\":{},\"cappedCount\":{},\"targets\":[{}],\"sampledAt\":{}}}",
         json_num(spotify_total_mb), json_num(target_total_mb), process_count, targets.len(), capped_count,
@@ -1600,15 +2073,135 @@ fn write_http_response(mut stream: TcpStream, status: u16, reason: &str, body: &
     let _ = stream.flush();
 }
 
+fn manual_target(
+    state: &AppState,
+    pid: u32,
+    creation: u64,
+) -> Result<(platform::ProcessRow, ProcessRole), String> {
+    if !state.snapshot_ok
+        || state.snapshot_at_ms == 0
+        || now_ms().saturating_sub(state.snapshot_at_ms) > SNAPSHOT_STALE_MS
+    {
+        return Err("The Spotify process list is stale; refresh it and try again.".to_string());
+    }
+    descendants(state).into_iter()
+        .find(|(process, _)| process.pid == pid && process.creation == creation)
+        .ok_or_else(|| "That Spotify process is no longer running with the same identity. Refresh and try again.".to_string())
+}
+
+fn set_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
+    if state.settings.auto_optimize {
+        return Err(
+            "Turn off automatic optimization before setting a manual process limit.".to_string(),
+        );
+    }
+    let pid = parse_json_number(body, "pid")
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or("A valid process ID is required.")?;
+    let creation = parse_json_string(body, "creation")
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or("A valid process creation identity is required.")?;
+    let cap_mb = parse_json_number(body, "capMB")
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or("A whole-number limit is required.")?;
+    if !(MIN_MANUAL_CAP_MB..=MAX_MANUAL_CAP_MB).contains(&cap_mb) {
+        return Err(format!(
+            "Manual limits must be between {MIN_MANUAL_CAP_MB} and {MAX_MANUAL_CAP_MB} MB."
+        ));
+    }
+    let (process, role) = manual_target(state, pid, creation)?;
+    let key = (pid, creation);
+    let previous = state.settings.manual_caps.insert(key, cap_mb);
+    if let Err(error) = write_settings(&state.settings_path, &state.settings) {
+        if let Some(previous) = previous {
+            state.settings.manual_caps.insert(key, previous);
+        } else {
+            state.settings.manual_caps.remove(&key);
+        }
+        return Err(error);
+    }
+    if let Err(error) = apply_manual_cap(state, &process, role, cap_mb) {
+        if let Some(previous) = previous {
+            state.settings.manual_caps.insert(key, previous);
+        } else {
+            state.settings.manual_caps.remove(&key);
+        }
+        if let Err(save_error) = write_settings(&state.settings_path, &state.settings) {
+            log_event(
+                state,
+                format!("Could not roll back failed manual setting: {save_error}"),
+                "error",
+            );
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn clear_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
+    if state.settings.auto_optimize {
+        return Err(
+            "Turn off automatic optimization before clearing a manual process limit.".to_string(),
+        );
+    }
+    let pid = parse_json_number(body, "pid")
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or("A valid process ID is required.")?;
+    let creation = parse_json_string(body, "creation")
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or("A valid process creation identity is required.")?;
+    let key = (pid, creation);
+    let previous = state.settings.manual_caps.remove(&key);
+    if previous.is_none() {
+        return Ok(());
+    }
+    if let Err(error) = write_settings(&state.settings_path, &state.settings) {
+        state.settings.manual_caps.insert(key, previous.unwrap());
+        return Err(error);
+    }
+    if let Some(record) = state
+        .active_caps
+        .get(&pid)
+        .filter(|record| record.creation == creation && record.manual)
+        .cloned()
+    {
+        restore_one_record(state, &record, "manual limit cleared")?;
+    }
+    Ok(())
+}
+
 fn update_config(state: &mut AppState, body: &str) -> Result<(), String> {
-    if let Some(value) = parse_json_bool(body, "autoOptimize") { state.settings.auto_optimize = value; }
-    if let Some(value) = parse_json_bool(body, "trimToCap") { state.settings.trim_to_cap = value; }
-    state.settings.hidden_delay_seconds = parse_json_number(body, "hiddenDelaySeconds")
-        .unwrap_or(state.settings.hidden_delay_seconds).clamp(1, 30);
-    write_settings(&state.settings_path, &state.settings)?;
-    log_event(state, format!("Settings updated: autoOptimize={}, hiddenDelaySeconds={}, trimToCap={}.", state.settings.auto_optimize, state.settings.hidden_delay_seconds, state.settings.trim_to_cap), "info");
-    if !state.settings.auto_optimize && !state.active_caps.is_empty() {
-        restore_all(state, "automatic optimization disabled");
+    let mut next = state.settings.clone();
+    if let Some(value) = parse_json_bool(body, "autoOptimize") {
+        next.auto_optimize = value;
+    }
+    if let Some(value) = parse_json_bool(body, "trimToCap") {
+        next.trim_to_cap = value;
+    }
+    next.hidden_delay_seconds = parse_json_number(body, "hiddenDelaySeconds")
+        .unwrap_or(next.hidden_delay_seconds)
+        .clamp(1, 30);
+
+    if next.auto_optimize != state.settings.auto_optimize {
+        let (_, failed) = restore_all(state, "policy mode changed");
+        if failed > 0 {
+            return Err("The policy mode was not changed because some original process limits could not be restored.".to_string());
+        }
+    }
+    write_settings(&state.settings_path, &next)?;
+    state.settings = next;
+    log_event(
+        state,
+        format!(
+            "Settings updated: autoOptimize={}, hiddenDelaySeconds={}, trimToCap={}",
+            state.settings.auto_optimize,
+            state.settings.hidden_delay_seconds,
+            state.settings.trim_to_cap
+        ),
+        "info",
+    );
+    if !state.settings.auto_optimize {
+        reconcile_manual_caps(state);
     }
     Ok(())
 }
@@ -1618,19 +2211,49 @@ fn handle_http_request(stream: TcpStream, shared: SharedState) {
     let request = match read_http_request(&mut stream) {
         Ok(request) => request,
         Err(error) => {
-            write_http_response(stream, 400, "Bad Request", &format!("{{\"ok\":false,\"error\":{}}}", json_quote(&error)), None);
+            write_http_response(
+                stream,
+                400,
+                "Bad Request",
+                &format!("{{\"ok\":false,\"error\":{}}}", json_quote(&error)),
+                None,
+            );
             return;
         }
     };
-    let origin = request.headers.get("origin").map(String::as_str).unwrap_or("");
-    let host = request.headers.get("host").map(|h| h.to_ascii_lowercase()).unwrap_or_default();
-    let port = shared.lock().ok().map(|state| state.settings.port).unwrap_or(DEFAULT_PORT);
+    let origin = request
+        .headers
+        .get("origin")
+        .map(String::as_str)
+        .unwrap_or("");
+    let host = request
+        .headers
+        .get("host")
+        .map(|h| h.to_ascii_lowercase())
+        .unwrap_or_default();
+    let port = shared
+        .lock()
+        .ok()
+        .map(|state| state.settings.port)
+        .unwrap_or(DEFAULT_PORT);
     if host != format!("127.0.0.1:{port}") && host != format!("localhost:{port}") {
-        write_http_response(stream, 403, "Forbidden", r#"{"ok":false,"error":"Host is not allowed."}"#, None);
+        write_http_response(
+            stream,
+            403,
+            "Forbidden",
+            r#"{"ok":false,"error":"Host is not allowed."}"#,
+            None,
+        );
         return;
     }
     if !trusted_origin(origin) {
-        write_http_response(stream, 403, "Forbidden", r#"{"ok":false,"error":"Origin is not allowed."}"#, None);
+        write_http_response(
+            stream,
+            403,
+            "Forbidden",
+            r#"{"ok":false,"error":"Origin is not allowed."}"#,
+            None,
+        );
         return;
     }
     if request.method == "OPTIONS" {
@@ -1641,13 +2264,31 @@ fn handle_http_request(stream: TcpStream, shared: SharedState) {
     let mut state = match shared.lock() {
         Ok(state) => state,
         Err(_) => {
-            write_http_response(stream, 500, "Internal Server Error", r#"{"ok":false,"error":"State unavailable."}"#, Some(origin));
+            write_http_response(
+                stream,
+                500,
+                "Internal Server Error",
+                r#"{"ok":false,"error":"State unavailable."}"#,
+                Some(origin),
+            );
             return;
         }
     };
-    let auth = request.headers.get("authorization").and_then(|value| parse_bearer(value));
-    if !auth.map(|value| constant_time_equals(value, &state.settings.token)).unwrap_or(false) {
-        write_http_response(stream, 403, "Forbidden", r#"{"ok":false,"error":"Invalid local token."}"#, Some(origin));
+    let auth = request
+        .headers
+        .get("authorization")
+        .and_then(|value| parse_bearer(value));
+    if !auth
+        .map(|value| constant_time_equals(value, &state.settings.token))
+        .unwrap_or(false)
+    {
+        write_http_response(
+            stream,
+            403,
+            "Forbidden",
+            r#"{"ok":false,"error":"Invalid local token."}"#,
+            Some(origin),
+        );
         return;
     }
 
@@ -1668,16 +2309,82 @@ fn handle_http_request(stream: TcpStream, shared: SharedState) {
         },
         ("POST", "/api/action") => {
             let action = parse_json_string(&request.body, "action").unwrap_or_default();
-            if action != "restoreNow" && action != "shutdown" {
-                write_http_response(stream, 400, "Bad Request", r#"{"ok":false,"error":"Unknown action."}"#, Some(origin));
+            if action == "setManualCap" || action == "clearManualCap" {
+                let result = if action == "setManualCap" {
+                    set_manual_cap(&mut state, &request.body)
+                } else {
+                    clear_manual_cap(&mut state, &request.body)
+                };
+                match result {
+                    Ok(()) => {
+                        let payload =
+                            format!("{{\"ok\":true,\"status\":{}}}", status_payload(&state));
+                        write_http_response(stream, 200, "OK", &payload, Some(origin));
+                    }
+                    Err(error) => {
+                        let payload = format!("{{\"ok\":false,\"error\":{}}}", json_quote(&error));
+                        write_http_response(stream, 400, "Bad Request", &payload, Some(origin));
+                    }
+                }
                 return;
             }
-            let result = restore_all(&mut state, if action == "shutdown" { "installer shutdown request" } else { "manual request" });
-            let payload = format!("{{\"ok\":{},\"restored\":{},\"gone\":0,\"failed\":{}}}", result.1 == 0, result.0, result.1);
-            if result.1 == 0 && action == "shutdown" { state.shutdown_requested = true; }
-            write_http_response(stream, if result.1 == 0 { 200 } else { 409 }, if result.1 == 0 { "OK" } else { "Conflict" }, &payload, Some(origin));
+            if action != "restoreNow" && action != "shutdown" {
+                write_http_response(
+                    stream,
+                    400,
+                    "Bad Request",
+                    r#"{"ok":false,"error":"Unknown action."}"#,
+                    Some(origin),
+                );
+                return;
+            }
+            if action == "restoreNow" && !state.settings.auto_optimize {
+                let manual_caps = std::mem::take(&mut state.settings.manual_caps);
+                if let Err(error) = write_settings(&state.settings_path, &state.settings) {
+                    state.settings.manual_caps = manual_caps;
+                    let payload = format!("{{\"ok\":false,\"error\":{}}}", json_quote(&error));
+                    write_http_response(
+                        stream,
+                        500,
+                        "Internal Server Error",
+                        &payload,
+                        Some(origin),
+                    );
+                    return;
+                }
+            }
+            let result = restore_all(
+                &mut state,
+                if action == "shutdown" {
+                    "installer shutdown request"
+                } else {
+                    "manual request"
+                },
+            );
+            let payload = format!(
+                "{{\"ok\":{},\"restored\":{},\"gone\":0,\"failed\":{}}}",
+                result.1 == 0,
+                result.0,
+                result.1
+            );
+            if result.1 == 0 && action == "shutdown" {
+                state.shutdown_requested = true;
+            }
+            write_http_response(
+                stream,
+                if result.1 == 0 { 200 } else { 409 },
+                if result.1 == 0 { "OK" } else { "Conflict" },
+                &payload,
+                Some(origin),
+            );
         }
-        _ => write_http_response(stream, 404, "Not Found", r#"{"ok":false,"error":"Endpoint not found."}"#, Some(origin)),
+        _ => write_http_response(
+            stream,
+            404,
+            "Not Found",
+            r#"{"ok":false,"error":"Endpoint not found."}"#,
+            Some(origin),
+        ),
     }
 }
 
@@ -1801,5 +2508,52 @@ pub fn launch_monitor() -> Result<(), String> {
         Err(format!("Memory Sentry failed to become ready after 5 seconds: {last_error}. See {}", startup_path.display()))
     } else {
         Err(format!("Memory Sentry failed to become ready after 5 seconds: {last_error}. Startup log: {startup_tail}"))
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manual_caps_are_persisted_by_pid_and_full_creation_identity() {
+        let identity = 116_444_736_000_000_000u64;
+        let serialized = format!(r#"{{"manualCaps":["42:{identity}:36"]}}"#);
+        let caps = parse_manual_caps(&serialized);
+        assert_eq!(caps.get(&(42, identity)), Some(&36));
+    }
+
+    #[test]
+    fn manual_cap_parser_discards_invalid_and_out_of_range_values() {
+        let serialized =
+            r#"{"manualCaps":["42:100:7","43:101:513","44:102:36","0:103:24","45:0:24"]}"#;
+        let caps = parse_manual_caps(serialized);
+        assert_eq!(parse_json_number(r#"{"capMB":36}"#, "capMB"), Some(36));
+        assert_eq!(parse_json_number(r#"{"capMB":36.5}"#, "capMB"), None);
+        assert_eq!(caps.len(), 1);
+        assert_eq!(caps.get(&(44, 102)), Some(&36));
+    }
+
+    #[test]
+    fn settings_round_trip_preserves_manual_process_limits() {
+        let identity = 116_444_736_000_000_000u64;
+        let path = std::env::temp_dir().join(format!(
+            "mss-settings-{}-{}.json",
+            std::process::id(),
+            now_ms()
+        ));
+        let mut settings = Settings {
+            port: DEFAULT_PORT,
+            token: "a".repeat(64),
+            auto_optimize: false,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            trim_to_cap: true,
+            manual_caps: BTreeMap::new(),
+        };
+        settings.manual_caps.insert((42, identity), 36);
+        write_settings(&path, &settings).expect("settings should be written");
+        let loaded = load_settings(&path).expect("settings should load");
+        assert_eq!(loaded.manual_caps.get(&(42, identity)), Some(&36));
+        assert!(!loaded.auto_optimize);
+        let _ = fs::remove_file(path);
     }
 }
