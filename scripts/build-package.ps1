@@ -42,7 +42,8 @@ foreach ($name in @("INSTALLATION.md", "TROUBLESHOOTING.md")) {
 
 $InnoCandidates = @(
     (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"),
-    (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe")
+    (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe"),
+    (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe")
 )
 $ISCC = $InnoCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 if (-not $ISCC) {
@@ -56,7 +57,8 @@ $Iss = Join-Path $Root "installer\inno\MemorySentry.iss"
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed with exit code $LASTEXITCODE." }
 $SetupExe = Join-Path $Dist ("MemorySentrySetup-" + $Version + ".exe")
 if (-not (Test-Path -LiteralPath $SetupExe -PathType Leaf)) { throw "Inno Setup completed without producing $SetupExe." }
-$Hash = (Get-FileHash -LiteralPath $SetupExe -Algorithm SHA256).Hash.ToLowerInvariant()
+$sha = [System.Security.Cryptography.SHA256]::Create()
+try { $stream = [System.IO.File]::OpenRead($SetupExe); try { $Hash = ([System.BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-', '').ToLowerInvariant() } finally { $stream.Dispose() } } finally { $sha.Dispose() }
 $HashPath = $SetupExe + ".sha256"
 Set-Content -LiteralPath $HashPath -Value ($Hash + "  " + [IO.Path]::GetFileName($SetupExe)) -Encoding ASCII
 Write-Host ("SHA-256 " + [IO.Path]::GetFileName($SetupExe) + ": " + $Hash)
