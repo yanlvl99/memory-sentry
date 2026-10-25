@@ -108,6 +108,19 @@ extern "system" {
     fn RtlGetVersion(info: *mut RtlOsVersionInfoExW) -> i32;
 }
 
+#[link(name = "ole32")]
+extern "system" {
+    fn CoInitializeEx(reserved: *mut c_void, coinit: u32) -> i32;
+    fn CoUninitialize();
+    fn CoCreateInstance(
+        rclsid: *const Guid,
+        outer: *mut c_void,
+        class_context: u32,
+        iid: *const Guid,
+        out: *mut *mut c_void,
+    ) -> i32;
+}
+
 #[derive(Clone, Debug)]
 pub struct ProcessRow {
     pub pid: u32,
@@ -557,4 +570,363 @@ pub fn epoch_millis() -> u64 {
 
 pub fn io_error(error: io::Error) -> String {
     error.to_string()
+}
+
+const COINIT_MULTITHREADED: u32 = 0x0000_0000;
+const CLSCTX_ALL: u32 = 0x17;
+const E_RENDER: i32 = 0;
+const DEVICE_STATE_ACTIVE: u32 = 0x0000_0001;
+const RPC_E_CHANGED_MODE: i32 = 0x8001_0106_u32 as i32;
+const AUDIO_SESSION_STATE_EXPIRED: i32 = 2;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+#[allow(dead_code)]
+struct Guid {
+    data1: u32,
+    data2: u16,
+    data3: u16,
+    data4: [u8; 8],
+}
+
+const CLSID_MM_DEVICE_ENUMERATOR: Guid = Guid {
+    data1: 0xBCDE_0395,
+    data2: 0xE52F,
+    data3: 0x467C,
+    data4: [0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E],
+};
+const IID_IMM_DEVICE_ENUMERATOR: Guid = Guid {
+    data1: 0xA956_64D2,
+    data2: 0x9614,
+    data3: 0x4F35,
+    data4: [0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6],
+};
+const IID_IAUDIO_SESSION_MANAGER2: Guid = Guid {
+    data1: 0x77AA_99A0,
+    data2: 0x1BD6,
+    data3: 0x484F,
+    data4: [0x8B, 0xC7, 0x2C, 0x65, 0x4C, 0x9A, 0x9B, 0x6F],
+};
+const IID_IAUDIO_SESSION_CONTROL2: Guid = Guid {
+    data1: 0xBFB7_FF88,
+    data2: 0x7239,
+    data3: 0x4FC9,
+    data4: [0x8F, 0xA2, 0x07, 0xC9, 0x50, 0xBE, 0x9C, 0x6D],
+};
+
+type QueryInterfaceFn = unsafe extern "system" fn(*mut c_void, *const Guid, *mut *mut c_void) -> i32;
+type AddRefFn = unsafe extern "system" fn(*mut c_void) -> u32;
+type ReleaseFn = unsafe extern "system" fn(*mut c_void) -> u32;
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableUnknown {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+}
+
+#[repr(C)]
+struct UnknownObject {
+    vtable: *const VtableUnknown,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableImmDeviceEnumerator {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    enum_audio_endpoints: unsafe extern "system" fn(
+        *mut c_void,
+        i32,
+        u32,
+        *mut *mut ImmDeviceCollection,
+    ) -> i32,
+}
+
+#[repr(C)]
+struct ImmDeviceEnumerator {
+    vtable: *const VtableImmDeviceEnumerator,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableImmDeviceCollection {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    get_count: unsafe extern "system" fn(*mut c_void, *mut u32) -> i32,
+    item: unsafe extern "system" fn(*mut c_void, u32, *mut *mut ImmDevice) -> i32,
+}
+
+#[repr(C)]
+struct ImmDeviceCollection {
+    vtable: *const VtableImmDeviceCollection,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableImmDevice {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    activate: unsafe extern "system" fn(
+        *mut c_void,
+        *const Guid,
+        u32,
+        *mut c_void,
+        *mut *mut c_void,
+    ) -> i32,
+}
+
+#[repr(C)]
+struct ImmDevice {
+    vtable: *const VtableImmDevice,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableAudioSessionManager2 {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    get_audio_session_control: *const c_void,
+    get_simple_audio_volume: *const c_void,
+    get_session_enumerator:
+        unsafe extern "system" fn(*mut c_void, *mut *mut AudioSessionEnumerator) -> i32,
+}
+
+#[repr(C)]
+struct AudioSessionManager2 {
+    vtable: *const VtableAudioSessionManager2,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableAudioSessionEnumerator {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    get_count: unsafe extern "system" fn(*mut c_void, *mut i32) -> i32,
+    get_session: unsafe extern "system" fn(*mut c_void, i32, *mut *mut AudioSessionControl) -> i32,
+}
+
+#[repr(C)]
+struct AudioSessionEnumerator {
+    vtable: *const VtableAudioSessionEnumerator,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableAudioSessionControl2 {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    get_state: unsafe extern "system" fn(*mut c_void, *mut i32) -> i32,
+    get_display_name: *const c_void,
+    set_display_name: *const c_void,
+    get_icon_path: *const c_void,
+    set_icon_path: *const c_void,
+    get_grouping_param: *const c_void,
+    set_grouping_param: *const c_void,
+    register_audio_session_notification: *const c_void,
+    unregister_audio_session_notification: *const c_void,
+    get_session_identifier: *const c_void,
+    get_session_instance_identifier: *const c_void,
+    get_process_id: unsafe extern "system" fn(*mut c_void, *mut u32) -> i32,
+}
+
+#[repr(C)]
+struct AudioSessionControl {
+    vtable: *const VtableAudioSessionControl2,
+}
+
+struct ComPtr<T> {
+    ptr: *mut T,
+}
+
+impl<T> ComPtr<T> {
+    unsafe fn claim(ptr: *mut T) -> Self {
+        debug_assert!(!ptr.is_null());
+        Self { ptr }
+    }
+
+    fn raw(&self) -> *mut c_void {
+        self.ptr.cast()
+    }
+}
+
+impl<T> Drop for ComPtr<T> {
+    fn drop(&mut self) {
+        if self.ptr.is_null() {
+            return;
+        }
+        unsafe {
+            let object = self.ptr.cast::<UnknownObject>();
+            let vtable = (*object).vtable;
+            ((*vtable).release)(self.ptr.cast());
+        }
+    }
+}
+
+fn hresult_error(context: &str, hr: i32) -> String {
+    format!("{context} failed with HRESULT 0x{:08X}", hr as u32)
+}
+
+fn check_hresult(hr: i32, context: &str) -> Result<(), String> {
+    if hr < 0 {
+        Err(hresult_error(context, hr))
+    } else {
+        Ok(())
+    }
+}
+
+unsafe fn query_interface(object: *mut c_void, iid: &Guid) -> Result<*mut c_void, i32> {
+    let base = object.cast::<UnknownObject>();
+    let vtable = (*base).vtable;
+    let mut out: *mut c_void = std::ptr::null_mut();
+    let hr = ((*vtable).query_interface)(object, iid, &mut out);
+    if hr < 0 {
+        return Err(hr);
+    }
+    Ok(out)
+}
+
+unsafe fn collect_device_session_pids(
+    device: &ComPtr<ImmDevice>,
+    pids: &mut Vec<u32>,
+) -> Result<(), String> {
+    let mut manager: *mut c_void = std::ptr::null_mut();
+    check_hresult(
+        ((*(*device.ptr).vtable).activate)(
+            device.raw(),
+            &IID_IAUDIO_SESSION_MANAGER2,
+            CLSCTX_ALL,
+            std::ptr::null_mut(),
+            &mut manager,
+        ),
+        "IMMDevice::Activate(IAudioSessionManager2)",
+    )?;
+    let manager = ComPtr::claim(manager.cast::<AudioSessionManager2>());
+
+    let mut sessions: *mut AudioSessionEnumerator = std::ptr::null_mut();
+    check_hresult(
+        ((*(*manager.ptr).vtable).get_session_enumerator)(manager.raw(), &mut sessions),
+        "IAudioSessionManager2::GetSessionEnumerator",
+    )?;
+    let sessions = ComPtr::claim(sessions);
+
+    let mut count = 0i32;
+    check_hresult(
+        ((*(*sessions.ptr).vtable).get_count)(sessions.raw(), &mut count),
+        "IAudioSessionEnumerator::GetCount",
+    )?;
+
+    for index in 0..count {
+        let mut control: *mut AudioSessionControl = std::ptr::null_mut();
+        let listed =
+            ((*(*sessions.ptr).vtable).get_session)(sessions.raw(), index, &mut control) >= 0;
+        if !listed || control.is_null() {
+            continue;
+        }
+        let control = ComPtr::claim(control);
+        let control2 = match query_interface(control.raw(), &IID_IAUDIO_SESSION_CONTROL2) {
+            Ok(ptr) => ComPtr::claim(ptr.cast::<AudioSessionControl>()),
+            Err(_) => continue,
+        };
+        let mut state = 0i32;
+        let queried = ((*(*control2.ptr).vtable).get_state)(control2.raw(), &mut state) >= 0;
+        if !queried || state == AUDIO_SESSION_STATE_EXPIRED {
+            continue;
+        }
+        let mut pid = 0u32;
+        if ((*(*control2.ptr).vtable).get_process_id)(control2.raw(), &mut pid) < 0 {
+            continue;
+        }
+        if pid != 0 {
+            pids.push(pid);
+        }
+    }
+    Ok(())
+}
+
+unsafe fn collect_audio_session_pids() -> Result<Vec<u32>, String> {
+    let mut enumerator: *mut c_void = std::ptr::null_mut();
+    check_hresult(
+        CoCreateInstance(
+            &CLSID_MM_DEVICE_ENUMERATOR,
+            std::ptr::null_mut(),
+            CLSCTX_ALL,
+            &IID_IMM_DEVICE_ENUMERATOR,
+            &mut enumerator,
+        ),
+        "CoCreateInstance(MMDeviceEnumerator)",
+    )?;
+    let enumerator = ComPtr::claim(enumerator.cast::<ImmDeviceEnumerator>());
+
+    let mut collection: *mut ImmDeviceCollection = std::ptr::null_mut();
+    check_hresult(
+        ((*(*enumerator.ptr).vtable).enum_audio_endpoints)(
+            enumerator.raw(),
+            E_RENDER,
+            DEVICE_STATE_ACTIVE,
+            &mut collection,
+        ),
+        "IMMDeviceEnumerator::EnumAudioEndpoints",
+    )?;
+    let collection = ComPtr::claim(collection);
+
+    let mut device_count = 0u32;
+    check_hresult(
+        ((*(*collection.ptr).vtable).get_count)(collection.raw(), &mut device_count),
+        "IMMDeviceCollection::GetCount",
+    )?;
+
+    let mut pids = Vec::new();
+    for index in 0..device_count {
+        let mut device: *mut ImmDevice = std::ptr::null_mut();
+        check_hresult(
+            ((*(*collection.ptr).vtable).item)(collection.raw(), index, &mut device),
+            "IMMDeviceCollection::Item",
+        )?;
+        let device = ComPtr::claim(device);
+        collect_device_session_pids(&device, &mut pids)?;
+    }
+    pids.sort_unstable();
+    pids.dedup();
+    Ok(pids)
+}
+
+pub fn audio_session_pids() -> Result<Vec<u32>, String> {
+    let hr = unsafe { CoInitializeEx(std::ptr::null_mut(), COINIT_MULTITHREADED) };
+    let owns_initialization = if hr >= 0 {
+        true
+    } else if hr == RPC_E_CHANGED_MODE {
+        false
+    } else {
+        return Err(hresult_error("CoInitializeEx", hr));
+    };
+    let result = unsafe { collect_audio_session_pids() };
+    if owns_initialization {
+        unsafe { CoUninitialize(); }
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audio_session_pids_enumerates_without_panicking() {
+        let result = audio_session_pids();
+        match &result {
+            Ok(pids) => println!("audio session pids: {pids:?}"),
+            Err(error) => println!("audio session discovery unavailable: {error}"),
+        }
+        if let Ok(pids) = result {
+            assert!(pids.windows(2).all(|pair| pair[0] <= pair[1]));
+        }
+    }
 }
