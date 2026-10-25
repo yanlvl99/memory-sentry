@@ -25,11 +25,11 @@ The server is the Memory Sentry backend for the preview installer. It uses no th
 - [x] Add setup/uninstall registration and legacy Node recovery workflow.
 - [x] Add CI policy tests and a Windows x64 compile/build job.
 - [x] Verify Inno Setup compiles the per-user setup executable in CI.
-- [x] Run the native companion's safe `--version` and `--self-test` checks on the Windows runner and build the validation Setup EXE.
+- [x] Run the server's safe `--version` and `--self-test` checks on the Windows runner and build the validation Setup EXE.
 - [ ] Test on a real Windows 10 desktop with Spotify and Spicetify installed.
 - [ ] Test on a real Windows 11 desktop with Spotify and Spicetify installed.
 - [ ] Measure audio continuity, RAM reduction, UI restore latency, failed process operations, restart recovery and uninstall.
-- [ ] Verify the Marketplace discovery-only/missing-companion screen and the single official Setup EXE path.
+- [ ] Verify the Marketplace discovery-only/missing-server screen and the single official Setup EXE path.
 - [ ] Add the spicetify-apps topic and publish a release before submitting the listing for public discovery.
 
 ## Why the MSI is not the first installer
