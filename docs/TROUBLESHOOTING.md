@@ -31,7 +31,7 @@ Install Spicetify CLI for the same Windows user account that runs Spotify. Reope
 
 ## Setup refuses a legacy migration
 
-A previous version may have working-set-backup.json containing original Win32 limits. Setup stops its matching old Node helper and tries the old helper's restore command before deleting legacy files. If Node.js 22+ is missing, install it temporarily from https://nodejs.org/en/download and rerun setup. If any limit cannot be restored, keep the recovery files and contact support; do not delete the backup or force the upgrade.
+A previous version may have working-set-backup.json containing original Win32 limits. Setup stops its matching old Node server and tries the old server's restore command before deleting legacy files. If Node.js 22+ is missing, install it temporarily from https://nodejs.org/en/download and rerun setup. If any limit cannot be restored, keep the recovery files and contact support; do not delete the backup or force the upgrade.
 
 ## Spotify takes a moment to accept input after being restored
 
