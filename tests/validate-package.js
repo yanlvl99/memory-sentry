@@ -64,8 +64,10 @@ check('dashboard has a GitHub release button when helper is absent', /MSSOpenGit
 check('dashboard offers setup/help links without a Node.js button', /MSSOpenGitHub/.test(app) && /MSSOpenInstallGuide/.test(app) && !/MSSOpenNode|nodeButton|nodejs\.org/.test(app));
 check('dashboard links to official releases and a generic installation guide', /MSS_RELEASES_URL/.test(app) && /MSS_INSTALL_GUIDE_URL/.test(app) && /installGuideButton/.test(app) && !/Marketplace setup guide|Guia de instalação do Marketplace/.test(app));
 check('documentation describes one install path and Marketplace linking only', /only supported installation method/i.test(read('docs/INSTALLATION.md')) && /only links to the project repository/i.test(read('docs/INSTALLATION.md')) && !/Path B/.test(read('docs/INSTALLATION.md')));
-check('dashboard has no manual fixed RAM cap selector', !/workingSetLimitMB/.test(app) && !/Teto rígido de RAM por processo/.test(app));
-check('dashboard shows per-process CPU and adaptive ceiling', /process\.cpuPercent/i.test(app) && /process\.limitMB/i.test(app));
+check('dashboard offers per-process manual caps only in saved manual mode', /manualReady = !config\.autoOptimize/.test(app) && /setManualCap/.test(app) && /clearManualCap/.test(rustRuntime));
+check('dashboard warns for 15 seconds before applying below-default limits', /Date\.now\(\) \+ 15000/.test(app) && /lowLimitWarning/.test(app) && /manualWarning\.seconds > 0/.test(app));
+check('dashboard sends process creation identity with manual limit actions', /creation: process\.creation/.test(app) && rustRuntime.includes('\\"creation\\":{},'));
+check('dashboard shows per-process CPU and active ceiling', /process\.cpuPercent/i.test(app) && /process\.limitMB/i.test(app));
 check('dashboard explains local-only diagnostics', /No telemetry is uploaded/i.test(app));
 check('Custom App replaces per-install token placeholder', app.includes('__MSS_TOKEN__'));
 check('Custom App calls local status/config endpoints', app.includes('/api/status') && app.includes('/api/config'));
@@ -118,7 +120,10 @@ check('dashboard keeps diagnostics behind a debug mode toggle', /'mss\.debugMode
 check('dashboard debug switch uses the Spicetify Toggle component with a fallback', /ReactComponent\.Toggle/.test(app) && /MSSDebugToggle/.test(app) && /typeof Toggle !== 'function'/.test(app));
 check('server discovers audio sessions through the Core Audio session API', rustPlatform.includes('pub fn audio_session_pids') && rustPlatform.includes('CoCreateInstance') && rustPlatform.includes('IID_IAUDIO_SESSION_CONTROL2') && rustRuntime.includes('refresh_audio_session_pids') && rustRuntime.includes('audio_pids'));
 check('status payload reports the server as Server, not Rust', /"node\\":\\"Server\\",\\"runtime\\":\\"Server\\"/.test(rustRuntime));
-check('Rust runtime implements the local dashboard API and adaptive working-set flow', rustRuntime.includes('/api/status') && rustRuntime.includes('/api/config') && rustRuntime.includes('/api/action') && rustRuntime.includes('platform::set_working_set_limits') && rustRuntime.includes('restore_all'));
+check('Rust runtime implements local API, automatic limits and manual per-process limits', rustRuntime.includes('/api/status') && rustRuntime.includes('/api/config') && rustRuntime.includes('/api/action') && rustRuntime.includes('platform::set_working_set_limits') && rustRuntime.includes('restore_all') && rustRuntime.includes('apply_manual_cap') && rustRuntime.includes('manualCapMB'));
+check('Rust manual defaults set Main and Audio to 36 MB without changing automatic audio protection', rustLib.includes('Self::Main | Self::Audio => 36') && rustRuntime.includes('if role == ProcessRole::Audio') && rustLib.includes('audio_processes_never_receive_an_automatic_ceiling'));
+check('manual caps persist process creation identity and are recorded in recovery backups', rustRuntime.includes('manualCaps') && rustRuntime.includes('manual: fields') && rustRuntime.includes('if r.manual { \"manual\" }'));
+check('policy transitions restore active limits before switching modes', rustRuntime.includes('next.auto_optimize != state.settings.auto_optimize') && rustRuntime.includes('policy mode changed') && rustRuntime.includes('failed > 0'));
 check('Rust native layer protects process identity before each working-set mutation', rustPlatform.includes('set_working_set_limits') && rustPlatform.includes('creation != expected_creation') && rustPlatform.includes('restore_working_set_limits'));
 check('Rust startup and instance locking are per-user and single-instance', rustPlatform.includes('acquire_single_instance') && rustRuntime.includes('register_startup') && rustRuntime.includes('127.0.0.1'));
 check('Rust migration stops the legacy monitor before invoking its one-shot restore command', (rustRuntime.match(/stop_legacy_node_helper\(&base\)\?;/g) || []).length === 2);
@@ -139,6 +144,14 @@ check('adaptive floor is 12 MB and global ceiling is 64 MB', policy.MIN_CAP_MB =
 check('per-role upper bounds remain below the global safety limit', policy.maximumCapMB('Main') === 60 && policy.maximumCapMB('Renderer') === 52);
 check('a process at its role maximum cannot grow further', policy.decideAdjustment({ role: 'Main', currentCapMB: 60, workingSetMB: 50, cpuPercent: 90, highCpuMs: 12000, lastAdjustmentAt: 0, now: 20000 }) === null);
 check('CPU estimate is capped at one logical processor', policy.estimateCpuPercent(0, 4000, 1000) === 100);
+
+const warningSecondsSource = app.match(/function MSSManualWarningSeconds\(readyAt, now\) \{[\s\S]*?\n\}/)?.[0];
+if (warningSecondsSource) {
+  check('below-default warning cannot finish before 15 seconds',
+    vm.runInNewContext(`${warningSecondsSource}; MSSManualWarningSeconds(15000, 0)`) === 15 &&
+    vm.runInNewContext(`${warningSecondsSource}; MSSManualWarningSeconds(15000, 14999)`) === 1 &&
+    vm.runInNewContext(`${warningSecondsSource}; MSSManualWarningSeconds(15000, 15000)`) === 0);
+} else check('below-default warning countdown function exists', false);
 
 for (const [name, source] of [['app/index.js', app], ['helper/helper.js', helper], ['helper/adaptive-policy.js', read('helper/adaptive-policy.js')]]) {
   try { new vm.Script(source, { filename: name }); check(`JavaScript syntax: ${name}`, true); }
