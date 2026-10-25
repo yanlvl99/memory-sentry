@@ -25,8 +25,8 @@ Do not call the release stable until all required real-desktop tests are complet
 - [ ] Test legacy Node migration with and without Node.js 22+ and with successful and failed recovery.
 - [ ] Run at least five restore-to-interaction samples on representative low-, mid-, and higher-spec supported PCs; compare medians and record playback continuity, working-set reduction while minimized, UI reload/state retention, any temporary black screen on restore, and time until keyboard/mouse input is accepted.
 - [ ] Verify English/Portuguese UI language selection.
-- [ ] Verify no network telemetry is emitted by the helper.
-- [ ] Verify uninstall removes only the Memory Sentry Custom App and install directory while preserving logs outside the app folder.
+- [ ] Verify no network telemetry is emitted by the server.
+- [ ] Verify uninstall removes only the Memory Sentry plugin and install directory while preserving logs outside the app folder.
 
 ## Public release
 
