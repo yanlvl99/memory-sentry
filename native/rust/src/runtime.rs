@@ -38,6 +38,7 @@ const APP_NAME: &str = "SpicetifyMemorySentry";
 struct Settings {
     port: u16,
     token: String,
+    enabled: bool,
     auto_optimize: bool,
     hidden_delay_seconds: u64,
     trim_to_cap: bool,
@@ -356,6 +357,7 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
     let port = parse_json_number(&raw, "port")
         .unwrap_or(DEFAULT_PORT as u64)
         .clamp(1, 65535) as u16;
+    let enabled = parse_json_bool(&raw, "enabled").unwrap_or(true);
     let auto_optimize = parse_json_bool(&raw, "autoOptimize").unwrap_or(true);
     let hidden_delay_seconds = parse_json_number(&raw, "hiddenDelaySeconds")
         .unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS)
@@ -365,6 +367,7 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
     Ok(Settings {
         port,
         token,
+        enabled,
         auto_optimize,
         hidden_delay_seconds,
         trim_to_cap,
@@ -384,8 +387,8 @@ fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
         .collect::<Vec<_>>()
         .join(", ");
     let contents = format!(
-        "{{\n  \"port\": {},\n  \"token\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"manualCaps\": [{}],\n  \"version\": \"{}\"\n}}\n",
-        settings.port, json_quote(&settings.token), settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, manual_caps, VERSION
+        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"manualCaps\": [{}],\n  \"version\": \"{}\"\n}}\n",
+        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, manual_caps, VERSION
     );
     let mut file = File::create(&temp).map_err(|e| format!("Could not stage settings: {e}"))?;
     file.write_all(contents.as_bytes())
@@ -715,6 +718,7 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
     let settings = Settings {
         port: DEFAULT_PORT,
         token,
+        enabled: parse_json_bool(&existing_raw, "enabled").unwrap_or(true),
         auto_optimize: parse_json_bool(&existing_raw, "autoOptimize").unwrap_or(true),
         hidden_delay_seconds: parse_json_number(&existing_raw, "hiddenDelaySeconds")
             .unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS)
@@ -2122,6 +2126,25 @@ fn should_manage_limits_in_background(window_state: &str) -> bool {
 }
 
 fn maybe_auto_optimize(state: &mut AppState, now: u64) {
+    if !state.settings.enabled {
+        state.hidden_since_ms = 0;
+        if !state.active_caps.is_empty()
+            && now.saturating_sub(state.last_restore_attempt_at_ms) >= 1500
+        {
+            state.last_restore_attempt_at_ms = now;
+            let (_, failed) = restore_all(state, "plugin disabled");
+            if failed > 0 {
+                log_event(
+                    state,
+                    format!(
+                        "Could not restore {failed} process limit(s) while the plugin is disabled."
+                    ),
+                    "warn",
+                );
+            }
+        }
+        return;
+    }
     if !state.settings.auto_optimize {
         state.hidden_since_ms = 0;
         if should_manage_limits_in_background(&state.window_state) {
@@ -2310,8 +2333,8 @@ fn refresh_memory(state: &mut AppState, now: u64) {
 
 fn public_config(settings: &Settings) -> String {
     format!(
-        "{{\"autoOptimize\":{},\"hiddenDelaySeconds\":{},\"trimToCap\":{},\"policy\":{{\"minMB\":{},\"maxMB\":{},\"cpuHighPercent\":{}}}}}",
-        settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, MIN_CAP_MB, MAX_CAP_MB, HIGH_CPU_PERCENT
+        "{{\"enabled\":{},\"autoOptimize\":{},\"hiddenDelaySeconds\":{},\"trimToCap\":{},\"policy\":{{\"minMB\":{},\"maxMB\":{},\"cpuHighPercent\":{}}}}}",
+        settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, MIN_CAP_MB, MAX_CAP_MB, HIGH_CPU_PERCENT
     )
 }
 
@@ -2650,6 +2673,9 @@ fn manual_target(
 }
 
 fn set_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
+    if !state.settings.enabled {
+        return Err("Enable Memory Sentry before setting a manual process limit.".to_string());
+    }
     if state.settings.auto_optimize {
         return Err(
             "Turn off automatic optimization before setting a manual process limit.".to_string(),
@@ -2701,6 +2727,9 @@ fn set_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
 }
 
 fn clear_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
+    if !state.settings.enabled {
+        return Err("Enable Memory Sentry before clearing a manual process limit.".to_string());
+    }
     if state.settings.auto_optimize {
         return Err(
             "Turn off automatic optimization before clearing a manual process limit.".to_string(),
@@ -2736,6 +2765,9 @@ fn clear_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
 
 fn update_config(state: &mut AppState, body: &str) -> Result<(), String> {
     let mut next = state.settings.clone();
+    if let Some(value) = parse_json_bool(body, "enabled") {
+        next.enabled = value;
+    }
     if let Some(value) = parse_json_bool(body, "autoOptimize") {
         next.auto_optimize = value;
     }
@@ -2746,10 +2778,19 @@ fn update_config(state: &mut AppState, body: &str) -> Result<(), String> {
         .unwrap_or(next.hidden_delay_seconds)
         .clamp(1, 30);
 
-    if next.auto_optimize != state.settings.auto_optimize {
-        let (_, failed) = restore_all(state, "policy mode changed");
+    let policy_changed = next.auto_optimize != state.settings.auto_optimize;
+    let disabling = state.settings.enabled && !next.enabled;
+    if policy_changed || disabling {
+        let (_, failed) = restore_all(
+            state,
+            if disabling {
+                "plugin disabled"
+            } else {
+                "policy mode changed"
+            },
+        );
         if failed > 0 {
-            return Err("The policy mode was not changed because some original process limits could not be restored.".to_string());
+            return Err("The setting was not changed because some original process limits could not be restored.".to_string());
         }
     }
     write_settings(&state.settings_path, &next)?;
@@ -2757,7 +2798,8 @@ fn update_config(state: &mut AppState, body: &str) -> Result<(), String> {
     log_event(
         state,
         format!(
-            "Settings updated: autoOptimize={}, hiddenDelaySeconds={}, trimToCap={}",
+            "Settings updated: enabled={}, autoOptimize={}, hiddenDelaySeconds={}, trimToCap={}",
+            state.settings.enabled,
             state.settings.auto_optimize,
             state.settings.hidden_delay_seconds,
             state.settings.trim_to_cap
@@ -3191,6 +3233,49 @@ mod tests {
     }
 
     #[test]
+    fn legacy_settings_default_the_global_toggle_to_enabled() {
+        let path = std::env::temp_dir().join(format!(
+            "mss-legacy-settings-{}-{}.json",
+            std::process::id(),
+            now_ms()
+        ));
+        let raw = format!(r#"{{"token":"{}"}}"#, "a".repeat(64));
+        fs::write(&path, raw).expect("legacy settings should be written");
+        let loaded = load_settings(&path).expect("legacy settings should load");
+        assert!(loaded.enabled);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn global_toggle_disables_management_and_persists() {
+        let base = std::env::temp_dir().join(format!(
+            "mss-enabled-toggle-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let settings = Settings {
+            port: DEFAULT_PORT,
+            token: "a".repeat(64),
+            enabled: true,
+            auto_optimize: true,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            trim_to_cap: true,
+            manual_caps: BTreeMap::new(),
+        };
+        let mut state = build_state(base.clone(), settings);
+        update_config(&mut state, r#"{"enabled":false}"#)
+            .expect("plugin should disable with no active process caps");
+        assert!(!state.settings.enabled);
+        assert!(public_config(&state.settings).contains("\"enabled\":false"));
+        let persisted =
+            load_settings(&state.settings_path).expect("disabled setting should persist");
+        assert!(!persisted.enabled);
+        assert!(set_manual_cap(&mut state, "{}").is_err());
+        assert!(clear_manual_cap(&mut state, "{}").is_err());
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
     fn settings_round_trip_preserves_manual_process_limits() {
         let identity = 116_444_736_000_000_000u64;
         let path = std::env::temp_dir().join(format!(
@@ -3201,6 +3286,7 @@ mod tests {
         let mut settings = Settings {
             port: DEFAULT_PORT,
             token: "a".repeat(64),
+            enabled: false,
             auto_optimize: false,
             hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
             trim_to_cap: true,
@@ -3210,6 +3296,7 @@ mod tests {
         write_settings(&path, &settings).expect("settings should be written");
         let loaded = load_settings(&path).expect("settings should load");
         assert_eq!(loaded.manual_caps.get(&(42, identity)), Some(&36));
+        assert!(!loaded.enabled);
         assert!(!loaded.auto_optimize);
         let _ = fs::remove_file(path);
     }
