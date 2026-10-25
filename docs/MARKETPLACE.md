@@ -10,13 +10,15 @@ The official per-user setup program and SHA-256 checksums are published on:
 
 https://github.com/yanlvl99/spicetify-memory-sentry/releases
 
-A release contains the compiled Rust companion, the Spicetify Custom App, installer/uninstaller flows, GPL-3.0 license, privacy/security documentation, and checksums. Never label a release stable until clean Windows 10 and Windows 11 desktop tests cover install, upgrade, audio continuity, working-set restoration, and uninstall.
+A release contains the compiled server, the Spicetify plugin, installer/uninstaller flows, GPL-3.0 license, privacy/security documentation, and checksums. Never label a release stable until clean Windows 10 and Windows 11 desktop tests cover install, upgrade, audio continuity, working-set restoration, and uninstall.
 
-### Marketplace listing (discovery only)
+### Marketplace listing (links only)
 
-Marketplace is used to discover the project and view its README/preview. It is not a second installation method and does not provide a separate Marketplace-specific build. Users must deliberately download and run the same official Setup EXE from GitHub Releases to install the native Windows companion. This repository does not publish a custom portable ZIP.
+The Marketplace entry only displays the project and links to this GitHub repository. It cannot install or download Memory Sentry, and it does not host the plugin or the server. To install, users must open this repository, go to GitHub Releases, and run the official Setup EXE. This repository does not publish a custom portable ZIP.
 
-The separate Rust process exposes its API only on loopback, uses a random per-install token, validates Spotify's HTTPS Origin and loopback Host header, writes recovery data before changing process limits, excludes audio-service processes, and refuses unsafe removal if recovery cannot be confirmed. Logs and metrics remain on the PC.
+The listing should not describe the result as released or swapped-out memory. Memory Sentry limits each eligible process's **resident working set**; it does not free or decommit that memory, and commit charge normally stays the same. Trimmed pages usually remain cached in RAM and can return through a soft page fault, while modified private pages may later be written to the pagefile under memory pressure.
+
+The separate server process exposes its API only on loopback, uses an internal per-install token, validates Spotify's HTTPS Origin and loopback Host header, writes recovery data before changing process limits, excludes audio-service processes, and refuses unsafe removal if recovery cannot be confirmed. Logs and metrics remain on the PC.
 
 ## Listing readiness
 
