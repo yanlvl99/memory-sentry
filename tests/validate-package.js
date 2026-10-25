@@ -14,7 +14,7 @@ function read(relative) { return fs.readFileSync(path.join(root, relative), 'utf
 const requiredFiles = [
   'app/index.js', 'app/manifest.json', 'helper/helper.js', 'helper/adaptive-policy.js',
   'helper/package.json', '.gitignore', 'manifest.json', 'README.md', 'LICENSE', 'PRIVACY.md', 'SECURITY.md',
-  'CHANGELOG.md', 'docs/BENCHMARKING.md', 'docs/MARKETPLACE.md', 'docs/INSTALLATION.md', 'docs/RUST-MIGRATION.md', 'docs/RELEASE_CHECKLIST.md', 'docs/DEVELOPMENT.md', 'docs/TROUBLESHOOTING.md', 'installer/inno/MemorySentry.iss', 'scripts/build-package.ps1', 'native/rust/src/main.rs', 'native/rust/src/lib.rs', 'native/rust/src/runtime.rs', 'native/rust/src/platform/windows.rs', 'COM.png', 'SEM.png', 'assets/marketplace-banner.svg', 'assets/marketplace-preview-sharp.svg', 'assets/COM-sharp.svg', 'assets/SEM-sharp.svg',
+  'CHANGELOG.md', 'docs/BENCHMARKING.md', 'docs/MARKETPLACE.md', 'docs/INSTALLATION.md', 'docs/RUST-MIGRATION.md', 'docs/RELEASE_CHECKLIST.md', 'docs/DEVELOPMENT.md', 'docs/TROUBLESHOOTING.md', 'installer/inno/MemorySentry.iss',   'scripts/build-package.ps1', 'scripts/swap-server.ps1', 'native/rust/src/main.rs', 'native/rust/src/lib.rs', 'native/rust/src/runtime.rs', 'native/rust/src/platform/windows.rs', 'COM.png', 'SEM.png', 'assets/marketplace-banner.svg', 'assets/marketplace-preview-sharp.svg', 'assets/COM-sharp.svg', 'assets/SEM-sharp.svg',
   '.github/workflows/validate.yml', '.github/workflows/release.yml'
 ];
 for (const file of requiredFiles) check(`exists: ${file}`, fs.existsSync(path.join(root, file)));
@@ -52,6 +52,7 @@ const app = read('app/index.js');
 const helper = read('helper/helper.js');
 const setupScript = read('installer/inno/MemorySentry.iss');
 const buildScript = read('scripts/build-package.ps1');
+const buildScriptSwap = read('scripts/swap-server.ps1');
 const validation = read('.github/workflows/validate.yml');
 const rustCargo = read('native/rust/Cargo.toml');
 const rustLib = read('native/rust/src/lib.rs');
@@ -111,6 +112,8 @@ check('semantic prereleases are never marked as latest stable', read('.github/wo
 check('Rust scaffold uses a minimal standard-library dependency policy', rustCargo.includes('name = "memory-sentry-native"') && !rustCargo.includes('[dependencies]'));
 check('Rust policy has pure, testable adaptive logic', rustLib.includes('decide_adjustment') && rustLib.includes('#[cfg(test)]'));
 check('Rust binary exposes OS, install-preflight, upgrade, configure, monitor, and uninstall commands', ['--check-os', '--check-install', '--check-spicetify', '--prepare-upgrade', '--configure', '--monitor', '--pre-uninstall', '--restore-limits'].every(command => rustMain.includes(command)));
+check('server can be swapped in place while Spotify keeps running', rustMain.includes('"--swap"') && rustRuntime.includes('pub fn swap_server') && buildScriptSwap.includes('--swap'));
+check('dashboard offers ceiling-only and maximum release modes', /trimToCap/.test(app) && /releaseCeiling/.test(app) && /trimToCap/.test(rustRuntime) && /trim_to_cap/.test(rustRuntime));
 check('Rust runtime implements the local dashboard API and adaptive working-set flow', rustRuntime.includes('/api/status') && rustRuntime.includes('/api/config') && rustRuntime.includes('/api/action') && rustRuntime.includes('platform::set_working_set_limits') && rustRuntime.includes('restore_all'));
 check('Rust native layer protects process identity before each working-set mutation', rustPlatform.includes('set_working_set_limits') && rustPlatform.includes('creation != expected_creation') && rustPlatform.includes('restore_working_set_limits'));
 check('Rust startup and instance locking are per-user and single-instance', rustPlatform.includes('acquire_single_instance') && rustRuntime.includes('register_startup') && rustRuntime.includes('127.0.0.1'));
