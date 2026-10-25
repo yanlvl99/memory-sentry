@@ -26,7 +26,17 @@ pub enum ProcessRole {
 }
 
 impl ProcessRole {
-    /// Audio-service processes are excluded from all working-set changes.
+    /// Default ceiling offered by the per-process manual policy.
+    pub fn manual_default_cap_mb(self) -> u32 {
+        match self {
+            Self::Main | Self::Audio => 36,
+            Self::Gpu | Self::Renderer => 28,
+            Self::Utility | Self::Helper => 24,
+            Self::Crashpad => 16,
+        }
+    }
+
+    /// Audio-service processes are excluded from automatic working-set changes.
     pub fn baseline_cap_mb(self) -> Option<u32> {
         match self {
             Self::Main => Some(36),
@@ -178,11 +188,18 @@ mod tests {
     }
 
     #[test]
-    fn audio_processes_never_receive_a_ceiling() {
+    fn audio_processes_never_receive_an_automatic_ceiling_but_have_a_manual_default() {
         let mut s = sample(ProcessRole::Audio);
         s.cpu_percent = 50.0;
         s.high_cpu_ms = 20_000;
         assert_eq!(decide_adjustment(s), None);
+        assert_eq!(ProcessRole::Audio.manual_default_cap_mb(), 36);
+    }
+
+    #[test]
+    fn main_and_audio_manual_defaults_are_thirty_six_megabytes() {
+        assert_eq!(ProcessRole::Main.manual_default_cap_mb(), 36);
+        assert_eq!(ProcessRole::Audio.manual_default_cap_mb(), 36);
     }
 
     #[test]
