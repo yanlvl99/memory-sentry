@@ -12,11 +12,15 @@ The aim is to determine whether lower resident memory is worth any extra interac
 
 ## Interpreting metrics
 
-- **Working set:** pages currently resident in physical memory for a process. Summing process working sets may double-count shared pages.
-- **Private memory:** private committed process memory as reported by Windows process metadata; it is not the same as resident RAM.
+- **Working set:** pages currently resident in physical memory for a process. Summing process working sets may double-count shared pages. A falling working set does not mean the pages were freed or decommitted.
+- **Private memory / commit charge:** private committed process memory as reported by Windows process metadata; it is not the same as resident RAM. Working-set trimming should not reduce this value, so record it separately to prove that results are not just moved memory.
+- **Pagefile usage:** the commit charge attributed to a process, not the amount of data currently written to `pagefile.sys`. Trimming can leave this unchanged; dirty private pages may be written to the pagefile later when Windows reclaims their physical frames.
+- **Trimmed/standby pages:** pages removed from a working set can remain cached in RAM on the standby or transition lists and may return through a soft page fault. They are not automatically "swapped out".
 - **CPU percentage:** an estimate based on process CPU-time deltas normalized to one logical processor, so 100% means one logical CPU fully busy. Short bursts may be averaged or missed by the sample interval.
 - **Page-fault delta/rate:** changes in cumulative Windows page-fault counters; includes soft and hard faults and is not a direct disk-read counter.
 - **Restore-operation duration:** time spent restoring original Windows limits. It does not measure when Spotify accepts input, and it cannot establish that page faults caused any observed delay.
 - **Restore-to-interaction time:** manually measured end-to-end recovery from window focus until the UI accepts input.
 
 The adaptive policy raises a ceiling after sustained high CPU usage and lowers it only when CPU is low and the process has working-set headroom. These thresholds are heuristics; data from real Windows systems should guide future changes. Any audio interruption, persistent hang, or repeated long recovery is a reason to disable optimization and restore original limits.
+
+When comparing results, report working set, private/commit memory, pagefile usage, and page-fault deltas together. A lower working set with unchanged commit memory is the expected outcome of working-set limiting, not proof that the memory was released. Conversely, a large rise in hard faults or pagefile I/O suggests the limit is too aggressive for that PC or workload.
