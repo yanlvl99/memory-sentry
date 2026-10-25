@@ -28,10 +28,10 @@ Before the Marketplace index can discover this repository:
 
 1. Add the repository topic `spicetify-apps` in GitHub's repository About/Topics settings.
 2. Keep the root `manifest.json` preview set to `assets/marketplace-preview-sharp.svg`. The sharpened SVG previews apply a restrained edge filter to the exact `COM.png` and `SEM.png` captures; the original PNGs remain unchanged. `assets/marketplace-banner.svg` uses the same captures and filter, without adding or inventing metrics.
-3. Keep the separate native companion requirement and Windows 10/11 limitation explicit in the listing description.
+3. Keep the separate server requirement and Windows 10/11 limitation explicit in the listing description.
 4. Publish one official Setup EXE and its SHA-256 checksum; do not publish a separate Marketplace build or custom portable installer.
-5. Test the missing-helper dashboard, the one supported Setup flow, upgrade, and uninstall on Windows 10 and Windows 11.
+5. Test the missing-server dashboard, the one supported Setup flow, upgrade, and uninstall on Windows 10 and Windows 11.
 
-Adding the topic makes the repository eligible for Marketplace discovery; it does not mean Marketplace has already indexed or approved the app. The custom app entry does not replace the standalone native companion installer.
+Adding the topic makes the repository eligible for Marketplace discovery; it does not mean Marketplace has already indexed or approved the app. The Marketplace entry cannot install Memory Sentry and does not replace the official Setup EXE.
 
 Official publishing guide: https://github.com/spicetify/marketplace/wiki/Publishing-to-Marketplace
