@@ -2,7 +2,7 @@
 
 **Supported systems: Windows 10 and Windows 11 desktop editions, x64.**
 
-**Spicetify is required by the current release.** Spotify Desktop and Spicetify CLI must be installed for the same Windows user. The dashboard is a Spicetify Custom App, while the native Rust companion performs process-memory management. This is not a standalone application; a separate no-Spicetify interface could be developed later, but it is not included or supported by the current release.
+**Spicetify is required by the current release.** Spotify Desktop and Spicetify CLI must be installed for the same Windows user. The plugin is a Spicetify Custom App, while the Memory Sentry server handles Windows process-memory management. This is not a standalone application; a separate no-Spicetify interface could be developed later, but it is not included or supported by the current release.
 
 ## The only supported installation method
 
