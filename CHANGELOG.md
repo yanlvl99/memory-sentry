@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-- Identify processes that hold an active Windows audio session through the Core Audio session API, so audio-holding processes (including the Spotify main process, which hosts audio in current builds) are excluded from caps and any cap already applied to them is restored.
+- Add a saved automatic/manual policy toggle. Manual mode exposes per-process working-set limits, including Audio; Main and Audio default to 36 MB, and limits are bound to PID plus process-creation identity.
+- Require a 15-second warning countdown and explicit confirmation before applying a manual limit below that process's default; validate manual values on both the dashboard and server.
+- Preserve original-limit recovery for manual changes, restore before policy transitions, and clear manual overrides when the user requests a full restore.
+- Identify processes that hold an active Windows audio session through the Core Audio session API, so audio-holding processes (including the Spotify main process, which hosts audio in current builds) are excluded from automatic caps and any automatic cap already applied to them is restored.
 - Switch the dashboard's debug mode control to the Spicetify Toggle component, keeping the previous button as a fallback when the component is unavailable.
 - Validate Core Audio session discovery and the dashboard Toggle component in the package checks.
 - Add a release mode setting so trimming can release memory only down to the current ceiling (default) or as much unused memory as possible, selectable from the dashboard.

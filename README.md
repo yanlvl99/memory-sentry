@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/yanlvl99/spicetify-memory-sentry?include_prereleases&sort=semver&label=release)](https://github.com/yanlvl99/spicetify-memory-sentry/releases) [![Version](https://img.shields.io/github/v/tag/yanlvl99/spicetify-memory-sentry?include_prereleases&sort=semver&label=version)](https://github.com/yanlvl99/spicetify-memory-sentry/tags) [![Downloads](https://img.shields.io/github/downloads/yanlvl99/spicetify-memory-sentry/total?label=all%20release%20downloads)](https://github.com/yanlvl99/spicetify-memory-sentry/releases) [![Validation](https://github.com/yanlvl99/spicetify-memory-sentry/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/yanlvl99/spicetify-memory-sentry/actions/workflows/validate.yml) [![License](https://img.shields.io/github/license/yanlvl99/spicetify-memory-sentry?label=license)](LICENSE) ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue) ![Status](https://img.shields.io/badge/status-experimental-orange) [![Requires Spicetify](https://img.shields.io/badge/requires-Spicetify-1DB954)](docs/INSTALLATION.md)
 
-**Windows 10 and Windows 11 desktop editions only. Requires Spotify Desktop and Spicetify CLI.** Memory Sentry is an experimental open-source project. When Spotify is minimized or hidden, the Memory Sentry server adaptively changes eligible child-process working-set ceilings, protects audio-service processes, and attempts to restore original limits when Spotify becomes visible.
+**Windows 10 and Windows 11 desktop editions only. Requires Spotify Desktop and Spicetify CLI.** Memory Sentry is an experimental open-source project. Its automatic policy adaptively changes eligible child-process working-set ceilings while Spotify is minimized or hidden and protects audio-service processes. You can turn the policy off to set a per-process manual limit; manual limits remain active while Spotify is visible or minimized, and audio processes can then also be limited.
 
 ## Spicetify is required by the current release
 
@@ -39,7 +39,7 @@ Memory Sentry changes **how much of each eligible Spotify process stays resident
 
 Lowering the ceiling or trimming the working set removes pages from the process's working set, but Windows keeps them on its transition/standby lists in RAM. Clean pages, such as code, DLLs, and file-backed data, usually come back on demand through a soft page fault without reading from disk. Private pages that were modified can later be written to the pagefile if Windows needs their physical frames for something else. On a PC under real memory pressure, reusing those pages can require a hard page fault and disk I/O, which is why the interface or input may take longer to respond after restore.
 
-This is not a one-shot "RAM optimizer": the server changes limits adaptively, only for Spotify's process tree, excludes the audio service, and records the original limits so they can be restored. Task Manager's **Memory** column and the dashboard show working-set/resident memory, not committed memory; compare the **Commit size** column separately if you need to verify that committed memory was not reduced.
+This is not a one-shot "RAM optimizer": automatic mode changes limits adaptively only for Spotify's process tree and excludes audio-service processes. Manual mode instead applies the per-process values you choose, including to audio-service processes. In either mode, original limits are recorded before changes so they can be restored. Task Manager's **Memory** column and the dashboard show working-set/resident memory, not committed memory; compare the **Commit size** column separately if you need to verify that committed memory was not reduced.
 
 Windows 10 and Windows 11 may also keep some trimmed pages in memory compression, so the exact mix of standby pages, compressed pages, and pagefile-backed pages depends on the system and memory pressure.
 
@@ -62,11 +62,13 @@ The Inno Setup installer is per-user and does not require a machine-wide MSI ins
 
 The current policy keeps an individual working-set ceiling for each eligible Spotify process:
 
-- Starting ceilings: main process 36 MB; GPU and renderer 28 MB; utility/helper 24 MB; crash handler 16 MB.
+- Automatic starting ceilings: main process 36 MB; GPU and renderer 28 MB; utility/helper 24 MB; crash handler 16 MB. Audio-service processes receive no automatic limit.
 - If one process uses at least 10% of one logical processor for six seconds, its ceiling can increase by 8 MB.
 - If CPU remains at or below 3% and the working set stays at least 6 MB below its ceiling for ten seconds, the ceiling can decrease by 4 MB.
 - Changes have an eight-second cooldown. The global policy range is 12–64 MB, with a 24 MB floor for the main process and lower floors for background processes.
-- Processes holding an active Windows audio session are excluded, detected through the Core Audio session API (the main process hosts audio in current Spotify builds). The policy runs after the configured hide/minimize delay. The server saves original Windows limits before changing them and attempts to restore them when Spotify becomes visible.
+- Processes holding an active Windows audio session are excluded from automatic limits, detected through the Core Audio session API (the main process hosts audio in current Spotify builds). The policy runs after the configured hide/minimize delay. The server saves original Windows limits before changing them and attempts to restore them when Spotify becomes visible.
+- Turn off **Automatic policy** to enter manual mode. Set a whole-number working-set ceiling from 8 to 512 MB for each detected Spotify process. Main and Audio default to 36 MB; GPU/Renderer to 28 MB; Utility/Helper to 24 MB; Crashpad to 16 MB. Manual limits stay active regardless of window visibility and can include audio processes.
+- Applying a value below that process's default requires a 15-second warning countdown and confirmation; values below the default can cause glitches, slowdowns, or process failures. Limits are keyed to both PID and process creation identity, so a recycled PID never inherits an old manual value.
 
 CPU is estimated from process-time deltas and expressed as a percentage of one logical processor, capped at 100% per process. High CPU is only a heuristic; it does not prove that a process needs more memory. Working-set MB is resident RAM, not private committed memory, and summed working sets can double-count shared pages.
 
