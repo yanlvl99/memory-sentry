@@ -41,10 +41,10 @@ When Spotify is restored, the intended behavior is to return to the previous int
 2. Download **Memory Sentry Setup** and its `.sha256` checksum from the same release.
 3. Verify the checksum before running Setup. A checksum confirms file integrity, not the publisher's identity.
 4. Run Setup as your normal Windows user, not as Administrator. It checks Windows and Spicetify before changing installed files; you do not have to close Spotify manually.
-5. Setup installs the native companion, writes local settings/token, starts and health-checks the local API, then applies the Custom App through Spicetify. Spicetify may restart Spotify automatically.
-6. When Spotify returns, select Memory Sentry in the sidebar. The helper is also registered to start at login for the current Windows user.
+5. Setup installs the server, writes local settings, starts and health-checks the local API, then applies the plugin through Spicetify. Spicetify may restart Spotify automatically.
+6. When Spotify returns, select Memory Sentry in the sidebar. The server is also registered to start at login for the current Windows user.
 
-The Marketplace entry is for **discovery only** and points to the same official GitHub release. There is no separate Marketplace installer, Marketplace-specific build, or custom portable ZIP. GitHub's automatically generated source archive is for inspecting the source and is not an installation package.
+The Marketplace entry only **links to this GitHub repository** so people can view the project and its documentation. It cannot install or download Memory Sentry, and neither the plugin nor the server is distributed through Marketplace. The only supported installation method is the official Setup EXE from GitHub Releases. GitHub's automatically generated source archive is for inspecting the source and is not an installation package.
 
 The Inno Setup installer is per-user and does not require a machine-wide MSI installation. The executable is not code-signed, so Windows SmartScreen or antivirus may still show a reputation warning. Do not bypass security warnings blindly.
 
