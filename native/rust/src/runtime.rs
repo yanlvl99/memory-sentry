@@ -133,6 +133,8 @@ struct AppState {
     profiles: BTreeMap<u32, AdaptiveProfile>,
     target_retry_at_ms: BTreeMap<String, u64>,
     page_fault_baselines: BTreeMap<String, u64>,
+    audio_pids: BTreeSet<u32>,
+    audio_pids_error: String,
     telemetry: Telemetry,
     recent_events: VecDeque<Event>,
     last_error: String,
@@ -833,6 +835,8 @@ fn build_state(base: PathBuf, settings: Settings) -> AppState {
         profiles: BTreeMap::new(),
         target_retry_at_ms: BTreeMap::new(),
         page_fault_baselines: BTreeMap::new(),
+        audio_pids: BTreeSet::new(),
+        audio_pids_error: String::new(),
         telemetry: Telemetry::default(),
         recent_events: VecDeque::new(),
         last_error: String::new(),
@@ -966,6 +970,35 @@ fn accept_snapshot(state: &mut AppState, mut snapshot: platform::Snapshot) {
             _ => false
         }
     });
+    refresh_audio_session_pids(state);
+}
+
+fn refresh_audio_session_pids(state: &mut AppState) {
+    match platform::audio_session_pids() {
+        Ok(pids) => {
+            let pids: BTreeSet<u32> = pids.into_iter().collect();
+            if pids != state.audio_pids {
+                let listed = if pids.is_empty() {
+                    "none".to_string()
+                } else {
+                    pids.iter().map(|pid| pid.to_string()).collect::<Vec<_>>().join(", ")
+                };
+                state.audio_pids = pids;
+                log_event(state, format!("Audio session processes updated: {listed}."), "info");
+            }
+            state.audio_pids_error.clear();
+        }
+        Err(error) => {
+            if state.audio_pids_error != error {
+                state.audio_pids_error = error.clone();
+                log_event(
+                    state,
+                    format!("Audio session discovery failed: {error}; keeping {} known PID(s).", state.audio_pids.len()),
+                    "warn",
+                );
+            }
+        }
+    }
 }
 
 fn is_child_process_command(cmd: &str) -> bool {
@@ -973,7 +1006,12 @@ fn is_child_process_command(cmd: &str) -> bool {
     lower.contains("--type=") || lower.contains("--type =")
 }
 
-fn process_role(process: &platform::ProcessRow, root_pid: Option<u32>) -> ProcessRole {
+fn process_role(
+    process: &platform::ProcessRow,
+    root_pid: Option<u32>,
+    audio_pids: &BTreeSet<u32>,
+) -> ProcessRole {
+    if audio_pids.contains(&process.pid) { return ProcessRole::Audio; }
     let lower = process.cmd.to_ascii_lowercase();
     if lower.contains("audio.mojom.audioservice") ||
        lower.contains("--utility-sub-type=audio") ||
@@ -1013,7 +1051,7 @@ fn descendants(state: &AppState) -> Vec<(platform::ProcessRow, ProcessRole)> {
         if ids.len() == before { break; }
     }
     state.snapshot.processes.iter().filter(|p| ids.contains(&p.pid))
-        .map(|p| (p.clone(), process_role(p, Some(root_pid))))
+        .map(|p| (p.clone(), process_role(p, Some(root_pid), &state.audio_pids)))
         .collect()
 }
 
@@ -1257,7 +1295,10 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
     if now.saturating_sub(state.hidden_since_ms) < state.settings.hidden_delay_seconds * 1000 { return; }
     if !state.snapshot_ok || state.snapshot_at_ms == 0 || now.saturating_sub(state.snapshot_at_ms) > SNAPSHOT_STALE_MS { return; }
     let targets = descendants(state);
-    let wanted: BTreeSet<String> = targets.iter().map(|(p, _)| target_key(p.pid, p.creation)).collect();
+    let wanted: BTreeSet<String> = targets.iter()
+        .filter(|(_, role)| *role != ProcessRole::Audio)
+        .map(|(p, _)| target_key(p.pid, p.creation))
+        .collect();
     let no_longer_eligible: Vec<BackupRecord> = state.active_caps.values()
         .filter(|record| !wanted.contains(&target_key(record.pid, record.creation)))
         .cloned().collect();

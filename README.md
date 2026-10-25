@@ -66,7 +66,7 @@ The current policy keeps an individual working-set ceiling for each eligible Spo
 - If one process uses at least 10% of one logical processor for six seconds, its ceiling can increase by 8 MB.
 - If CPU remains at or below 3% and the working set stays at least 6 MB below its ceiling for ten seconds, the ceiling can decrease by 4 MB.
 - Changes have an eight-second cooldown. The global policy range is 12–64 MB, with a 24 MB floor for the main process and lower floors for background processes.
-- Audio-service processes are excluded. The policy runs after the configured hide/minimize delay. The server saves original Windows limits before changing them and attempts to restore them when Spotify becomes visible.
+- Processes holding an active Windows audio session are excluded, detected through the Core Audio session API (the main process hosts audio in current Spotify builds). The policy runs after the configured hide/minimize delay. The server saves original Windows limits before changing them and attempts to restore them when Spotify becomes visible.
 
 CPU is estimated from process-time deltas and expressed as a percentage of one logical processor, capped at 100% per process. High CPU is only a heuristic; it does not prove that a process needs more memory. Working-set MB is resident RAM, not private committed memory, and summed working sets can double-count shared pages.
 
