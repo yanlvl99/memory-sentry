@@ -155,6 +155,18 @@ function MSSRoleLabel(role) {
 function MSSOpenGitHub() {
   window.open(MSS_RELEASES_URL, '_blank', 'noopener,noreferrer');
 }
+function MSSDebugToggle(value, onChange) {
+  const Toggle = Spicetify.ReactComponent && Spicetify.ReactComponent.Toggle;
+  if (typeof Toggle !== 'function') {
+    return h('button', { className: `mss-btn mss-btn-secondary${value ? ' mss-btn-primary' : ''}`, onClick: () => onChange(!value), 'aria-pressed': value }, tx('debugMode'));
+  }
+  return h(Toggle, {
+    value: Boolean(value),
+    onSelected: next => onChange(typeof next === 'boolean' ? next : !value),
+    id: 'mss-debug-mode',
+    'aria-label': tx('debugMode')
+  });
+}
 function MSSOpenInstallGuide() {
   window.open(MSS_INSTALL_GUIDE_URL, '_blank', 'noopener,noreferrer');
 }
@@ -171,12 +183,10 @@ function MSSApp() {
   const [debug, setDebug] = R.useState(() => { try { return window.localStorage.getItem('mss.debugMode') === '1'; } catch (_) { return false; } });
   const [config, setConfig] = R.useState({ autoOptimize: true, hiddenDelaySeconds: 2, trimToCap: true });
 
-  function toggleDebug() {
-    setDebug(previous => {
-      const next = !previous;
-      try { window.localStorage.setItem('mss.debugMode', next ? '1' : '0'); } catch (_) { }
-      return next;
-    });
+  function applyDebug(next) {
+    const enabled = Boolean(next);
+    setDebug(enabled);
+    try { window.localStorage.setItem('mss.debugMode', enabled ? '1' : '0'); } catch (_) { }
   }
 
   R.useEffect(() => {
@@ -232,7 +242,10 @@ function MSSApp() {
         h('div', { className: 'mss-small', style: { marginTop: '10px' } }, `${MSSWindowLabel(spotify.windowState || 'not-detected')} · ${MSS_PT ? 'Idioma automático: português' : 'Auto language: English'}`)),
       h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' } },
         h('div', { className: 'mss-pill' }, h('span', { className: 'mss-dot', style: { background: error ? '#e05252' : (helperRunning ? 'var(--spice-button,#1ed760)' : '#d6a03d') } }), error ? tx('unavailable') : (helperRunning ? tx('connected') : tx('waiting'))),
-        h('button', { className: `mss-btn mss-btn-secondary${debug ? ' mss-btn-primary' : ''}`, onClick: toggleDebug, title: tx('debugHint'), 'aria-pressed': debug }, tx('debugMode'))
+        h('div', { style: { display: 'flex', gap: '9px', alignItems: 'center' }, title: tx('debugHint') },
+          h('span', { className: 'mss-small' }, tx('debugMode')),
+          MSSDebugToggle(debug, applyDebug)
+        )
       )
     ),
     error ? h('section', { className: 'mss-notice mss-notice-error' }, h('strong', null, tx('helperMissingTitle')), h('p', { style: { margin: '7px 0 0' } }, `${tx('helperMissingBody')} ${error}`), h('div', { className: 'mss-actions' }, h('button', { className: 'mss-btn mss-btn-primary', onClick: MSSOpenGitHub }, tx('helperButton')), h('button', { className: 'mss-btn mss-btn-secondary', onClick: MSSOpenInstallGuide }, tx('installGuideButton')))) : null,
