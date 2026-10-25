@@ -36,6 +36,7 @@ const MSS_TEXT = {
     delay: 'Delay after minimize/hide', delayExplanation: 'Avoids optimizing during brief minimizations. Process limits adapt automatically; there is no fixed user-set RAM cap.',
     releaseMode: 'Memory release', releaseCeiling: 'Release only down to the ceiling', releaseAggressive: 'Release as much as possible',
     releaseModeExplanation: 'Releasing only down to the ceiling frees the excess above the current limit and keeps restore smooth; releasing as much as possible frees more RAM right away but faults more pages back later.',
+    debugMode: 'Debug mode', debugHint: 'Shows diagnostics: telemetry cards, activity log and per-process details.',
     seconds: '{value} seconds', save: 'Save settings', saving: 'Saving…', savedLocal: 'Settings are stored locally on this PC.',
     events: 'Recent activity', noEvents: 'No activity recorded yet.', statusError: 'Could not connect to the local Memory Sentry server. The diagnostic appears in brackets; check startup.log in %LOCALAPPDATA%\\SpicetifyMemorySentry\\logs.',
     footer: 'Supported OS: Windows 10 and Windows 11 desktop editions only. The Memory Sentry server is open source under GPL-3.0. No telemetry is uploaded. CPU and memory diagnostics stay on this PC. A separate process is required to call Win32 working-set APIs.',
@@ -68,6 +69,7 @@ const MSS_TEXT = {
     delay: 'Atraso após minimizar/ocultar', delayExplanation: 'Evita otimizar em minimizações rápidas. Os limites por processo se adaptam automaticamente; não existe um teto fixo de RAM configurado manualmente.',
     releaseMode: 'Liberação de memória', releaseCeiling: 'Libera somente até o teto', releaseAggressive: 'Libera o máximo possível',
     releaseModeExplanation: 'Liberar somente até o teto remove o excesso acima do limite atual e mantém a restauração fluida; liberar o máximo possível recupera mais RAM na hora, mas volta a falhar mais páginas depois.',
+    debugMode: 'Modo debug', debugHint: 'Mostra diagnósticos: cartões de telemetria, log de atividade e detalhes por processo.',
     seconds: '{value} segundos', save: 'Salvar configurações', saving: 'Salvando…', savedLocal: 'As configurações ficam salvas localmente neste PC.',
     events: 'Atividade recente', noEvents: 'Ainda não há atividade registrada.', statusError: 'Não foi possível conectar ao servidor local do Memory Sentry. O diagnóstico aparece entre colchetes; consulte startup.log em %LOCALAPPDATA%\\SpicetifyMemorySentry\\logs.',
     footer: 'Compatível apenas com Windows 10 e Windows 11 (desktop). O servidor do Memory Sentry é código aberto sob GPL-3.0. Nenhuma telemetria é enviada. Os diagnósticos de CPU e memória ficam neste PC. Um processo separado é necessário para chamar as APIs Win32 de working set.',
@@ -166,7 +168,16 @@ function MSSApp() {
   const [busy, setBusy] = R.useState(false);
   const [saving, setSaving] = R.useState(false);
   const [settingsLoaded, setSettingsLoaded] = R.useState(false);
+  const [debug, setDebug] = R.useState(() => { try { return window.localStorage.getItem('mss.debugMode') === '1'; } catch (_) { return false; } });
   const [config, setConfig] = R.useState({ autoOptimize: true, hiddenDelaySeconds: 2, trimToCap: true });
+
+  function toggleDebug() {
+    setDebug(previous => {
+      const next = !previous;
+      try { window.localStorage.setItem('mss.debugMode', next ? '1' : '0'); } catch (_) { }
+      return next;
+    });
+  }
 
   R.useEffect(() => {
     let alive = true;
@@ -213,13 +224,16 @@ function MSSApp() {
   const targets = Array.isArray(memory.targets) ? memory.targets : [];
   const events = Array.isArray(status?.recentEvents) ? status.recentEvents : [];
   const activeCount = status?.cap?.cappedProcesses || 0;
-  const card = (label, value, unit, note) => h('section', { className: 'mss-card' }, h('div', { className: 'mss-card-label' }, label), h('div', { className: 'mss-number' }, value, unit ? h('span', { className: 'mss-unit' }, unit) : null), h('div', { className: 'mss-note' }, note));
+  const card = (label, value, unit, note) => h('section', { className: 'mss-card' }, h('div', { className: 'mss-card-label' }, label), h('div', { className: 'mss-number' }, value, unit ? h('span', { className: 'mss-unit' }, unit) : null), debug && note ? h('div', { className: 'mss-note' }, note) : null);
 
   return h('main', { className: 'mss-page' },
     h('header', { className: 'mss-hero' },
       h('div', null, h('div', { className: 'mss-kicker' }, tx('kicker')), h('h1', { className: 'mss-title' }, tx('title')), h('div', { className: 'mss-copy' }, tx('intro')),
         h('div', { className: 'mss-small', style: { marginTop: '10px' } }, `${MSSWindowLabel(spotify.windowState || 'not-detected')} · ${MSS_PT ? 'Idioma automático: português' : 'Auto language: English'}`)),
-      h('div', { className: 'mss-pill' }, h('span', { className: 'mss-dot', style: { background: error ? '#e05252' : (helperRunning ? 'var(--spice-button,#1ed760)' : '#d6a03d') } }), error ? tx('unavailable') : (helperRunning ? tx('connected') : tx('waiting')))
+      h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' } },
+        h('div', { className: 'mss-pill' }, h('span', { className: 'mss-dot', style: { background: error ? '#e05252' : (helperRunning ? 'var(--spice-button,#1ed760)' : '#d6a03d') } }), error ? tx('unavailable') : (helperRunning ? tx('connected') : tx('waiting'))),
+        h('button', { className: `mss-btn mss-btn-secondary${debug ? ' mss-btn-primary' : ''}`, onClick: toggleDebug, title: tx('debugHint'), 'aria-pressed': debug }, tx('debugMode'))
+      )
     ),
     error ? h('section', { className: 'mss-notice mss-notice-error' }, h('strong', null, tx('helperMissingTitle')), h('p', { style: { margin: '7px 0 0' } }, `${tx('helperMissingBody')} ${error}`), h('div', { className: 'mss-actions' }, h('button', { className: 'mss-btn mss-btn-primary', onClick: MSSOpenGitHub }, tx('helperButton')), h('button', { className: 'mss-btn mss-btn-secondary', onClick: MSSOpenInstallGuide }, tx('installGuideButton')))) : null,
     h('div', { className: 'mss-notice mss-notice-warn' }, tx('safety')),
@@ -227,18 +241,18 @@ function MSSApp() {
       card(tx('spotifyRam'), MSSFormatMB(memory.spotifyTotalMB), 'MB', tx('ramNote', { count: memory.processCount || 0 })),
       card(tx('optimizedRam'), MSSFormatMB(memory.targetTotalMB), 'MB', tx('managedNote', { count: memory.targetCount || 0 })),
       card(tx('activeLimits'), activeCount.toLocaleString(MSS_LOCALE), '', tx('activeNote')),
-      card(tx('pageFaults'), telemetry.pageFaultDelta == null ? '—' : Number(telemetry.pageFaultDelta).toLocaleString(MSS_LOCALE), '', tx('pageFaultNote')),
-      card(tx('pageFaultRate'), telemetry.pageFaultsPerSecond == null ? '—' : Number(telemetry.pageFaultsPerSecond).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 }), '/s', tx('pageFaultRateNote')),
-      card(tx('adaptiveChanges'), Number(telemetry.adaptiveAdjustments || 0).toLocaleString(MSS_LOCALE), '', tx('adaptiveNote')),
-      card(tx('restoreDuration'), telemetry.lastRestoreDurationMs == null ? '—' : Number(telemetry.lastRestoreDurationMs).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 }), telemetry.lastRestoreDurationMs == null ? '' : 'ms', tx('restoreNote'))
+      debug ? card(tx('pageFaults'), telemetry.pageFaultDelta == null ? '—' : Number(telemetry.pageFaultDelta).toLocaleString(MSS_LOCALE), '', tx('pageFaultNote')) : null,
+      debug ? card(tx('pageFaultRate'), telemetry.pageFaultsPerSecond == null ? '—' : Number(telemetry.pageFaultsPerSecond).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 }), '/s', tx('pageFaultRateNote')) : null,
+      debug ? card(tx('adaptiveChanges'), Number(telemetry.adaptiveAdjustments || 0).toLocaleString(MSS_LOCALE), '', tx('adaptiveNote')) : null,
+      debug ? card(tx('restoreDuration'), telemetry.lastRestoreDurationMs == null ? '—' : Number(telemetry.lastRestoreDurationMs).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 }), telemetry.lastRestoreDurationMs == null ? '' : 'ms', tx('restoreNote')) : null
     ),
     h('section', { className: 'mss-section' },
       h('div', { className: 'mss-section-head' }, h('h2', { className: 'mss-h2' }, tx('processes')), h('span', { className: 'mss-small' }, tx('updated', { time: MSSDate(memory.sampledAt) }))),
       targets.length ? h('div', { className: 'mss-list' }, targets.map(process => {
         const statusText = process.protectedAudio ? tx('audioProtected') : (process.capped ? tx(process.adaptiveStatus === 'sustained-high-cpu' ? 'reasonHigh' : (process.adaptiveStatus === 'low-cpu-and-memory-headroom' ? 'reasonLow' : (process.adaptiveStatus === 'baseline' ? 'reasonBaseline' : 'reasonHolding'))) : (process.included ? tx('willOptimize') : tx('notIncluded')));
-        const meta = [Number.isFinite(process.cpuPercent) ? tx('cpu', { value: Number(process.cpuPercent).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 }) }) : null, process.privateMB != null ? tx('privateMemory', { value: MSSFormatMB(process.privateMB) }) : null, statusText].filter(Boolean).join(' · ');
+        const meta = [debug && Number.isFinite(process.cpuPercent) ? tx('cpu', { value: Number(process.cpuPercent).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 }) }) : null, debug && process.privateMB != null ? tx('privateMemory', { value: MSSFormatMB(process.privateMB) }) : null, debug ? statusText : null].filter(Boolean).join(' · ');
         return h('div', { className: 'mss-process', key: `${process.pid}:${process.role}` },
-          h('div', null, h('div', { className: 'mss-process-name' }, `${MSSRoleLabel(process.role)} · PID ${process.pid}`), h('div', { className: 'mss-process-meta' }, meta)),
+          h('div', null, h('div', { className: 'mss-process-name' }, `${MSSRoleLabel(process.role)} · PID ${process.pid}`), meta ? h('div', { className: 'mss-process-meta' }, meta) : null),
           h('span', { className: 'mss-tag' }, process.protectedAudio ? (MSS_PT ? 'Áudio' : 'Audio') : (process.capped ? (MSS_PT ? 'Adaptativo' : 'Adaptive') : process.role)),
           h('div', { className: 'mss-memory' }, process.workingSetMB == null ? '—' : `${MSSFormatMB(process.workingSetMB)} MB${process.capped ? ` / ${process.limitMB} MB` : ''}`)
         );
@@ -246,21 +260,21 @@ function MSSApp() {
       h('div', { className: 'mss-actions' },
         h('button', { className: 'mss-btn mss-btn-primary', disabled: busy || !helperRunning || !activeCount, onClick: restoreLimits }, busy ? tx('restoring') : tx('restoreNow')),
         h('button', { className: 'mss-btn mss-btn-secondary', disabled: !helperRunning, onClick: async () => { try { setStatus(await MSSRequest('/api/status')); setError(''); } catch (err) { const detail = err && err.message ? String(err.message) : String(err || 'Unknown error'); setError(tx('statusError') + ' [' + detail + ']'); } } }, tx('refresh')),
-        telemetry.lastAdaptiveAdjustmentAt ? h('span', { className: 'mss-small' }, tx('lastAdjustment', { time: MSSDate(telemetry.lastAdaptiveAdjustmentAt) })) : null
+        debug && telemetry.lastAdaptiveAdjustmentAt ? h('span', { className: 'mss-small' }, tx('lastAdjustment', { time: MSSDate(telemetry.lastAdaptiveAdjustmentAt) })) : null
       ),
-      status?.lastAction ? h('div', { className: 'mss-notice' }, tx('lastAction', { count: status.lastAction.applied || 0 })) : null
+      debug && status?.lastAction ? h('div', { className: 'mss-notice' }, tx('lastAction', { count: status.lastAction.applied || 0 })) : null
     ),
     h('section', { className: 'mss-section' },
-      h('div', { className: 'mss-section-head' }, h('h2', { className: 'mss-h2' }, tx('behavior')), h('span', { className: 'mss-small' }, helperRunning ? `${status?.helper?.runtime || 'Server'} ${status?.helper?.version || ''}` : (MSS_PT ? 'Servidor' : 'Server'))),
+      h('div', { className: 'mss-section-head' }, h('h2', { className: 'mss-h2' }, tx('behavior')), h('span', { className: 'mss-small' }, debug && helperRunning ? `${status?.helper?.runtime || 'Server'} ${status?.helper?.version || ''}` : (MSS_PT ? 'Servidor' : 'Server'))),
       h('label', { className: 'mss-check', style: { marginBottom: '18px' } }, h('input', { type: 'checkbox', checked: Boolean(config.autoOptimize), onChange: event => setField('autoOptimize', event.target.checked) }), h('span', null, h('strong', null, tx('active')), h('br'), h('span', { className: 'mss-small' }, tx('autoExplanation')))),
       h('div', { className: 'mss-settings' }, h('label', { className: 'mss-setting' }, h('span', { className: 'mss-setting-label' }, tx('delay')), h('select', { className: 'mss-select', value: String(config.hiddenDelaySeconds), onChange: event => setField('hiddenDelaySeconds', Number(event.target.value)) }, [1, 2, 3, 5, 8, 10, 15, 20, 30].map(n => h('option', { key: n, value: String(n) }, tx('seconds', { value: n })))), h('span', { className: 'mss-small' }, tx('delayExplanation'))),
         h('label', { className: 'mss-setting' }, h('span', { className: 'mss-setting-label' }, tx('releaseMode')), h('select', { className: 'mss-select', value: config.trimToCap !== false ? 'ceiling' : 'aggressive', onChange: event => setField('trimToCap', event.target.value === 'ceiling') }, h('option', { value: 'ceiling' }, tx('releaseCeiling')), h('option', { value: 'aggressive' }, tx('releaseAggressive'))), h('span', { className: 'mss-small' }, tx('releaseModeExplanation')))),
       h('div', { className: 'mss-actions' }, h('button', { className: 'mss-btn mss-btn-primary', disabled: saving || !helperRunning, onClick: saveSettings }, saving ? tx('saving') : tx('save')), h('span', { className: 'mss-small' }, tx('savedLocal')))
     ),
-    h('section', { className: 'mss-section' }, h('div', { className: 'mss-section-head' }, h('h2', { className: 'mss-h2' }, tx('events')), h('span', { className: 'mss-small' }, status?.helper ? `${status.helper.runtime || 'Server'} ${status.helper.version || ''}` : (MSS_PT ? 'Servidor' : 'Server'))),
+    debug ? h('section', { className: 'mss-section' }, h('div', { className: 'mss-section-head' }, h('h2', { className: 'mss-h2' }, tx('events')), h('span', { className: 'mss-small' }, status?.helper ? `${status.helper.runtime || 'Server'} ${status.helper.version || ''}` : (MSS_PT ? 'Servidor' : 'Server'))),
       events.length ? h('div', { className: 'mss-events' }, events.map((event, i) => h('div', { className: 'mss-event', key: `${event.time}-${i}` }, h('span', { className: 'mss-event-time' }, MSSDate(event.time)), h('span', { className: 'mss-event-msg' }, MSSLocalizeEvent(event.message))))) : h('div', { className: 'mss-empty' }, tx('noEvents')),
       status?.lastError ? h('div', { className: 'mss-notice mss-notice-error' }, MSSLocalizeEvent(status.lastError)) : null
-    ),
+    ) : (status?.lastError ? h('div', { className: 'mss-notice mss-notice-error' }, MSSLocalizeEvent(status.lastError)) : null),
     h('footer', { className: 'mss-footer' }, tx('footer'))
   );
 }
