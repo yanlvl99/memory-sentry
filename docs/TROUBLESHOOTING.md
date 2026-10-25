@@ -1,12 +1,12 @@
 # Troubleshooting
 
-Memory Sentry supports Windows 10 and Windows 11 desktop editions only. These steps apply to the experimental Rust companion.
+Memory Sentry supports Windows 10 and Windows 11 desktop editions only. These steps apply to the experimental Memory Sentry server.
 
 ## Dashboard shows "connection unavailable"
 
 The dashboard shows the detailed connection error. The launcher creates `%LOCALAPPDATA%\SpicetifyMemorySentry\logs\startup.log` before reading settings, so early configuration failures should now be recorded too.
 
-The Marketplace entry is for discovery only. The single supported installation method is the official Setup EXE at https://github.com/yanlvl99/spicetify-memory-sentry/releases; there is no separate Marketplace build or custom portable installer.
+The Marketplace entry only links to the project repository and cannot install Memory Sentry. The single supported installation method is the official Setup EXE at https://github.com/yanlvl99/spicetify-memory-sentry/releases; there is no separate Marketplace build or custom portable installer.
 
 If the log is missing, open PowerShell and run:
 
