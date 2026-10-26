@@ -43,6 +43,7 @@ struct Settings {
     hidden_delay_seconds: u64,
     trim_to_cap: bool,
     manual_caps: BTreeMap<(u32, u64), u32>,
+    manual_role_caps: BTreeMap<String, u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -56,6 +57,35 @@ struct BackupRecord {
     applied_maximum_mb: Option<u32>,
     applied_at: String,
     manual: bool,
+}
+
+impl BackupRecord {
+    fn capture_original(
+        pid: u32,
+        creation: u64,
+        role: ProcessRole,
+        limits: platform::OriginalLimits,
+        manual: bool,
+    ) -> Self {
+        Self {
+            pid,
+            creation,
+            role: role_name(role).to_string(),
+            minimum: limits.minimum,
+            maximum: limits.maximum,
+            flags: limits.flags,
+            applied_maximum_mb: None,
+            applied_at: iso_now(),
+            manual,
+        }
+    }
+
+    fn record_applied_cap(&mut self, role: ProcessRole, cap_mb: u32, manual: bool) {
+        self.role = role_name(role).to_string();
+        self.applied_maximum_mb = Some(cap_mb);
+        self.applied_at = iso_now();
+        self.manual = manual;
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -347,6 +377,23 @@ fn parse_manual_caps(text: &str) -> BTreeMap<(u32, u64), u32> {
         .collect()
 }
 
+fn parse_manual_role_caps(text: &str) -> BTreeMap<String, u32> {
+    parse_json_string_array(text, "manualRoleCaps")
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|entry| {
+            let (role, cap) = entry.split_once(':')?;
+            let cap = cap.parse::<u32>().ok()?;
+            if !matches!(role, "Main" | "GPU" | "Renderer" | "Utility" | "Crashpad" | "Helper" | "Audio")
+                || !(MIN_MANUAL_CAP_MB..=MAX_MANUAL_CAP_MB).contains(&cap)
+            {
+                return None;
+            }
+            Some((role.to_string(), cap))
+        })
+        .collect()
+}
+
 fn load_settings(path: &Path) -> Result<Settings, String> {
     let raw = fs::read_to_string(path)
         .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
@@ -364,6 +411,7 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
         .clamp(1, 30);
     let trim_to_cap = parse_json_bool(&raw, "trimToCap").unwrap_or(true);
     let manual_caps = parse_manual_caps(&raw);
+    let manual_role_caps = parse_manual_role_caps(&raw);
     Ok(Settings {
         port,
         token,
@@ -372,6 +420,7 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
         hidden_delay_seconds,
         trim_to_cap,
         manual_caps,
+        manual_role_caps,
     })
 }
 
@@ -386,9 +435,15 @@ fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
         .map(|((pid, creation), cap)| json_quote(&format!("{pid}:{creation}:{cap}")))
         .collect::<Vec<_>>()
         .join(", ");
+    let manual_role_caps = settings
+        .manual_role_caps
+        .iter()
+        .map(|(role, cap)| json_quote(&format!("{role}:{cap}")))
+        .collect::<Vec<_>>()
+        .join(", ");
     let contents = format!(
-        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"manualCaps\": [{}],\n  \"version\": \"{}\"\n}}\n",
-        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, manual_caps, VERSION
+        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"manualCaps\": [{}],\n  \"manualRoleCaps\": [{}],\n  \"version\": \"{}\"\n}}\n",
+        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, manual_caps, manual_role_caps, VERSION
     );
     let mut file = File::create(&temp).map_err(|e| format!("Could not stage settings: {e}"))?;
     file.write_all(contents.as_bytes())
@@ -725,6 +780,7 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
             .clamp(1, 30),
         trim_to_cap: parse_json_bool(&existing_raw, "trimToCap").unwrap_or(true),
         manual_caps: parse_manual_caps(&existing_raw),
+        manual_role_caps: parse_manual_role_caps(&existing_raw),
     };
     write_settings(&settings_path, &settings)?;
     // Start the local API before "spicetify apply" restarts Spotify, so the
@@ -1300,8 +1356,12 @@ pub fn run_monitor() -> Result<(), String> {
                 Ok(s) => s,
                 Err(_) => return Err("State lock poisoned".to_string()),
             };
+            let is_foreground = spotify_process_is_foreground(
+                platform::foreground_process_id(),
+                s.snapshot.processes.iter().map(|process| process.pid),
+            );
             let current_window_state =
-                platform::window_state(s.hwnd, !s.snapshot.processes.is_empty());
+                platform::window_state(s.hwnd, !s.snapshot.processes.is_empty(), is_foreground);
             if current_window_state != s.window_state {
                 s.window_state = current_window_state.clone();
                 log_event(
@@ -1400,7 +1460,15 @@ fn accept_snapshot(state: &mut AppState, mut snapshot: platform::Snapshot) {
         state.hwnd = 0;
         state.window_title.clear();
     }
-    state.window_state = platform::window_state(state.hwnd, !state.snapshot.processes.is_empty());
+    let is_foreground = spotify_process_is_foreground(
+        platform::foreground_process_id(),
+        state.snapshot.processes.iter().map(|process| process.pid),
+    );
+    state.window_state = platform::window_state(
+        state.hwnd,
+        !state.snapshot.processes.is_empty(),
+        is_foreground,
+    );
     state.last_error.clear();
     // Drop stale profiles only when the snapshot proves that a PID has a new creation identity.
     let active: BTreeMap<u32, u64> = state
@@ -1465,6 +1533,19 @@ fn refresh_audio_session_pids(state: &mut AppState) {
 fn is_child_process_command(cmd: &str) -> bool {
     let lower = cmd.to_ascii_lowercase();
     lower.contains("--type=") || lower.contains("--type =")
+}
+
+fn spotify_process_is_foreground(
+    foreground_pid: Option<u32>,
+    spotify_process_ids: impl IntoIterator<Item = u32>,
+) -> bool {
+    foreground_pid
+        .map(|pid| {
+            spotify_process_ids
+                .into_iter()
+                .any(|spotify_pid| spotify_pid == pid)
+        })
+        .unwrap_or(false)
 }
 
 fn process_role(
@@ -1602,17 +1683,7 @@ fn apply_initial_cap(
     let limits = platform::read_original_limits(process.pid, process.creation)?;
     let before = process.working_set_mb;
     let baseline = role.baseline_cap_mb().unwrap_or(24);
-    let record = BackupRecord {
-        pid: process.pid,
-        creation: process.creation,
-        role: role_name(role).to_string(),
-        minimum: limits.minimum,
-        maximum: limits.maximum,
-        flags: limits.flags,
-        applied_maximum_mb: None,
-        applied_at: iso_now(),
-        manual: false,
-    };
+    let record = BackupRecord::capture_original(process.pid, process.creation, role, limits, false);
     state.active_caps.insert(process.pid, record);
     // Recovery must be durable before the native limit is changed.
     if !persist_or_log(state) {
@@ -1633,7 +1704,7 @@ fn apply_initial_cap(
         return Err(error);
     }
     if let Some(record) = state.active_caps.get_mut(&process.pid) {
-        record.applied_maximum_mb = Some(baseline);
+        record.record_applied_cap(role, baseline, false);
     }
     if !persist_or_log(state) {
         // Limits were changed, so keep the in-memory record and stop applying further caps.
@@ -1696,8 +1767,7 @@ fn enforce_fixed_audio_cap(
         platform::HARD_CAP_FLAGS,
     )?;
     if let Some(record) = state.active_caps.get_mut(&process.pid) {
-        record.applied_maximum_mb = Some(36);
-        record.role = role_name(ProcessRole::Audio).to_string();
+        record.record_applied_cap(ProcessRole::Audio, 36, false);
     }
     if let Some(profile) = state.profiles.get_mut(&process.pid) {
         profile.current_cap_mb = 36;
@@ -1745,22 +1815,9 @@ fn apply_manual_cap(
         record
     } else {
         let limits = platform::read_original_limits(process.pid, process.creation)?;
-        BackupRecord {
-            pid: process.pid,
-            creation: process.creation,
-            role: role_name(role).to_string(),
-            minimum: limits.minimum,
-            maximum: limits.maximum,
-            flags: limits.flags,
-            applied_maximum_mb: None,
-            applied_at: iso_now(),
-            manual: true,
-        }
+        BackupRecord::capture_original(process.pid, process.creation, role, limits, true)
     };
-    record.role = role_name(role).to_string();
-    record.applied_maximum_mb = Some(cap_mb);
-    record.applied_at = iso_now();
-    record.manual = true;
+    record.record_applied_cap(role, cap_mb, true);
     state.active_caps.insert(process.pid, record);
     if !persist_or_log(state) {
         if let Some(previous) = previous {
@@ -2027,7 +2084,7 @@ fn update_caps(state: &mut AppState, now: u64) {
             ) {
                 Ok(()) => {
                     if let Some(record) = state.active_caps.get_mut(&process.pid) {
-                        record.applied_maximum_mb = Some(next_cap);
+                        record.record_applied_cap(role, next_cap, false);
                     }
                     if let Some(profile) = state.profiles.get_mut(&process.pid) {
                         profile.current_cap_mb = next_cap;
@@ -2078,6 +2135,18 @@ fn manual_cap_for(role: ProcessRole, configured: Option<u32>) -> u32 {
     configured.unwrap_or_else(|| role.manual_default_cap_mb())
 }
 
+fn configured_manual_cap(
+    settings: &Settings,
+    process: &platform::ProcessRow,
+    role: ProcessRole,
+) -> Option<u32> {
+    settings
+        .manual_role_caps
+        .get(role_name(role))
+        .copied()
+        .or_else(|| settings.manual_caps.get(&(process.pid, process.creation)).copied())
+}
+
 fn reconcile_manual_caps(state: &mut AppState) {
     if !state.snapshot_ok
         || state.snapshot_at_ms == 0
@@ -2108,11 +2177,7 @@ fn reconcile_manual_caps(state: &mut AppState) {
     for (process, role) in targets {
         let cap_mb = manual_cap_for(
             role,
-            state
-                .settings
-                .manual_caps
-                .get(&(process.pid, process.creation))
-                .copied(),
+            configured_manual_cap(&state.settings, &process, role),
         );
         let current = state.active_caps.get(&process.pid).filter(|record| {
             record.creation == process.creation
@@ -2424,7 +2489,7 @@ fn status_payload(state: &AppState) -> String {
             .or_else(|| profile.map(|p| p.current_cap_mb))
             .or_else(|| (state.settings.auto_optimize && protected_audio).then_some(36));
         let default_cap = role.manual_default_cap_mb();
-        let manual_cap = state.settings.manual_caps.get(&(p.pid, p.creation)).copied();
+        let manual_cap = configured_manual_cap(&state.settings, p, *role);
         let adaptive_status = profile.map(|p| p.last_reason.as_str()).unwrap_or("baseline");
         format!(
             "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"protectedAudio\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{}}}",
@@ -2735,22 +2800,22 @@ fn set_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
         ));
     }
     let (process, role) = manual_target(state, pid, creation)?;
-    let key = (pid, creation);
-    let previous = state.settings.manual_caps.insert(key, cap_mb);
+    let role_key = role_name(role).to_string();
+    let previous = state.settings.manual_role_caps.insert(role_key.clone(), cap_mb);
     if let Err(error) = write_settings(&state.settings_path, &state.settings) {
         if let Some(previous) = previous {
-            state.settings.manual_caps.insert(key, previous);
+            state.settings.manual_role_caps.insert(role_key, previous);
         } else {
-            state.settings.manual_caps.remove(&key);
+            state.settings.manual_role_caps.remove(&role_key);
         }
         return Err(error);
     }
     if should_manage_limits_in_background(&state.window_state) {
         if let Err(error) = apply_manual_cap(state, &process, role, cap_mb) {
             if let Some(previous) = previous {
-                state.settings.manual_caps.insert(key, previous);
+                state.settings.manual_role_caps.insert(role_key.clone(), previous);
             } else {
-                state.settings.manual_caps.remove(&key);
+                state.settings.manual_role_caps.remove(&role_key);
             }
             if let Err(save_error) = write_settings(&state.settings_path, &state.settings) {
                 log_event(
@@ -2780,24 +2845,46 @@ fn clear_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
     let creation = parse_json_string(body, "creation")
         .and_then(|value| value.parse::<u64>().ok())
         .ok_or("A valid process creation identity is required.")?;
-    let key = (pid, creation);
-    let previous = state.settings.manual_caps.remove(&key);
-    if previous.is_none() {
+    let (_, role) = manual_target(state, pid, creation)?;
+    let role_key = role_name(role).to_string();
+    let previous_role_cap = state.settings.manual_role_caps.remove(&role_key);
+    let affected: Vec<platform::ProcessRow> = descendants(state)
+        .into_iter()
+        .filter(|(_, candidate_role)| *candidate_role == role)
+        .map(|(candidate, _)| candidate)
+        .collect();
+    let previous_process_caps: Vec<((u32, u64), u32)> = affected
+        .iter()
+        .filter_map(|candidate| {
+            state
+                .settings
+                .manual_caps
+                .remove(&(candidate.pid, candidate.creation))
+                .map(|cap| ((candidate.pid, candidate.creation), cap))
+        })
+        .collect();
+    if previous_role_cap.is_none() && previous_process_caps.is_empty() {
         return Ok(());
     }
     if let Err(error) = write_settings(&state.settings_path, &state.settings) {
-        state.settings.manual_caps.insert(key, previous.unwrap());
+        if let Some(previous) = previous_role_cap {
+            state.settings.manual_role_caps.insert(role_key, previous);
+        }
+        state.settings.manual_caps.extend(previous_process_caps);
         return Err(error);
     }
     if should_manage_limits_in_background(&state.window_state) {
         reconcile_manual_caps(state);
-    } else if let Some(record) = state
-        .active_caps
-        .get(&pid)
-        .filter(|record| record.creation == creation && record.manual)
-        .cloned()
-    {
-        restore_one_record(state, &record, "manual override cleared in foreground")?;
+    } else {
+        let records: Vec<BackupRecord> = state
+            .active_caps
+            .values()
+            .filter(|record| record.manual && record.role == role_key)
+            .cloned()
+            .collect();
+        for record in records {
+            restore_one_record(state, &record, "manual role profile cleared in foreground")?;
+        }
     }
     Ok(())
 }
@@ -3242,6 +3329,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn foreground_child_process_is_recognized_as_spotify() {
+        let spotify_pids = [42, 84, 126];
+        assert!(spotify_process_is_foreground(Some(84), spotify_pids));
+        assert!(!spotify_process_is_foreground(Some(7), spotify_pids));
+        assert!(!spotify_process_is_foreground(None, spotify_pids));
+    }
+
+    #[test]
+    fn updating_caps_preserves_the_first_captured_original_limits() {
+        let originals = platform::OriginalLimits {
+            minimum: 1024,
+            maximum: 8 * 1024 * 1024,
+            flags: 0x1234,
+        };
+        let mut record =
+            BackupRecord::capture_original(42, 100, ProcessRole::Main, originals, false);
+
+        record.record_applied_cap(ProcessRole::Main, 36, false);
+        record.record_applied_cap(ProcessRole::Main, 64, false);
+
+        assert_eq!(record.minimum, originals.minimum);
+        assert_eq!(record.maximum, originals.maximum);
+        assert_eq!(record.flags, originals.flags);
+        assert_eq!(record.applied_maximum_mb, Some(64));
+    }
+
+    #[test]
     fn manual_policy_uses_role_defaults_and_honors_saved_overrides() {
         assert_eq!(manual_cap_for(ProcessRole::Main, None), 36);
         assert_eq!(manual_cap_for(ProcessRole::Audio, None), 36);
@@ -3276,6 +3390,53 @@ mod tests {
         let serialized = format!(r#"{{"manualCaps":["42:{identity}:36"]}}"#);
         let caps = parse_manual_caps(&serialized);
         assert_eq!(caps.get(&(42, identity)), Some(&36));
+    }
+
+    #[test]
+    fn role_cap_parser_keeps_only_known_roles_and_valid_limits() {
+        let serialized = r#"{"manualRoleCaps":["Renderer:52","Main:7","Unknown:40","Audio:512"]}"#;
+        let caps = parse_manual_role_caps(serialized);
+        assert_eq!(caps.len(), 2);
+        assert_eq!(caps.get("Renderer"), Some(&52));
+        assert_eq!(caps.get("Audio"), Some(&512));
+    }
+
+    #[test]
+    fn role_override_is_reused_when_a_new_pid_replaces_an_old_process() {
+        let mut settings = Settings {
+            port: DEFAULT_PORT,
+            token: "a".repeat(64),
+            enabled: true,
+            auto_optimize: false,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            trim_to_cap: true,
+            manual_caps: BTreeMap::from([((42, 100), 40)]),
+            manual_role_caps: BTreeMap::from([("Renderer".to_string(), 52)]),
+        };
+        let restarted_process = platform::ProcessRow {
+            pid: 99,
+            ppid: 1,
+            cmd: "spotify.exe --type=renderer".to_string(),
+            creation: 200,
+            cpu_time_ms: 0.0,
+            cpu_percent: None,
+            working_set_mb: None,
+            private_working_set_mb: None,
+            private_mb: None,
+            page_fault_count: None,
+            page_faults_delta: None,
+            error_code: 0,
+        };
+
+        assert_eq!(
+            configured_manual_cap(&settings, &restarted_process, ProcessRole::Renderer),
+            Some(52)
+        );
+        settings.manual_role_caps.clear();
+        assert_eq!(
+            configured_manual_cap(&settings, &restarted_process, ProcessRole::Renderer),
+            None
+        );
     }
 
     #[test]
@@ -3318,6 +3479,7 @@ mod tests {
             hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
             trim_to_cap: true,
             manual_caps: BTreeMap::new(),
+            manual_role_caps: BTreeMap::new(),
         };
         let mut state = build_state(base.clone(), settings);
         update_config(&mut state, r#"{"enabled":false}"#)
@@ -3348,11 +3510,14 @@ mod tests {
             hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
             trim_to_cap: true,
             manual_caps: BTreeMap::new(),
+            manual_role_caps: BTreeMap::new(),
         };
         settings.manual_caps.insert((42, identity), 36);
+        settings.manual_role_caps.insert("Renderer".to_string(), 52);
         write_settings(&path, &settings).expect("settings should be written");
         let loaded = load_settings(&path).expect("settings should load");
         assert_eq!(loaded.manual_caps.get(&(42, identity)), Some(&36));
+        assert_eq!(loaded.manual_role_caps.get("Renderer"), Some(&52));
         assert!(!loaded.enabled);
         assert!(!loaded.auto_optimize);
         let _ = fs::remove_file(path);
