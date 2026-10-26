@@ -17,16 +17,8 @@
 - Add a master Memory Sentry switch that stops new limits and retries pending restoration while disabled; use the selected background delay in both automatic and manual modes.
 - Report the local service as `Server` instead of `Rust` in the status payload so the dashboard shows `Server 1.0.0-rc.2`.
 
-- Clarify that the supported release requires Spotify Desktop and Spicetify CLI, distinguish the Spicetify Custom App from the native Rust companion, and add dynamic release/version/download/CI/license badges to the README.
-
-- Convert the README's privacy, security, installation, troubleshooting and migration references into working relative Markdown links; fix the development guide's same-directory documentation links.
-
-- Clarify that substantial resident-memory reduction while Spotify is minimized, hidden, or in the background is the intended behavior across supported Windows 10/11 x64 desktop PCs, while actual savings vary by machine and workload.
-- Document the approximately 40 MB initial and 100 MB settled combined Spotify working-set figures as observations from one setup, not guaranteed memory targets.
-- Explain that a very low-end PC can briefly show a black window during restore without that alone proving the page reloaded; verify whether the previous UI state returns.
-- Move the Task Manager comparison previews near the top of the README and expand restore testing to include playback, UI reload/state retention, black-screen recovery, and first-input latency.
-- Keep the broader Windows 10/11 release-validation checklist open until that behavior has been tested across real desktop configurations.
-
+- Streamline the README around project scope, requirements, policy thresholds, recovery controls, and validation limits; keep detailed workflows in dedicated guides.
+- Correct documentation of Audio-role behavior, memory metrics, Marketplace topic status, and native companion command formatting.
 ## 1.0.0-rc.1 — Release candidate and installation consolidation
 
 - Replace the former COM/SEM screenshot artwork with the square Marketplace cover, rectangular README preview, and README banner in `assets/`.

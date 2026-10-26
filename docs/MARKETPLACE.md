@@ -1,37 +1,29 @@
 # Marketplace publishing and support model
 
-Memory Sentry supports Windows 10 and Windows 11 desktop editions only (x64 desktop) and currently requires Spotify Desktop plus Spicetify CLI for the same Windows user. The plugin is a Spicetify Custom App; the Memory Sentry server performs the Windows memory-management work. A standalone no-Spicetify mode is a possible future adaptation, not a feature of this release. The project remains experimental; Marketplace discoverability must not be represented as a stable-product endorsement.
+Memory Sentry is an independent community project for Windows 10/11 x64 desktop editions. The current release requires Spotify Desktop and Spicetify CLI for the same Windows user. The Spicetify Custom App uses a separate server for Windows memory operations. The project remains experimental; Marketplace discoverability is not an endorsement or stability guarantee.
 
-## Installation and distribution model
+## Distribution
 
-### Official Windows setup installer
+The official per-user Setup EXE and its SHA-256 checksum are published on the [GitHub Releases page](https://github.com/yanlvl99/spicetify-memory-sentry/releases). The Setup package contains the companion, Custom App, and installation/removal flows.
 
-The official per-user setup program and SHA-256 checksums are published on:
+The Marketplace listing is discovery-only: it links to this repository and does not host or install Memory Sentry. Users must download the official Setup EXE from GitHub Releases; this repository does not publish a separate portable ZIP.
 
-https://github.com/yanlvl99/spicetify-memory-sentry/releases
+Memory Sentry manages the **resident working set**, not committed memory. It does not free or decommit memory, and observed results vary by workload and system. Avoid describing the result as freed, released, or swapped-out memory.
 
-A release contains the compiled server, the Spicetify plugin, installer/uninstaller flows, GPL-3.0 license, privacy/security documentation, and checksums. Never label a release stable until clean Windows 10 and Windows 11 desktop tests cover install, upgrade, audio continuity, working-set restoration, and uninstall.
+The server API binds to loopback, requires a per-install token, validates the Spotify HTTPS Origin and loopback Host header, and records original process limits for recovery. Automatic mode gives Audio-role processes a fixed 36 MB ceiling without adaptive adjustments; manual mode uses 36 MB as the default and supports persistent role-wide overrides. Original limits are recorded per process instance. Logs and metrics stay on the PC.
 
-### Marketplace listing (links only)
+## Listing requirements
 
-The Marketplace entry only displays the project and links to this GitHub repository. It cannot install or download Memory Sentry, and it does not host the plugin or the server. To install, users must open this repository, go to GitHub Releases, and run the official Setup EXE. This repository does not publish a custom portable ZIP.
+The repository is public and currently has the `spicetify-apps` topic. Keep that topic set and maintain a valid root `manifest.json` with a preview image and README. The root manifest supplies Marketplace metadata; `app/manifest.json` is the runtime manifest used by Spicetify.
 
-The listing should not describe the result as released or swapped-out memory. Memory Sentry limits each eligible process's **resident working set**; it does not free or decommit that memory, and commit charge normally stays the same. Trimmed pages usually remain cached in RAM and can return through a soft page fault, while modified private pages may later be written to the pagefile under memory pressure.
+Before submitting or updating the listing:
 
-The separate server process exposes its API only on loopback, uses an internal per-install token, validates Spotify's HTTPS Origin and loopback Host header, and writes recovery data before changing process limits. Automatic mode gives Audio-role processes a fixed 36 MB ceiling without adaptive adjustments; manual mode uses 36 MB as the default and supports persistent role-wide overrides that survive Spotify restarts and PID changes. Original limits are backed up for each process instance. The server refuses unsafe removal if recovery cannot be confirmed. Logs and metrics remain on the PC.
+1. Verify that the repository topic remains `spicetify-apps`.
+2. Keep the root manifest preview set to `assets/marketplace-cover.svg` and the README banner at `assets/readme-banner.svg`.
+3. State the Windows 10/11 x64 requirement and separate server requirement in the listing description.
+4. Publish only the official Setup EXE and its SHA-256 checksum; do not add a separate Marketplace build or portable installer.
+5. Validate installation, missing-server behavior, upgrade, recovery, and uninstall on Windows 10 and Windows 11 desktop systems.
 
-## Listing readiness
+The topic makes the repository eligible for Marketplace discovery; it does not mean the Marketplace has indexed or approved the listing.
 
-The official Marketplace publisher guide requires a public repository, the exact repository topic `spicetify-apps`, and a valid root `manifest.json` with a preview image and README. This repository keeps that root metadata separate from `app/manifest.json`, which is the runtime manifest used by Spicetify.
-
-Before the Marketplace index can discover this repository:
-
-1. Add the repository topic `spicetify-apps` in GitHub's repository About/Topics settings.
-2. Keep the root `manifest.json` preview set to `assets/marketplace-cover.svg`. The square cover, rectangular README preview, and README banner are standalone SVG files in `assets/`; inline raster fragments are embedded in the SVGs, so no separate PNG files are required.
-3. Keep the separate server requirement and Windows 10/11 limitation explicit in the listing description.
-4. Publish one official Setup EXE and its SHA-256 checksum; do not publish a separate Marketplace build or custom portable installer.
-5. Test the missing-server dashboard, the one supported Setup flow, upgrade, and uninstall on Windows 10 and Windows 11.
-
-Adding the topic makes the repository eligible for Marketplace discovery; it does not mean Marketplace has already indexed or approved the app. The Marketplace entry cannot install Memory Sentry and does not replace the official Setup EXE.
-
-Official publishing guide: https://github.com/spicetify/marketplace/wiki/Publishing-to-Marketplace
+Official guide: https://github.com/spicetify/marketplace/wiki/Publishing-to-Marketplace

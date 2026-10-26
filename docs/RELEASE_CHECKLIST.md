@@ -8,8 +8,8 @@ Do not call the release stable until all required real-desktop tests are complet
 - [ ] Windows x64 build succeeds for x86_64-pc-windows-msvc.
 - [ ] Inno Setup compiles the per-user setup executable in CI.
 - [ ] Only the official Setup EXE and its SHA-256 checksum are uploaded and independently verified.
-- [ ] Setup version, README and changelog agree.
-- [ ] Marketplace manifest and preview exist, root README is valid and repository topic spicetify-apps is set.
+- [ ] Setup version and the version stated in README agree; the changelog accurately describes the unreleased changes.
+- [ ] Marketplace manifest and preview exist, root README is valid, and the repository topic spicetify-apps is verified.
 - [ ] No Node.js requirement remains for new Rust installs. Any remaining Node dependency is clearly documented as legacy recovery only.
 
 ## Required Windows 10 and Windows 11 desktop validation
@@ -36,4 +36,4 @@ Do not call the release stable until all required real-desktop tests are complet
 - [ ] Setup EXE and SHA-256 files are attached to the correct release.
 - [ ] Mark v1.0.0-rc.2 as a prerelease; create stable v1.0.0 only after every required Windows 10/11 real-desktop test passes.
 - [ ] Never state the release has no antivirus warnings; the current executable is unsigned.
-- [ ] Add the exact GitHub repository topic `spicetify-apps` manually, then submit the discovery listing. The listing only links to the repository and cannot install Memory Sentry.
+- [ ] Verify the exact GitHub repository topic `spicetify-apps`, then submit the discovery listing. The listing only links to the repository and cannot install Memory Sentry.

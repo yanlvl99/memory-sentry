@@ -2,7 +2,7 @@
 
 **Supported systems: Windows 10 and Windows 11 desktop editions, x64.**
 
-**Spicetify is required by the current release.** Spotify Desktop and Spicetify CLI must be installed for the same Windows user. The plugin is a Spicetify Custom App, while the Memory Sentry server handles Windows process-memory management. This is not a standalone application; a separate no-Spicetify interface could be developed later, but it is not included or supported by the current release.
+**Spicetify is required by the current release.** Spotify Desktop and Spicetify CLI must be installed for the same Windows user. The plugin is a Spicetify Custom App; the separate Memory Sentry server performs Windows process-memory management.
 
 ## The only supported installation method
 
@@ -14,7 +14,7 @@
 6. Setup installs the server, writes its local settings, starts and health-checks the local API, then applies the plugin through `spicetify apply`. Spicetify may restart Spotify automatically.
 7. When Spotify returns, select Memory Sentry in the sidebar. The server is also registered to start at login for the current user.
 
-The **Marketplace entry only links to the project repository** so people can view the source and documentation. It cannot install or download Memory Sentry, and the plugin and server are not distributed through Marketplace. The only supported installation method is the official Setup EXE from GitHub Releases. GitHub-generated source archives are for code review, not installation.
+The **Marketplace entry only links to the project repository**; it does not install or distribute Memory Sentry. The only supported installation method is the official Setup EXE from GitHub Releases. GitHub-generated source archives are for code review, not installation.
 
 ## Upgrade from the Node.js preview
 

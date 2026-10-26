@@ -1,41 +1,43 @@
 # Server migration and release gate
 
+This document tracks the move from the legacy Node.js companion to the native Rust server and the remaining release-validation work. For user-facing installation steps, see [INSTALLATION.md](INSTALLATION.md); for repeatable behavior measurements, see [BENCHMARKING.md](BENCHMARKING.md).
+
 ## Current release-candidate status
 
-The Rust server implements the adaptive policy, Win32 process discovery and working-set calls, a loopback-only dashboard API, an internal per-install token, Windows 10/11 validation, legacy recovery hooks, per-user startup, and recovery-aware upgrade/uninstall commands. Automatic limits apply to Spotify's process tree after the configured background delay; Audio-role processes receive a fixed 36 MB ceiling and are not adaptively adjusted. In manual mode, 36 MB is the Audio default and can be overridden per process role. Role overrides persist across Spotify restarts and PID changes, while original limits are backed up for each process instance. The selected delay is shared by automatic and manual modes. The master dashboard switch disables both modes, stops new limits, and retries any pending restoration. This is a residency change, not a decommit: the process's commit charge normally stays the same, trimmed pages can remain cached in RAM, and dirty private pages may be written to the pagefile later under memory pressure. The exact reduction varies by PC and workload. On very low-end hardware, the window can briefly appear black during restore without that alone proving the page reloaded; test whether the previous UI page and state return, and record any input delay. The full cross-device end-to-end test matrix remains required.
+The Rust companion implements process discovery, Windows working-set operations, the loopback dashboard API, per-install authentication, recovery persistence, per-user startup, and guarded upgrade/uninstall commands. It uses no third-party Rust crates in the current core. New installations do not require Node.js or Koffi; Node.js 22+ may be needed temporarily to recover limits saved by the legacy Node.js version.
 
-The server is the Memory Sentry backend installed by the official per-user Setup EXE. It uses no third-party Rust crates in the current core, so new installations do not require Node.js or Koffi at runtime. Legacy Node recovery is retained to help previous users restore old limits safely.
+Automatic limits apply to Spotify's process tree after the configured background delay. Audio-role processes receive a fixed 36 MB automatic ceiling and are not adaptively adjusted. In manual mode, 36 MB is the Audio default and can be overridden per process role. Role overrides persist across Spotify restarts and PID changes, while original limits are backed up per process instance. The same configured background delay applies in automatic and manual modes.
 
 ## Important safety model
 
-1. Audio-role processes receive the fixed 36 MB automatic ceiling and are excluded from adaptive changes.
-2. Every memory mutation verifies the target process creation timestamp before changing or restoring limits.
-3. Original working-set limits are written to recovery storage before an initial cap is applied.
-4. Recovery records survive failed restoration and block upgrade/uninstall when the running server or recovery state cannot be verified.
-5. The server API binds only to 127.0.0.1, requires an internal token and checks both the Host header and Spotify HTTPS Origin.
-6. The plugin itself does not download or execute the server.
-7. Setup is per-user and does not request elevation or turn off Windows security tools.
-8. Logs stay local and are preserved outside the install directory on uninstall.
+1. Each working-set change verifies the target process creation timestamp before modifying or restoring limits.
+2. Original working-set limits are written to recovery storage before an initial cap is applied.
+3. Failed restoration retains recovery records and can block upgrade or uninstall.
+4. The server API binds only to `127.0.0.1`, requires an internal token, and checks the Host header and Spotify HTTPS Origin.
+5. The plugin does not download or execute the server.
+6. Setup is per-user and does not request elevation or disable Windows security tools.
+7. Logs remain local and are preserved outside the application directory on uninstall.
+
+The master dashboard power switch stops new limits and retries pending restoration while disabled. This recovery design reduces the risk of losing recorded limits, but real Windows desktop testing is still required to validate playback continuity, foreground restoration, startup recovery, and uninstall behavior.
 
 ## Release milestones
 
 - [x] Port the adaptive decision policy with unit tests.
-- [x] Add Win32 working-set, window-state, process-identity and token primitives.
+- [x] Add Win32 working-set, window-state, process-identity, and token primitives.
 - [x] Add a Rust runtime implementation matching the dashboard API.
-- [x] Add setup/uninstall registration and legacy Node recovery workflow.
-- [x] Add CI policy tests and a Windows x64 compile/build job.
-- [x] Verify Inno Setup compiles the per-user setup executable in CI.
-- [x] Run the server's safe `--version` and `--self-test` checks on the Windows runner and build the validation Setup EXE.
+- [x] Add setup/uninstall registration and legacy Node.js recovery.
+- [x] Add CI policy tests and Windows x64 compile/package jobs.
+- [x] Run the safe `--version` and `--self-test` commands on the Windows runner and build the validation Setup EXE.
 - [ ] Test on a real Windows 10 desktop with Spotify and Spicetify installed.
 - [ ] Test on a real Windows 11 desktop with Spotify and Spicetify installed.
-- [ ] Measure audio continuity, RAM reduction, UI restore latency, failed process operations, restart recovery and uninstall.
-- [ ] Verify the Marketplace discovery-only/missing-server screen and the single official Setup EXE path.
-- [ ] Add the spicetify-apps topic and publish a release before submitting the listing for public discovery.
+- [ ] Measure playback continuity, working-set changes, restore-to-interaction latency, failed process operations, restart recovery, and uninstall.
+- [ ] Verify the Marketplace discovery-only/missing-server screen and the official Setup EXE path.
+- [ ] Verify the `spicetify-apps` topic remains set and submit the listing for public discovery.
 
-## Why the MSI is not the first installer
+## Installer format
 
-The current setup uses Inno Setup as a per-user EXE installer. It supports custom pre-install and pre-uninstall recovery checks without requiring Windows Installer custom actions or administrator privileges. An MSI can be considered later, after the per-user registration and rollback flow is validated; making an MSI before that would add packaging complexity without improving the memory-control engine.
+The current installer is a per-user Inno Setup EXE. It supports recovery checks without requiring Windows Installer custom actions or administrator privileges. An MSI can be reconsidered after the registration and rollback flow is fully validated.
 
 ## Antivirus and signing
 
-Rust does not automatically prevent SmartScreen or antivirus warnings. The preview is unsigned and can receive reputation-based warnings. Keep source and build workflows public, publish SHA-256 files, never disable antivirus, and investigate an open-source signing program only after checking its current eligibility and trust model.
+The current release is unsigned and may show SmartScreen or antivirus reputation warnings. Publish SHA-256 checksums, never instruct users to disable security tools, and evaluate code signing only after checking the program's current eligibility and trust model.

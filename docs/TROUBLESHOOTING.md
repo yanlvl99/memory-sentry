@@ -41,13 +41,15 @@ On very low-end PCs, the window can briefly appear black while Spotify's interfa
 
 The dashboard's **Limit restoration duration** measures the server's limit-restoration operation, not the time until Spotify accepts the first input. Page faults may contribute to delay, but the available counters do not identify the cause of a particular event. If the problem persists, turn **Memory Sentry off** with the dashboard power switch to stop both automatic and manual limits, then include local logs plus manually measured restore-to-interaction times in a report. Turning off only **Automatic policy** selects manual mode and does not stop background limits.
 
-## Memory dropped, but commit size or pagefile usage did not
+## Working set dropped, but commit size or pagefile activity did not
 
-This is expected. Memory Sentry limits the **resident working set**, meaning how much of each Spotify process is currently in physical RAM. It does not free or decommit the process's memory. Task Manager's **Memory** column and the dashboard show working-set memory; the **Commit size** column can stay unchanged.
+This can be expected. Memory Sentry limits the **resident working set**—the process memory currently resident in physical RAM—and does not decommit memory. Task Manager's **Memory** column and the dashboard show resident working-set memory; the **Commit size** column reports committed virtual memory and can remain unchanged.
 
-Trimmed pages usually remain cached in RAM on the standby/transition lists and can come back through a soft page fault without disk I/O. Private pages modified by the process may later be written to the pagefile if Windows needs their physical frames for something else, so the pagefile is not bypassed by a special mechanism and committed memory is not reduced. What distinguishes Memory Sentry from one-shot "RAM optimizer" tools is that it applies adaptive ceilings only to Spotify's process tree, gives audio-session processes a fixed 36 MB automatic ceiling, and restores the original limits; it does not claim to release memory that the process still owns.
+Private working set, commit size, and pagefile I/O are different measurements. Pages removed from a working set can remain cached in RAM and return through a soft page fault. Modified private pages may be written to the pagefile later if Windows needs their physical frames, but commit size alone does not show how much data is currently on disk. Use separate system-level counters to measure pagefile I/O.
 
-If hard page faults, pagefile I/O, or restore latency rise sharply on a low-memory PC, the limits may be too aggressive for that machine. Turn **Memory Sentry off** with the dashboard power switch to stop automatic and manual limits, then include the measurements in a report. Turning off only **Automatic policy** switches to manual limits.
+The server applies role-based ceilings only to Spotify's process tree. Audio-role processes receive a fixed 36 MB automatic ceiling and are excluded from adaptive adjustments. Original limits are recorded for recovery; this does not mean that every restore is guaranteed to complete immediately.
+
+If hard faults, pagefile I/O, or restore latency rise sharply on a low-memory PC, the limits may be too aggressive for that machine. Turn **Memory Sentry off** with the dashboard power switch to stop automatic and manual limits, then include the measurements in a report. Turning off only **Automatic policy** selects manual mode and does not stop background limits.
 
 ## Uninstall stops because recovery failed
 
@@ -61,6 +63,6 @@ A new unsigned executable can show a warning even when its source is open. Verif
 
 After uninstall, diagnostic logs that existed are copied to:
 
-%LOCALAPPDATA%\\MemorySentry\\logs
+%LOCALAPPDATA%\MemorySentry\logs
 
 The server does not upload logs or metrics. Review the logs for personal file paths before attaching them to a public issue.

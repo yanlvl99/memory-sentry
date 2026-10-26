@@ -8,88 +8,70 @@
 
 ![Memory Sentry](assets/readme-banner.svg)
 
-Memory Sentry is an open-source utility for managing the resident working set of Spotify Desktop processes while Spotify is running in the background.
+Memory Sentry is an open-source utility for managing the resident working set of Spotify Desktop processes while Spotify runs in the background.
 
-It integrates with Spicetify as a Custom App and uses a separate native Rust companion to manage process memory on Windows.
+**Current release:** `1.0.0-rc.2` — experimental release candidate, not a stable release.
 
-**Status:** Experimental release candidate. Windows 10/11 x64 desktop editions are supported; broader compatibility testing remains in progress.
-
-Memory Sentry is an independent community project, not an official Spotify or Spicetify product.
+The current release requires Spotify Desktop and Spicetify CLI for the same Windows user. The Spicetify Custom App communicates with the Memory Sentry server, which runs as a **separate per-user process** and performs the Windows memory operations. Memory Sentry is an independent community project, not an official Spotify or Spicetify product.
 
 ## Features
 
-- **Automatic policy:** Adjusts working-set ceilings based on process activity and memory usage.
-- **Manual controls:** Configure working-set limits for individual processes.
-- **Audio-aware policy:** Processes assigned to the Audio role use a fixed ceiling in automatic mode.
-- **Process-aware recovery:** Records original working-set limits before applying changes and attempts to restore them when management is disabled or Spotify returns to the foreground.
-- **Persistent configuration:** Supports saved limits across Spotify restarts and changing process IDs.
-- **Local operation:** The companion API listens on loopback, uses a per-install access token, and does not send telemetry.
+- Automatic and manual working-set limits for Spotify processes in the background.
+- Role-based limits with persistent manual role overrides.
+- A master power switch that stops new limits and requests restoration of recorded Windows limits.
+- Local-only dashboard and diagnostics; the server does not upload telemetry.
 
-## How memory management works
+## Policy and controls
 
-Memory Sentry manages a process's **resident working set**: the amount of its memory currently resident in physical RAM.
+Memory Sentry limits the **resident working set**—the amount of process memory currently resident in physical RAM. It does not decommit memory or directly reduce committed memory, and the observed reduction varies by PC and workload.
 
-It does not decommit memory or directly reduce the process's committed memory. The observed reduction varies with the Spotify workload, Windows memory management, and the system's available memory.
+In automatic mode, a ceiling can increase by 8 MB only when CPU usage is at least 10% of one logical processor for **six consecutive seconds** while the process uses its **full current working-set ceiling**. A ceiling can decrease by 4 MB after CPU remains at or below 3% and the process has at least 6 MB of working-set headroom for **ten seconds**. Adjustments have an eight-second cooldown and role-specific limits. Main's automatic ceiling is capped at 36 MB; Audio uses a fixed 36 MB ceiling and is not adaptively adjusted.
 
-Lower working-set limits can increase page faults and make Spotify slower to respond when brought back into the foreground. Aggressive limits may cause glitches or process failures.
+In manual mode, role defaults are Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB, and Crashpad 16 MB. A manual limit below the process role's default requires a **five-second warning countdown** and explicit confirmation.
 
-The dashboard provides controls to disable memory management. The companion also includes recovery handling for previously recorded process limits.
+The **same configured background delay applies in both modes**. The **dashboard power switch is the master on/off control**: disabling Memory Sentry stops new limits and requests restoration of original limits. If restoration cannot be confirmed immediately, pending recovery data is retained for retry.
 
 ## Requirements
 
 - Windows 10 or Windows 11 desktop edition, x64.
-- Spotify Desktop.
-- Spicetify CLI installed for the same Windows user.
+- Spotify Desktop and Spicetify CLI installed for the same Windows user.
 
-macOS, Linux, Windows ARM64, and Windows Server are not supported by this release.
+Windows Server, Windows ARM64, macOS, and Linux are not supported by this release.
 
 ## Installation
 
-1. Open the [GitHub Releases page](https://github.com/yanlvl99/spicetify-memory-sentry/releases).
-2. Download **Memory Sentry Setup** and the SHA-256 checksum published with the same release.
-3. Verify the checksum before running the installer.
-4. Run Setup as your normal Windows user, without administrator privileges.
-5. Once installation completes, open Spotify and select **Memory Sentry** from the sidebar.
+Download **Memory Sentry Setup** and the matching SHA-256 checksum from the [official GitHub Releases page](https://github.com/yanlvl99/spicetify-memory-sentry/releases), verify the checksum, and follow the [Installation Guide](docs/INSTALLATION.md). The official per-user Setup EXE is the only supported installation method. The Marketplace entry only links to the project repository; it does not install or distribute the server.
 
-Setup installs the companion and registers the Spicetify Custom App. Spicetify may refresh or restart Spotify during installation.
-
-**Marketplace listing:** The Marketplace entry provides project discovery and links to this repository. It does not distribute or install the companion. The official Setup executable from GitHub Releases is the supported installation method.
-
-A checksum verifies file integrity, not publisher identity. The current release is unsigned, so Windows security or reputation warnings may still appear. Do not bypass such warnings blindly.
+No unsigned release can guarantee zero SmartScreen warnings. This release is unsigned, and a checksum verifies file integrity—not publisher identity. Do not disable security tools or blindly bypass warnings.
 
 ## Testing and project status
 
-The CI workflow checks package metadata and JavaScript syntax, runs Rust policy unit tests on Linux and Windows, and builds the Windows x64 companion and setup package.
+CI validates package metadata and JavaScript syntax, runs platform-independent Rust policy tests on Linux and Windows, and builds the Windows x64 companion and setup package. These checks do not constitute an end-to-end test of Spotify playback, foreground restoration, or compatibility across desktop systems.
 
-These checks validate specific parts of the project; they do not constitute a complete end-to-end test of Spotify playback, foreground restoration, or compatibility across Windows systems.
-
-The broader desktop test matrix remains incomplete. Results may vary by hardware, Spotify workload, and Windows configuration. The project should therefore be treated as experimental rather than as a stable, universally validated memory-management solution.
+The broader Windows 10/11 desktop test matrix remains incomplete. Results may vary by hardware, Spotify workload, and Windows configuration, so the project remains experimental.
 
 ## Development
 
-Install Node.js 22+ and a stable Rust toolchain to run the repository's package checks and Rust tests:
+Install Node.js 22+ and a stable Rust toolchain to run package checks and policy tests:
 
     node tests/validate-package.js
     cargo test --manifest-path native/rust/Cargo.toml --locked
 
-For Windows companion builds, installation packaging, and development details, see the [Development Guide](docs/DEVELOPMENT.md).
+For Windows companion builds and packaging, see the [Development Guide](docs/DEVELOPMENT.md). For repeatable performance measurements, see [Benchmarking](docs/BENCHMARKING.md).
 
 ## Security and privacy
 
-Memory Sentry is designed to operate locally. Its companion API binds to `127.0.0.1` and requires an internal per-install token. Settings, recovery data, and diagnostic logs are stored on the computer.
+The companion API binds to `127.0.0.1` and requires an internal per-install token. Settings, recovery data, and diagnostic logs are stored locally. Upgrade and uninstall procedures include recovery checks and may stop rather than remove files when restoration cannot be confirmed.
 
-Upgrade and uninstall procedures include recovery checks. When restoration cannot be confirmed, the installer or uninstaller may stop and preserve recovery data instead of proceeding.
-
-See [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md) for implementation details and limitations.
+See [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md) for details and limitations.
 
 ## Documentation
 
 - [Installation Guide](docs/INSTALLATION.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Benchmarking](docs/BENCHMARKING.md)
 - [Development Guide](docs/DEVELOPMENT.md)
-- [Security Policy](SECURITY.md)
-- [Privacy](PRIVACY.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Server migration and release gate](docs/RUST-MIGRATION.md)
 - [Changelog](CHANGELOG.md)
 
 ## License
