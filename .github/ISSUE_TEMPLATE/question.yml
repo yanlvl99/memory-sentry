@@ -53,7 +53,7 @@ body:
     id: question
     attributes:
       label: Your question
-      description: What are you trying to do, and where are you stuck?
+      description: What are you trying to do, and where are you stuck? For behavior questions, include whether Memory Sentry is on, automatic or manual mode, and the selected background delay.
     validations:
       required: true
 
@@ -70,7 +70,8 @@ body:
     attributes:
       label: Logs and error messages
       description: |
-        Paste relevant errors and `%LOCALAPPDATA%\SpicetifyMemorySentry\logs\startup.log` entries.
+        Paste relevant errors and logs from `%LOCALAPPDATA%\SpicetifyMemorySentry\logs`:
+        `setup.log` for setup/configuration, `startup.log` for launch, or `helper.log` for runtime issues.
       render: text
     validations:
       required: false
