@@ -32,12 +32,12 @@ const MSS_TEXT = {
     noneDetected: 'No eligible processes detected. Open Spotify and wait for process discovery. Memory Sentry will not guess at unknown process identities.',
     lastAdjustment: 'Last adjustment: {time}',
     lastAction: 'Last automatic action: adjusted {count} process(es). Audio processes use a fixed 36 MB ceiling.',
-    behavior: 'Memory policy', active: 'Automatic policy enabled', autoExplanation: 'When enabled, limits apply after Spotify is minimized, hidden, or moved behind another window. Main never exceeds 36 MB; Audio stays fixed at 36 MB. Turn this off to use manual mode and set a limit per process.',
-    manualMode: 'Manual mode', manualExplanation: 'Role defaults are applied after the selected delay when Spotify is minimized, hidden, or in the background: Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB, Crashpad 16 MB. Your per-process values override these defaults. Original limits are restored in the foreground.',
+    behavior: 'Memory policy', active: 'Automatic policy enabled', autoExplanation: 'When enabled, limits apply after Spotify is minimized, hidden, or moved behind another window. Main never exceeds 36 MB; Audio stays fixed at 36 MB. Turn this off to use manual mode and set a limit for each process role.',
+    manualMode: 'Manual mode', manualExplanation: 'Role defaults are applied after the selected delay when Spotify is minimized, hidden, or in the background: Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB, Crashpad 16 MB. A manual value is saved per role and applies to matching Spotify processes, even after Spotify restarts and their PIDs change. Original limits are captured and restored separately for each process instance.',
     delay: 'Delay after leaving foreground', delayExplanation: 'Wait this long before applying limits in automatic or manual mode, avoiding brief background changes.', backgroundSettings: 'Background behavior', backgroundSettingsHint: 'These options are shared by automatic and manual modes.',
-    manualLimit: 'Manual limit (MB)', manualCurrent: 'Default for background: {value} MB', manualActive: 'Manual limit active: {value} MB', manualConfigured: 'Saved for background: {value} MB',
+    manualLimit: 'Shared role limit (MB)', manualCurrent: 'Default for background: {value} MB', manualActive: 'Manual limit active: {value} MB', manualConfigured: 'Saved for this role: {value} MB',
     lowLimitWarning: 'The requested {capMB} MB limit is below this process default ({defaultMB} MB) and may cause slowdowns, glitches, or failures. Review the risk before continuing. You can proceed in {seconds} seconds.',
-    lowLimitTitle: 'Low limit warning · {role} PID {pid}', waitBeforeApply: 'Wait {seconds}s…', confirmLowLimit: 'Apply lower limit', cancel: 'Cancel', limitRange: 'Enter a whole number from 8 to 512 MB.', limitApplied: 'Manual limit applied for the background state.', limitSavedForBackground: 'Manual limit saved; it will apply when Spotify leaves the foreground.', limitCleared: 'Custom override removed; the role default will apply in the background.', saveBeforeManual: 'Manual controls activate after the automatic policy is saved as off.',
+    lowLimitTitle: 'Low limit warning · {role} PID {pid}', waitBeforeApply: 'Wait {seconds}s…', confirmLowLimit: 'Apply lower limit', cancel: 'Cancel', limitRange: 'Enter a whole number from 8 to 512 MB.', limitApplied: 'Shared role limit applied for the background state.', limitSavedForBackground: 'Shared role limit saved; it will apply when Spotify leaves the foreground.', limitCleared: 'Saved role limit removed; role defaults will apply in the background.', saveBeforeManual: 'Manual controls activate after the automatic policy is saved as off.',
     releaseMode: 'Memory release', releaseCeiling: 'Release only down to the ceiling', releaseAggressive: 'Release as much as possible',
     releaseModeExplanation: 'Ceiling mode avoids a forced trim. Aggressive mode also requests a one-time trim when applying a manual limit or lowering an automatic ceiling.',
     debugMode: 'Debug mode', debugHint: 'Shows diagnostics: telemetry cards, activity log and per-process details.',
@@ -68,12 +68,12 @@ const MSS_TEXT = {
     noneDetected: 'Nenhum processo elegível detectado. Abra o Spotify e aguarde a descoberta dos processos. O Memory Sentry não tenta adivinhar identidades de processos desconhecidos.',
     lastAdjustment: 'Último ajuste: {time}',
     lastAction: 'Última ação automática: ajustou {count} processo(s). O áudio usa um teto fixo de 36 MB.',
-    behavior: 'Política de memória', active: 'Política automática ativada', autoExplanation: 'Quando ativada, os limites são aplicados após minimizar, ocultar ou colocar o Spotify em segundo plano. Main não passa de 36 MB; o Áudio fica fixo em 36 MB. Desative para usar o modo manual e definir um limite por processo.',
-    manualMode: 'Modo manual', manualExplanation: 'Os padrões por função são aplicados após o atraso selecionado quando o Spotify está minimizado, oculto ou em segundo plano: Main/Áudio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB e Crashpad 16 MB. Seus valores individuais substituem esses padrões. Os limites originais são restaurados quando o Spotify volta ao primeiro plano.',
+    behavior: 'Política de memória', active: 'Política automática ativada', autoExplanation: 'Quando ativada, os limites são aplicados após minimizar, ocultar ou colocar o Spotify em segundo plano. Main não passa de 36 MB; o Áudio fica fixo em 36 MB. Desative para usar o modo manual e definir limites por função do processo.',
+    manualMode: 'Modo manual', manualExplanation: 'Os padrões por função são aplicados após o atraso selecionado quando o Spotify está minimizado, oculto ou em segundo plano: Main/Áudio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB e Crashpad 16 MB. O limite manual é salvo por função e aplicado aos processos Spotify correspondentes, inclusive após reiniciar o Spotify e os PIDs mudarem. Os limites originais são capturados e restaurados separadamente para cada instância.',
     delay: 'Atraso após sair do primeiro plano', delayExplanation: 'Aguarda esse tempo antes de aplicar limites nos modos automático ou manual, evitando mudanças rápidas para segundo plano.', backgroundSettings: 'Comportamento em segundo plano', backgroundSettingsHint: 'Estas opções são compartilhadas pelos modos automático e manual.',
-    manualLimit: 'Limite manual (MB)', manualCurrent: 'Padrão em segundo plano: {value} MB', manualActive: 'Limite manual ativo: {value} MB', manualConfigured: 'Salvo para segundo plano: {value} MB',
+    manualLimit: 'Limite compartilhado da função (MB)', manualCurrent: 'Padrão em segundo plano: {value} MB', manualActive: 'Limite manual ativo: {value} MB', manualConfigured: 'Salvo para esta função: {value} MB',
     lowLimitWarning: 'O limite solicitado de {capMB} MB é menor que o padrão deste processo ({defaultMB} MB) e pode causar lentidão, falhas visuais ou erros. Revise o risco antes de continuar. Você poderá prosseguir em {seconds} segundos.',
-    lowLimitTitle: 'Aviso de limite baixo · {role} PID {pid}', waitBeforeApply: 'Aguarde {seconds}s…', confirmLowLimit: 'Aplicar limite menor', cancel: 'Cancelar', limitRange: 'Digite um número inteiro entre 8 e 512 MB.', limitApplied: 'Limite manual aplicado para o estado em segundo plano.', limitSavedForBackground: 'Limite manual salvo; será aplicado quando o Spotify sair do primeiro plano.', limitCleared: 'Substituição removida; o padrão da função será aplicado em segundo plano.', saveBeforeManual: 'Os controles manuais serão liberados após salvar a política automática como desativada.',
+    lowLimitTitle: 'Aviso de limite baixo · {role} PID {pid}', waitBeforeApply: 'Aguarde {seconds}s…', confirmLowLimit: 'Aplicar limite menor', cancel: 'Cancelar', limitRange: 'Digite um número inteiro entre 8 e 512 MB.', limitApplied: 'Limite compartilhado da função aplicado em segundo plano.', limitSavedForBackground: 'Limite compartilhado da função salvo; será aplicado quando o Spotify sair do primeiro plano.', limitCleared: 'Limite salvo da função removido; os padrões serão aplicados em segundo plano.', saveBeforeManual: 'Os controles manuais serão liberados após salvar a política automática como desativada.',
     releaseMode: 'Liberação de memória', releaseCeiling: 'Libera somente até o teto', releaseAggressive: 'Libera o máximo possível',
     releaseModeExplanation: 'O modo teto evita uma liberação forçada. O modo agressivo também solicita uma liberação pontual ao aplicar um limite manual ou reduzir um teto automático.',
     debugMode: 'Modo debug', debugHint: 'Mostra diagnósticos: cartões de telemetria, log de atividade e detalhes por processo.',
@@ -443,6 +443,13 @@ function MSSApp() {
       await MSSRequest('/api/action', { method: 'POST', body: { action: 'setManualCap', pid: process.pid, creation: process.creation, capMB } });
       const updatedStatus = await MSSRequest('/api/status');
       setStatus(updatedStatus);
+      setManualInputs(previous => {
+        const next = { ...previous };
+        for (const target of updatedStatus.memory?.targets || []) {
+          if (target.role === process.role) next[`${target.pid}:${target.creation}`] = String(capMB);
+        }
+        return next;
+      });
       const background = ['minimized', 'hidden', 'background-visible'].includes(updatedStatus.spotify?.windowState);
       setManualMessage({ text: tx(background ? 'limitApplied' : 'limitSavedForBackground'), error: false });
     } catch (err) {
@@ -475,7 +482,7 @@ function MSSApp() {
     if (!countdownComplete) return;
     confirmedManualWarning.current = warning.readyAt;
     setManualWarning(null);
-    void applyManualLimit({ pid: warning.pid, creation: warning.creation }, warning.capMB);
+    void applyManualLimit({ pid: warning.pid, creation: warning.creation, role: warning.role }, warning.capMB);
   }
   async function requestManualLimit(process, key, capMB, previousValue) {
     const defaultMB = Number(process.defaultLimitMB);
@@ -505,8 +512,15 @@ function MSSApp() {
       manualApplyTimers.current.delete(key);
       manualInputOrigins.current.delete(key);
       await MSSRequest('/api/action', { method: 'POST', body: { action: 'clearManualCap', pid: process.pid, creation: process.creation } });
-      setStatus(await MSSRequest('/api/status'));
-      setManualInputs(previous => ({ ...previous, [key]: String(process.defaultLimitMB) }));
+      const updatedStatus = await MSSRequest('/api/status');
+      setStatus(updatedStatus);
+      setManualInputs(previous => {
+        const next = { ...previous };
+        for (const target of updatedStatus.memory?.targets || []) {
+          if (target.role === process.role) next[`${target.pid}:${target.creation}`] = String(target.defaultLimitMB);
+        }
+        return next;
+      });
       setManualMessage({ text: tx('limitCleared'), error: false });
     } catch (err) {
       setManualMessage({ text: err?.message || tx('helperApiError'), error: true });
@@ -578,7 +592,7 @@ function MSSApp() {
           h('div', { className: 'mss-memory' }, displayedMemoryMB == null ? '—' : `${MSSFormatMB(displayedMemoryMB)} MB${process.capped ? ` / ${process.limitMB} MB` : ''}`),
           manualReady ? h('div', { className: 'mss-manual-controls' },
             h('label', { className: 'mss-small', htmlFor: `mss-limit-${key}` }, tx('manualLimit')),
-            h('input', { id: `mss-limit-${key}`, className: 'mss-input', type: 'number', min: 8, max: 512, step: 1, value: manualInputs[key] ?? String(defaultMB), disabled: busy || !config.enabled, onChange: event => { const value = event.target.value; setManualInputs(previous => ({ ...previous, [key]: value })); scheduleManualLimit(process, key, value); } }),
+            h('input', { id: `mss-limit-${key}`, className: 'mss-input', type: 'number', min: 8, max: 512, step: 1, value: manualInputs[key] ?? String(process.manualCapMB ?? defaultMB), disabled: busy || !config.enabled, onChange: event => { const value = event.target.value; setManualInputs(previous => ({ ...previous, [key]: value })); scheduleManualLimit(process, key, value); } }),
             h('span', { className: 'mss-small' }, capText)
           ) : null
         );
