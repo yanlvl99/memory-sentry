@@ -32,8 +32,8 @@ body:
       label: Affected area
       multiple: true
       options:
-        - Memory trimming while minimized or hidden
-        - Restore when Spotify becomes visible
+        - Working-set limits while minimized, hidden, or in the background
+        - Restore when Spotify returns to the foreground
         - Playback or audio continuity
         - Local dashboard API
         - Startup at login
@@ -91,11 +91,11 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: Include whether Spotify was visible, minimized, or hidden, and how long the issue took to appear.
+      description: Include the Spotify window state (foreground, visible in background, minimized, or hidden), automatic/manual mode, selected background delay, and how long the issue took to appear.
       placeholder: |
-        1. Start playback
-        2. Minimize Spotify and wait 30 seconds
-        3. ...
+        1. Start playback and note the dashboard power state, policy mode, and delay
+        2. Minimize Spotify and wait for the delay plus time for the issue to appear
+        3. Restore Spotify to the foreground and describe what happened
     validations:
       required: true
 
@@ -132,7 +132,9 @@ body:
     attributes:
       label: Logs and measurements
       description: |
-        Paste relevant entries from `%LOCALAPPDATA%\SpicetifyMemorySentry\logs\startup.log`.
+        Paste relevant files from `%LOCALAPPDATA%\SpicetifyMemorySentry\logs`:
+        `setup.log` for setup/configuration failures, `startup.log` for launch failures,
+        and `helper.log` for runtime events.
         If available, include Task Manager working-set figures before and after the issue.
       render: text
     validations:
