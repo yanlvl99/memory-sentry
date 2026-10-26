@@ -10,9 +10,6 @@
 
 The supported release is **not a standalone Spotify app**. It requires Spotify Desktop and Spicetify CLI installed for the same Windows user. The plugin runs as a Spicetify Custom App; a separate Memory Sentry server performs the Windows process-memory operations. A standalone interface could be added as a future adaptation, but a no-Spicetify installation mode is **not implemented or supported today**. For the supported setup, use the official installer and keep Spicetify installed.
 
-![Memory Sentry: Spotify working-set comparison before and after optimization](assets/readme-preview.svg)
-
-*Illustrative comparison, not a controlled benchmark or a promise of the same RAM reduction on another PC.*
 
 ## Observed memory and restore behavior
 
