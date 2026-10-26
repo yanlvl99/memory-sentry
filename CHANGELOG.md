@@ -15,7 +15,7 @@
 - Add a debug mode toggle to the dashboard: the default view shows only the essential cards, processes and settings, while diagnostics (page faults, restore timing, adjustments, activity log and per-process detail) appear only when debug mode is enabled. The choice is remembered locally.
 - Show distinct dashboard summary metrics for Spotify working-set memory and process-tree count; remove duplicate memory totals and foreground-only active-limit counts.
 - Add a master Memory Sentry switch that stops new limits and retries pending restoration while disabled; use the selected background delay in both automatic and manual modes.
-- Report the local service as `Server` instead of `Rust` in the status payload so the dashboard shows `Server 1.0.0-rc.1`.
+- Report the local service as `Server` instead of `Rust` in the status payload so the dashboard shows `Server 1.0.0-rc.2`.
 
 - Clarify that the supported release requires Spotify Desktop and Spicetify CLI, distinguish the Spicetify Custom App from the native Rust companion, and add dynamic release/version/download/CI/license badges to the README.
 
@@ -29,8 +29,7 @@
 
 ## 1.0.0-rc.1 — Release candidate and installation consolidation
 
-- Restore the Marketplace banner asset expected by package validation; keep all listing artwork derived from the supplied COM/SEM screenshots with restrained SVG sharpening only.
-- Fix the screenshot disclaimer required by validation, and retain explicit references to the original COM.png and SEM.png captures.
+- Replace the former COM/SEM screenshot artwork with the square Marketplace cover, rectangular README preview, and README banner in `assets/`.
 - Consolidate supported distribution to one per-user Setup EXE and its SHA-256 checksum; remove the custom portable installer ZIP and redundant PowerShell/batch installation entry points.
 - Make Marketplace discovery-only in the README, dashboard and installation docs; the same official GitHub Setup is the only supported install method.
 - Align Cargo, runtime and Setup versions on 1.0.0-rc.1 and mark it as a prerelease pending the real-desktop Windows test matrix.
