@@ -57,7 +57,7 @@ body:
     attributes:
       label: Windows version and build
       description: Run `winver` and copy the version and build number.
-      placeholder: e.g. Windows 11 23H2 (22631.4317)
+      placeholder: e.g. Windows 11 24H2 (26100.2033)
     validations:
       required: true
 
@@ -73,7 +73,7 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: List the exact steps that trigger the problem.
+      description: List the exact steps that trigger the problem. For policy/settings issues, include the dashboard power state, automatic/manual mode, selected background delay, and Spotify window state.
       placeholder: |
         1. Open Spotify
         2. Select Memory Sentry in the sidebar
@@ -100,8 +100,9 @@ body:
     attributes:
       label: Logs and error messages
       description: |
-        Paste dashboard or browser-console errors, and the contents of
-        `%LOCALAPPDATA%\SpicetifyMemorySentry\logs\startup.log` if the server fails to start.
+        Paste dashboard or browser-console errors. If relevant, add logs from
+        `%LOCALAPPDATA%\SpicetifyMemorySentry\logs`: `setup.log` for setup/configuration
+        failures, `startup.log` for launch failures, or `helper.log` for runtime events.
       render: text
     validations:
       required: false
