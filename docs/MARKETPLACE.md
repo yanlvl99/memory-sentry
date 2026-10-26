@@ -27,7 +27,7 @@ The official Marketplace publisher guide requires a public repository, the exact
 Before the Marketplace index can discover this repository:
 
 1. Add the repository topic `spicetify-apps` in GitHub's repository About/Topics settings.
-2. Keep the root `manifest.json` preview set to `assets/marketplace-preview-sharp.svg`. The sharpened SVG previews apply a restrained edge filter to the exact `COM.png` and `SEM.png` captures; the original PNGs remain unchanged. `assets/marketplace-banner.svg` uses the same captures and filter, without adding or inventing metrics.
+2. Keep the root `manifest.json` preview set to `assets/marketplace-cover.svg`. The square cover, rectangular README preview, and README banner are standalone SVG files in `assets/`; inline raster fragments are embedded in the SVGs, so no separate PNG files are required.
 3. Keep the separate server requirement and Windows 10/11 limitation explicit in the listing description.
 4. Publish one official Setup EXE and its SHA-256 checksum; do not publish a separate Marketplace build or custom portable installer.
 5. Test the missing-server dashboard, the one supported Setup flow, upgrade, and uninstall on Windows 10 and Windows 11.
