@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Apply role-specific manual defaults after the configured background delay in minimized, hidden, and background-visible states: Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB and Crashpad 16 MB. Restore original limits in the foreground; saved per-process overrides replace only their matching defaults.
+- Apply role-specific manual defaults after the configured background delay in minimized, hidden, and background-visible states: Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB and Crashpad 16 MB. Saved role-wide overrides survive Spotify restarts and PID changes; original limits remain captured per process instance and restored in the foreground.
 - Require a five-second warning countdown and explicit confirmation before applying a manual limit below that process's default; validate manual values on both the dashboard and server.
 - Preserve original-limit recovery for manual changes and restore active limits before policy transitions or when Memory Sentry is disabled.
 - Keep automatic optimization active when Spotify is in the background; restore original limits only when it returns to the foreground.
