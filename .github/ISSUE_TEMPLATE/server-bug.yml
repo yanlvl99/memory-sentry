@@ -1,0 +1,157 @@
+name: Server bug
+description: Report a problem with the Memory Sentry server helper (memory trimming, restore, local API, startup, upgrade, or uninstall).
+title: "[Server] "
+labels: ["bug", "server"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a server issue.
+
+        Before you start:
+        - Install Memory Sentry with the **official installer** from [GitHub Releases](https://github.com/yanlvl99/spicetify-memory-sentry/releases) and keep Spicetify installed.
+        - Search [existing issues](https://github.com/yanlvl99/spicetify-memory-sentry/issues) first.
+        - **Do not delete recovery files, manually bypass an uninstall stop, or run Setup as Administrator** to work around a problem. Report it instead.
+        - For suspected malware or antivirus false positives, use [SECURITY.md](https://github.com/yanlvl99/spicetify-memory-sentry/blob/main/SECURITY.md) instead of this form.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      options:
+        - label: I installed Memory Sentry with the official release installer, as a normal user (not Administrator).
+          required: true
+        - label: Spotify Desktop and Spicetify CLI are installed for the same Windows user.
+          required: true
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - Working-set limits while minimized, hidden, or in the background
+        - Restore when Spotify returns to the foreground
+        - Playback or audio continuity
+        - Local dashboard API
+        - Startup at login
+        - Setup, upgrade, or uninstall
+        - Recovery data or preserved limits
+        - Other server behavior
+    validations:
+      required: true
+
+  - type: input
+    id: memory-sentry-version
+    attributes:
+      label: Memory Sentry version
+      description: Shown in the dashboard, Setup filename, or `memory-sentry-native.exe --version`.
+      placeholder: e.g. 1.0.0-rc.2
+    validations:
+      required: true
+
+  - type: input
+    id: spotify-version
+    attributes:
+      label: Spotify version
+      description: Spotify > Settings > About.
+      placeholder: e.g. 1.2.60.564
+    validations:
+      required: true
+
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version and build
+      description: Run `winver` and copy the version and build number.
+      placeholder: e.g. Windows 10 22H2 (19045.5011)
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      description: CPU, RAM, and whether the PC is low-end or memory-constrained.
+      placeholder: e.g. Intel i5-8250U, 8 GB RAM
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the server problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the Spotify window state (foreground, visible in background, minimized, or hidden), automatic/manual mode, selected background delay, and how long the issue took to appear.
+      placeholder: |
+        1. Start playback and note the dashboard power state, policy mode, and delay
+        2. Minimize Spotify and wait for the delay plus time for the issue to appear
+        3. Restore Spotify to the foreground and describe what happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Cosmetic or minor inconvenience
+        - Noticeable memory or performance regression
+        - Playback or audio interrupted
+        - Spotify state lost or page reloaded
+        - Server or dashboard unavailable
+        - Data or recovery-safety concern
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and measurements
+      description: |
+        Paste relevant files from `%LOCALAPPDATA%\SpicetifyMemorySentry\logs`:
+        `setup.log` for setup/configuration failures, `startup.log` for launch failures,
+        and `helper.log` for runtime events.
+        If available, include Task Manager working-set figures before and after the issue.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or recordings
+      description: Drag and drop images or short videos, especially for black windows, crashes, or visual glitches.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else that may help, such as recent Spotify/Windows updates, security software, or power settings.
+    validations:
+      required: false

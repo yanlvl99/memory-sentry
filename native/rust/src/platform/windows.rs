@@ -30,6 +30,7 @@ impl FileTime {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Default)]
 struct ProcessMemoryCounters {
     cb: u32,
     page_fault_count: u32,
@@ -41,6 +42,15 @@ struct ProcessMemoryCounters {
     quota_non_paged_pool_usage: usize,
     pagefile_usage: usize,
     peak_pagefile_usage: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct ProcessMemoryCountersEx2 {
+    base: ProcessMemoryCounters,
+    private_usage: usize,
+    private_working_set_size: usize,
+    shared_commit_usage: u64,
 }
 
 #[repr(C)]
@@ -87,7 +97,7 @@ extern "system" {
 
 #[link(name = "psapi")]
 extern "system" {
-    fn GetProcessMemoryInfo(process: Handle, counters: *mut ProcessMemoryCounters, size: u32) -> i32;
+    fn GetProcessMemoryInfo(process: Handle, counters: *mut c_void, size: u32) -> i32;
     fn EmptyWorkingSet(process: Handle) -> i32;
 }
 
@@ -96,6 +106,7 @@ extern "system" {
     fn IsWindowVisible(hwnd: Handle) -> i32;
     fn IsIconic(hwnd: Handle) -> i32;
     fn GetForegroundWindow() -> Handle;
+    fn GetWindowThreadProcessId(hwnd: Handle, process_id: *mut u32) -> u32;
 }
 
 #[link(name = "bcrypt")]
@@ -108,6 +119,19 @@ extern "system" {
     fn RtlGetVersion(info: *mut RtlOsVersionInfoExW) -> i32;
 }
 
+#[link(name = "ole32")]
+extern "system" {
+    fn CoInitializeEx(reserved: *mut c_void, coinit: u32) -> i32;
+    fn CoUninitialize();
+    fn CoCreateInstance(
+        rclsid: *const Guid,
+        outer: *mut c_void,
+        class_context: u32,
+        iid: *const Guid,
+        out: *mut *mut c_void,
+    ) -> i32;
+}
+
 #[derive(Clone, Debug)]
 pub struct ProcessRow {
     pub pid: u32,
@@ -117,6 +141,7 @@ pub struct ProcessRow {
     pub cpu_time_ms: f64,
     pub cpu_percent: Option<f64>,
     pub working_set_mb: Option<f64>,
+    pub private_working_set_mb: Option<f64>,
     pub private_mb: Option<f64>,
     pub page_fault_count: Option<u64>,
     pub page_faults_delta: Option<u64>,
@@ -148,6 +173,7 @@ pub struct NativeStats {
     pub creation: u64,
     pub cpu_time_ms: f64,
     pub working_set_mb: f64,
+    pub private_working_set_mb: Option<f64>,
     pub page_fault_count: u64,
 }
 
@@ -185,31 +211,47 @@ fn process_times(handle: Handle) -> Result<(u64, f64), String> {
     Ok((creation.value(), cpu_ticks as f64 / 10_000.0))
 }
 
-fn process_stats_with_handle(handle: Handle) -> Result<(f64, u64), String> {
+fn process_stats_with_handle(handle: Handle) -> Result<(f64, Option<f64>, u64), String> {
     let mut counters = ProcessMemoryCounters {
         cb: std::mem::size_of::<ProcessMemoryCounters>() as u32,
-        page_fault_count: 0,
-        peak_working_set_size: 0,
-        working_set_size: 0,
-        quota_peak_paged_pool_usage: 0,
-        quota_paged_pool_usage: 0,
-        quota_peak_non_paged_pool_usage: 0,
-        quota_non_paged_pool_usage: 0,
-        pagefile_usage: 0,
-        peak_pagefile_usage: 0,
+        ..ProcessMemoryCounters::default()
     };
     let ok = unsafe {
         GetProcessMemoryInfo(
             handle,
-            &mut counters,
+            &mut counters as *mut _ as *mut c_void,
             std::mem::size_of::<ProcessMemoryCounters>() as u32,
         )
     };
     if ok == 0 {
         return Err(format!("GetProcessMemoryInfo failed with Win32 error {}", last_error()));
     }
+
+    let mut extended = ProcessMemoryCountersEx2 {
+        base: counters,
+        ..ProcessMemoryCountersEx2::default()
+    };
+    extended.base.cb = std::mem::size_of::<ProcessMemoryCountersEx2>() as u32;
+    let extended_ok = unsafe {
+        GetProcessMemoryInfo(
+            handle,
+            &mut extended as *mut _ as *mut c_void,
+            std::mem::size_of::<ProcessMemoryCountersEx2>() as u32,
+        )
+    } != 0;
+    let working_set_size = if extended_ok {
+        extended.base.working_set_size
+    } else {
+        counters.working_set_size
+    };
+    let private_working_set_mb = if extended_ok && extended.private_working_set_size > 0 {
+        Some(extended.private_working_set_size as f64 / (1024.0 * 1024.0))
+    } else {
+        None
+    };
     Ok((
-        counters.working_set_size as f64 / (1024.0 * 1024.0),
+        working_set_size as f64 / (1024.0 * 1024.0),
+        private_working_set_mb,
         counters.page_fault_count as u64,
     ))
 }
@@ -218,8 +260,8 @@ pub fn inspect_process(pid: u32) -> Result<NativeStats, String> {
     let handle = open_process(pid, PROCESS_QUERY_INFORMATION)?;
     let result = (|| {
         let (creation, cpu_time_ms) = process_times(handle)?;
-        let (working_set_mb, page_fault_count) = process_stats_with_handle(handle)?;
-        Ok(NativeStats { creation, cpu_time_ms, working_set_mb, page_fault_count })
+        let (working_set_mb, private_working_set_mb, page_fault_count) = process_stats_with_handle(handle)?;
+        Ok(NativeStats { creation, cpu_time_ms, working_set_mb, private_working_set_mb, page_fault_count })
     })();
     unsafe { CloseHandle(handle); }
     result
@@ -316,7 +358,24 @@ pub fn restore_working_set_limits(
     result
 }
 
-pub fn window_state(hwnd: usize, has_processes: bool) -> String {
+pub fn foreground_process_id() -> Option<u32> {
+    let foreground = unsafe { GetForegroundWindow() };
+    if foreground.is_null() {
+        return None;
+    }
+    let mut process_id = 0;
+    let thread_id = unsafe { GetWindowThreadProcessId(foreground, &mut process_id) };
+    if thread_id == 0 || process_id == 0 {
+        None
+    } else {
+        Some(process_id)
+    }
+}
+
+pub fn window_state(hwnd: usize, has_processes: bool, is_foreground: bool) -> String {
+    if is_foreground {
+        return "foreground".to_string();
+    }
     if hwnd == 0 {
         return if has_processes { "window-not-found" } else { "not-running" }.to_string();
     }
@@ -327,11 +386,7 @@ pub fn window_state(hwnd: usize, has_processes: bool) -> String {
     if unsafe { IsWindowVisible(window) } == 0 {
         return "hidden".to_string();
     }
-    if unsafe { GetForegroundWindow() } == window {
-        "foreground".to_string()
-    } else {
-        "background-visible".to_string()
-    }
+    "background-visible".to_string()
 }
 
 pub fn random_token() -> Result<String, String> {
@@ -441,6 +496,7 @@ try {
                 let mut creation = creation_from_wmi;
                 let mut cpu_time_ms = cpu_from_wmi;
                 let mut working_set_mb = (ws > 0.0).then_some(ws / (1024.0 * 1024.0));
+                let mut private_working_set_mb = None;
                 let mut page_fault_count = (parts[7].parse::<u64>().is_ok()).then_some(faults as u64);
                 let mut error_code = 0;
                 if let Ok(native) = inspect_process(pid) {
@@ -448,13 +504,15 @@ try {
                     creation = native.creation;
                     cpu_time_ms = native.cpu_time_ms;
                     working_set_mb = Some(native.working_set_mb);
+                    private_working_set_mb = native.private_working_set_mb;
                     page_fault_count = Some(native.page_fault_count);
                 } else {
                     error_code = -1;
                 }
                 snapshot.processes.push(ProcessRow {
                     pid, ppid, cmd, creation, cpu_time_ms, cpu_percent: None,
-                    working_set_mb, private_mb: (private > 0.0).then_some(private / (1024.0 * 1024.0)),
+                    working_set_mb, private_working_set_mb,
+                    private_mb: (private > 0.0).then_some(private / (1024.0 * 1024.0)),
                     page_fault_count, page_faults_delta: None, error_code,
                 });
             }
@@ -557,4 +615,363 @@ pub fn epoch_millis() -> u64 {
 
 pub fn io_error(error: io::Error) -> String {
     error.to_string()
+}
+
+const COINIT_MULTITHREADED: u32 = 0x0000_0000;
+const CLSCTX_ALL: u32 = 0x17;
+const E_RENDER: i32 = 0;
+const DEVICE_STATE_ACTIVE: u32 = 0x0000_0001;
+const RPC_E_CHANGED_MODE: i32 = 0x8001_0106_u32 as i32;
+const AUDIO_SESSION_STATE_EXPIRED: i32 = 2;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+#[allow(dead_code)]
+struct Guid {
+    data1: u32,
+    data2: u16,
+    data3: u16,
+    data4: [u8; 8],
+}
+
+const CLSID_MM_DEVICE_ENUMERATOR: Guid = Guid {
+    data1: 0xBCDE_0395,
+    data2: 0xE52F,
+    data3: 0x467C,
+    data4: [0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E],
+};
+const IID_IMM_DEVICE_ENUMERATOR: Guid = Guid {
+    data1: 0xA956_64D2,
+    data2: 0x9614,
+    data3: 0x4F35,
+    data4: [0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6],
+};
+const IID_IAUDIO_SESSION_MANAGER2: Guid = Guid {
+    data1: 0x77AA_99A0,
+    data2: 0x1BD6,
+    data3: 0x484F,
+    data4: [0x8B, 0xC7, 0x2C, 0x65, 0x4C, 0x9A, 0x9B, 0x6F],
+};
+const IID_IAUDIO_SESSION_CONTROL2: Guid = Guid {
+    data1: 0xBFB7_FF88,
+    data2: 0x7239,
+    data3: 0x4FC9,
+    data4: [0x8F, 0xA2, 0x07, 0xC9, 0x50, 0xBE, 0x9C, 0x6D],
+};
+
+type QueryInterfaceFn = unsafe extern "system" fn(*mut c_void, *const Guid, *mut *mut c_void) -> i32;
+type AddRefFn = unsafe extern "system" fn(*mut c_void) -> u32;
+type ReleaseFn = unsafe extern "system" fn(*mut c_void) -> u32;
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableUnknown {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+}
+
+#[repr(C)]
+struct UnknownObject {
+    vtable: *const VtableUnknown,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableImmDeviceEnumerator {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    enum_audio_endpoints: unsafe extern "system" fn(
+        *mut c_void,
+        i32,
+        u32,
+        *mut *mut ImmDeviceCollection,
+    ) -> i32,
+}
+
+#[repr(C)]
+struct ImmDeviceEnumerator {
+    vtable: *const VtableImmDeviceEnumerator,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableImmDeviceCollection {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    get_count: unsafe extern "system" fn(*mut c_void, *mut u32) -> i32,
+    item: unsafe extern "system" fn(*mut c_void, u32, *mut *mut ImmDevice) -> i32,
+}
+
+#[repr(C)]
+struct ImmDeviceCollection {
+    vtable: *const VtableImmDeviceCollection,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableImmDevice {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    activate: unsafe extern "system" fn(
+        *mut c_void,
+        *const Guid,
+        u32,
+        *mut c_void,
+        *mut *mut c_void,
+    ) -> i32,
+}
+
+#[repr(C)]
+struct ImmDevice {
+    vtable: *const VtableImmDevice,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableAudioSessionManager2 {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    get_audio_session_control: *const c_void,
+    get_simple_audio_volume: *const c_void,
+    get_session_enumerator:
+        unsafe extern "system" fn(*mut c_void, *mut *mut AudioSessionEnumerator) -> i32,
+}
+
+#[repr(C)]
+struct AudioSessionManager2 {
+    vtable: *const VtableAudioSessionManager2,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableAudioSessionEnumerator {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    get_count: unsafe extern "system" fn(*mut c_void, *mut i32) -> i32,
+    get_session: unsafe extern "system" fn(*mut c_void, i32, *mut *mut AudioSessionControl) -> i32,
+}
+
+#[repr(C)]
+struct AudioSessionEnumerator {
+    vtable: *const VtableAudioSessionEnumerator,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+struct VtableAudioSessionControl2 {
+    query_interface: QueryInterfaceFn,
+    add_ref: AddRefFn,
+    release: ReleaseFn,
+    get_state: unsafe extern "system" fn(*mut c_void, *mut i32) -> i32,
+    get_display_name: *const c_void,
+    set_display_name: *const c_void,
+    get_icon_path: *const c_void,
+    set_icon_path: *const c_void,
+    get_grouping_param: *const c_void,
+    set_grouping_param: *const c_void,
+    register_audio_session_notification: *const c_void,
+    unregister_audio_session_notification: *const c_void,
+    get_session_identifier: *const c_void,
+    get_session_instance_identifier: *const c_void,
+    get_process_id: unsafe extern "system" fn(*mut c_void, *mut u32) -> i32,
+}
+
+#[repr(C)]
+struct AudioSessionControl {
+    vtable: *const VtableAudioSessionControl2,
+}
+
+struct ComPtr<T> {
+    ptr: *mut T,
+}
+
+impl<T> ComPtr<T> {
+    unsafe fn claim(ptr: *mut T) -> Self {
+        debug_assert!(!ptr.is_null());
+        Self { ptr }
+    }
+
+    fn raw(&self) -> *mut c_void {
+        self.ptr.cast()
+    }
+}
+
+impl<T> Drop for ComPtr<T> {
+    fn drop(&mut self) {
+        if self.ptr.is_null() {
+            return;
+        }
+        unsafe {
+            let object = self.ptr.cast::<UnknownObject>();
+            let vtable = (*object).vtable;
+            ((*vtable).release)(self.ptr.cast());
+        }
+    }
+}
+
+fn hresult_error(context: &str, hr: i32) -> String {
+    format!("{context} failed with HRESULT 0x{:08X}", hr as u32)
+}
+
+fn check_hresult(hr: i32, context: &str) -> Result<(), String> {
+    if hr < 0 {
+        Err(hresult_error(context, hr))
+    } else {
+        Ok(())
+    }
+}
+
+unsafe fn query_interface(object: *mut c_void, iid: &Guid) -> Result<*mut c_void, i32> {
+    let base = object.cast::<UnknownObject>();
+    let vtable = (*base).vtable;
+    let mut out: *mut c_void = std::ptr::null_mut();
+    let hr = ((*vtable).query_interface)(object, iid, &mut out);
+    if hr < 0 {
+        return Err(hr);
+    }
+    Ok(out)
+}
+
+unsafe fn collect_device_session_pids(
+    device: &ComPtr<ImmDevice>,
+    pids: &mut Vec<u32>,
+) -> Result<(), String> {
+    let mut manager: *mut c_void = std::ptr::null_mut();
+    check_hresult(
+        ((*(*device.ptr).vtable).activate)(
+            device.raw(),
+            &IID_IAUDIO_SESSION_MANAGER2,
+            CLSCTX_ALL,
+            std::ptr::null_mut(),
+            &mut manager,
+        ),
+        "IMMDevice::Activate(IAudioSessionManager2)",
+    )?;
+    let manager = ComPtr::claim(manager.cast::<AudioSessionManager2>());
+
+    let mut sessions: *mut AudioSessionEnumerator = std::ptr::null_mut();
+    check_hresult(
+        ((*(*manager.ptr).vtable).get_session_enumerator)(manager.raw(), &mut sessions),
+        "IAudioSessionManager2::GetSessionEnumerator",
+    )?;
+    let sessions = ComPtr::claim(sessions);
+
+    let mut count = 0i32;
+    check_hresult(
+        ((*(*sessions.ptr).vtable).get_count)(sessions.raw(), &mut count),
+        "IAudioSessionEnumerator::GetCount",
+    )?;
+
+    for index in 0..count {
+        let mut control: *mut AudioSessionControl = std::ptr::null_mut();
+        let listed =
+            ((*(*sessions.ptr).vtable).get_session)(sessions.raw(), index, &mut control) >= 0;
+        if !listed || control.is_null() {
+            continue;
+        }
+        let control = ComPtr::claim(control);
+        let control2 = match query_interface(control.raw(), &IID_IAUDIO_SESSION_CONTROL2) {
+            Ok(ptr) => ComPtr::claim(ptr.cast::<AudioSessionControl>()),
+            Err(_) => continue,
+        };
+        let mut state = 0i32;
+        let queried = ((*(*control2.ptr).vtable).get_state)(control2.raw(), &mut state) >= 0;
+        if !queried || state == AUDIO_SESSION_STATE_EXPIRED {
+            continue;
+        }
+        let mut pid = 0u32;
+        if ((*(*control2.ptr).vtable).get_process_id)(control2.raw(), &mut pid) < 0 {
+            continue;
+        }
+        if pid != 0 {
+            pids.push(pid);
+        }
+    }
+    Ok(())
+}
+
+unsafe fn collect_audio_session_pids() -> Result<Vec<u32>, String> {
+    let mut enumerator: *mut c_void = std::ptr::null_mut();
+    check_hresult(
+        CoCreateInstance(
+            &CLSID_MM_DEVICE_ENUMERATOR,
+            std::ptr::null_mut(),
+            CLSCTX_ALL,
+            &IID_IMM_DEVICE_ENUMERATOR,
+            &mut enumerator,
+        ),
+        "CoCreateInstance(MMDeviceEnumerator)",
+    )?;
+    let enumerator = ComPtr::claim(enumerator.cast::<ImmDeviceEnumerator>());
+
+    let mut collection: *mut ImmDeviceCollection = std::ptr::null_mut();
+    check_hresult(
+        ((*(*enumerator.ptr).vtable).enum_audio_endpoints)(
+            enumerator.raw(),
+            E_RENDER,
+            DEVICE_STATE_ACTIVE,
+            &mut collection,
+        ),
+        "IMMDeviceEnumerator::EnumAudioEndpoints",
+    )?;
+    let collection = ComPtr::claim(collection);
+
+    let mut device_count = 0u32;
+    check_hresult(
+        ((*(*collection.ptr).vtable).get_count)(collection.raw(), &mut device_count),
+        "IMMDeviceCollection::GetCount",
+    )?;
+
+    let mut pids = Vec::new();
+    for index in 0..device_count {
+        let mut device: *mut ImmDevice = std::ptr::null_mut();
+        check_hresult(
+            ((*(*collection.ptr).vtable).item)(collection.raw(), index, &mut device),
+            "IMMDeviceCollection::Item",
+        )?;
+        let device = ComPtr::claim(device);
+        collect_device_session_pids(&device, &mut pids)?;
+    }
+    pids.sort_unstable();
+    pids.dedup();
+    Ok(pids)
+}
+
+pub fn audio_session_pids() -> Result<Vec<u32>, String> {
+    let hr = unsafe { CoInitializeEx(std::ptr::null_mut(), COINIT_MULTITHREADED) };
+    let owns_initialization = if hr >= 0 {
+        true
+    } else if hr == RPC_E_CHANGED_MODE {
+        false
+    } else {
+        return Err(hresult_error("CoInitializeEx", hr));
+    };
+    let result = unsafe { collect_audio_session_pids() };
+    if owns_initialization {
+        unsafe { CoUninitialize(); }
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audio_session_pids_enumerates_without_panicking() {
+        let result = audio_session_pids();
+        match &result {
+            Ok(pids) => println!("audio session pids: {pids:?}"),
+            Err(error) => println!("audio session discovery unavailable: {error}"),
+        }
+        if let Ok(pids) = result {
+            assert!(pids.windows(2).all(|pair| pair[0] <= pair[1]));
+        }
+    }
 }

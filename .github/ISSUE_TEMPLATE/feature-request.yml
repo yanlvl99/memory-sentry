@@ -1,0 +1,69 @@
+name: Feature request
+description: Suggest an improvement or a new capability for Memory Sentry.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement.
+
+        Before you start:
+        - Search [existing issues](https://github.com/yanlvl99/spicetify-memory-sentry/issues) first.
+        - Keep the scope realistic: the supported release is Windows 10/11 x64 desktop with Spotify Desktop and Spicetify CLI. Standalone no-Spicetify mode and macOS/Linux are not implemented.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Dashboard or plugin UI
+        - Memory policy or trim/restore behavior
+        - Server behavior
+        - Setup, upgrade, or uninstall
+        - Documentation
+        - Build or development workflow
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What limitation or frustration should this feature address?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior or interface you would like.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing workarounds or other approaches you have tried.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Mockups, examples, or related issues.
+    validations:
+      required: false

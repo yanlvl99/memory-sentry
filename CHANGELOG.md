@@ -2,11 +2,26 @@
 
 ## Unreleased
 
+- Apply role-specific manual defaults after the configured background delay in minimized, hidden, and background-visible states: Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB and Crashpad 16 MB. Saved role-wide overrides survive Spotify restarts and PID changes; original limits remain captured per process instance and restored in the foreground.
+- Require a five-second warning countdown and explicit confirmation before applying a manual limit below that process's default; validate manual values on both the dashboard and server.
+- Preserve original-limit recovery for manual changes and restore active limits before policy transitions or when Memory Sentry is disabled.
+- Keep automatic optimization active when Spotify is in the background; restore original limits only when it returns to the foreground.
+- Cap Main at 36 MB automatically and apply a fixed 36 MB ceiling to Audio processes, whether Spotify hosts audio in Main or moves it to a separate process.
+- Raise automatic ceilings only when high CPU and full use of the current working-set ceiling persist together for six seconds; high CPU alone no longer requests more memory.
+- Switch the dashboard's debug mode control to the Spicetify Toggle component, keeping the previous button as a fallback when the component is unavailable.
+- Validate Core Audio session discovery and the dashboard Toggle component in the package checks.
+- Add a release mode setting so trimming can release memory only down to the current ceiling (default) or as much unused memory as possible, selectable from the dashboard.
+- Add a `--swap <exe>` server command and `scripts/swap-server.ps1` so a new server build replaces the running one while Spotify and the plugin stay open.
+- Add a debug mode toggle to the dashboard: the default view shows only the essential cards, processes and settings, while diagnostics (page faults, restore timing, adjustments, activity log and per-process detail) appear only when debug mode is enabled. The choice is remembered locally.
+- Show distinct dashboard summary metrics for Spotify working-set memory and process-tree count; remove duplicate memory totals and foreground-only active-limit counts.
+- Add a master Memory Sentry switch that stops new limits and retries pending restoration while disabled; use the selected background delay in both automatic and manual modes.
+- Report the local service as `Server` instead of `Rust` in the status payload so the dashboard shows `Server 1.0.0-rc.2`.
+
 - Clarify that the supported release requires Spotify Desktop and Spicetify CLI, distinguish the Spicetify Custom App from the native Rust companion, and add dynamic release/version/download/CI/license badges to the README.
 
 - Convert the README's privacy, security, installation, troubleshooting and migration references into working relative Markdown links; fix the development guide's same-directory documentation links.
 
-- Clarify that substantial resident-memory reduction while Spotify is minimized/hidden is the intended behavior across supported Windows 10/11 x64 desktop PCs, while actual savings vary by machine and workload.
+- Clarify that substantial resident-memory reduction while Spotify is minimized, hidden, or in the background is the intended behavior across supported Windows 10/11 x64 desktop PCs, while actual savings vary by machine and workload.
 - Document the approximately 40 MB initial and 100 MB settled combined Spotify working-set figures as observations from one setup, not guaranteed memory targets.
 - Explain that a very low-end PC can briefly show a black window during restore without that alone proving the page reloaded; verify whether the previous UI state returns.
 - Move the Task Manager comparison previews near the top of the README and expand restore testing to include playback, UI reload/state retention, black-screen recovery, and first-input latency.
@@ -14,8 +29,7 @@
 
 ## 1.0.0-rc.1 — Release candidate and installation consolidation
 
-- Restore the Marketplace banner asset expected by package validation; keep all listing artwork derived from the supplied COM/SEM screenshots with restrained SVG sharpening only.
-- Fix the screenshot disclaimer required by validation, and retain explicit references to the original COM.png and SEM.png captures.
+- Replace the former COM/SEM screenshot artwork with the square Marketplace cover, rectangular README preview, and README banner in `assets/`.
 - Consolidate supported distribution to one per-user Setup EXE and its SHA-256 checksum; remove the custom portable installer ZIP and redundant PowerShell/batch installation entry points.
 - Make Marketplace discovery-only in the README, dashboard and installation docs; the same official GitHub Setup is the only supported install method.
 - Align Cargo, runtime and Setup versions on 1.0.0-rc.1 and mark it as a prerelease pending the real-desktop Windows test matrix.

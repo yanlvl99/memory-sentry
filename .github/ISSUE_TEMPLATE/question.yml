@@ -1,0 +1,77 @@
+name: Question or support
+description: Ask for help with installation, configuration, or expected behavior.
+title: "[Question] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your question.
+
+        Before you start:
+        - Read [Installation](https://github.com/yanlvl99/spicetify-memory-sentry/blob/main/docs/INSTALLATION.md) and [Troubleshooting](https://github.com/yanlvl99/spicetify-memory-sentry/blob/main/docs/TROUBLESHOOTING.md).
+        - Search [existing issues](https://github.com/yanlvl99/spicetify-memory-sentry/issues) first.
+        - If you found a reproducible defect, use the plugin or server bug form instead.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      options:
+        - label: I read the installation and troubleshooting documentation.
+          required: true
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+
+  - type: input
+    id: memory-sentry-version
+    attributes:
+      label: Memory Sentry version
+      placeholder: e.g. 1.0.0-rc.2
+    validations:
+      required: true
+
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version and build
+      description: Run `winver`.
+      placeholder: e.g. Windows 11 24H2 (26100.2033)
+    validations:
+      required: true
+
+  - type: input
+    id: spotify-spicetify
+    attributes:
+      label: Spotify and Spicetify versions
+      description: Spotify > Settings > About and `spicetify -v`.
+      placeholder: e.g. Spotify 1.2.60.564, Spicetify 2.40.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What are you trying to do, and where are you stuck? For behavior questions, include whether Memory Sentry is on, automatic or manual mode, and the selected background delay.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Steps taken and their results.
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and error messages
+      description: |
+        Paste relevant errors and logs from `%LOCALAPPDATA%\SpicetifyMemorySentry\logs`:
+        `setup.log` for setup/configuration, `startup.log` for launch, or `helper.log` for runtime issues.
+      render: text
+    validations:
+      required: false

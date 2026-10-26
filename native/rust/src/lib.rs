@@ -26,30 +26,43 @@ pub enum ProcessRole {
 }
 
 impl ProcessRole {
-    /// Audio-service processes are excluded from all working-set changes.
+    /// Default ceiling offered by the per-process manual policy.
+    pub fn manual_default_cap_mb(self) -> u32 {
+        match self {
+            Self::Main | Self::Audio => 36,
+            Self::Gpu | Self::Renderer => 28,
+            Self::Utility | Self::Helper => 24,
+            Self::Crashpad => 16,
+        }
+    }
+
+    /// Starting automatic ceiling. Audio is fixed at its baseline and is not adaptive.
     pub fn baseline_cap_mb(self) -> Option<u32> {
         match self {
-            Self::Main => Some(36),
+            Self::Main | Self::Audio => Some(36),
             Self::Gpu | Self::Renderer => Some(28),
             Self::Utility | Self::Helper => Some(24),
             Self::Crashpad => Some(16),
-            Self::Audio => None,
         }
     }
 
     pub fn minimum_cap_mb(self) -> Option<u32> {
-        self.baseline_cap_mb().map(|_| match self {
-            Self::Main => 24,
-            Self::Gpu => 16,
-            Self::Renderer | Self::Utility | Self::Crashpad => 12,
-            Self::Helper => 16,
-            Self::Audio => unreachable!("audio processes have no cap"),
-        })
+        match self {
+            Self::Audio => None,
+            Self::Main => Some(24),
+            Self::Gpu | Self::Helper => Some(16),
+            Self::Renderer | Self::Utility | Self::Crashpad => Some(12),
+        }
     }
 
     pub fn maximum_cap_mb(self) -> Option<u32> {
-        self.baseline_cap_mb()
-            .map(|base| MAX_CAP_MB.min(base.saturating_add(24)))
+        match self {
+            Self::Main => Some(36),
+            Self::Audio => None,
+            _ => self
+                .baseline_cap_mb()
+                .map(|base| MAX_CAP_MB.min(base.saturating_add(24))),
+        }
     }
 }
 
@@ -84,12 +97,20 @@ pub struct Adjustment {
     pub reason: AdjustmentReason,
 }
 
-pub fn estimate_cpu_percent(previous_cpu_ms: u64, current_cpu_ms: u64, elapsed_ms: u64) -> Option<f64> {
+pub fn estimate_cpu_percent(
+    previous_cpu_ms: u64,
+    current_cpu_ms: u64,
+    elapsed_ms: u64,
+) -> Option<f64> {
     if elapsed_ms == 0 || current_cpu_ms < previous_cpu_ms {
         return None;
     }
     let elapsed_cpu = current_cpu_ms.saturating_sub(previous_cpu_ms) as f64;
     Some(((elapsed_cpu / elapsed_ms as f64) * 100.0).clamp(0.0, 100.0))
+}
+
+pub fn working_set_at_ceiling(working_set_mb: f64, ceiling_mb: u32) -> bool {
+    working_set_mb.is_finite() && working_set_mb >= ceiling_mb as f64
 }
 
 /// Produces an advisory next ceiling only. It does not call any Windows API.
@@ -108,7 +129,10 @@ pub fn decide_adjustment(sample: PolicySample) -> Option<Adjustment> {
         return None;
     }
 
-    if sample.cpu_percent >= HIGH_CPU_PERCENT && sample.high_cpu_ms >= HIGH_CPU_DURATION_MS {
+    if sample.cpu_percent >= HIGH_CPU_PERCENT
+        && sample.high_cpu_ms >= HIGH_CPU_DURATION_MS
+        && working_set_at_ceiling(sample.working_set_mb, sample.current_cap_mb)
+    {
         let next = maximum.min(sample.current_cap_mb.saturating_add(INCREASE_STEP_MB));
         return (next > sample.current_cap_mb).then_some(Adjustment {
             next_cap_mb: next,
@@ -153,18 +177,44 @@ mod tests {
     fn main_baseline_and_floor_are_preserved() {
         assert_eq!(ProcessRole::Main.baseline_cap_mb(), Some(36));
         assert_eq!(ProcessRole::Main.minimum_cap_mb(), Some(24));
+        assert_eq!(ProcessRole::Main.maximum_cap_mb(), Some(36));
     }
 
     #[test]
     fn sustained_cpu_increases_ceiling_by_eight() {
         let mut s = sample(ProcessRole::Renderer);
         s.current_cap_mb = 28;
-        s.working_set_mb = 24.0;
+        s.working_set_mb = 28.0;
         s.cpu_percent = 18.0;
         s.high_cpu_ms = 7_000;
         let decision = decide_adjustment(s).expect("expected an increase");
         assert_eq!(decision.next_cap_mb, 36);
         assert_eq!(decision.reason, AdjustmentReason::SustainedHighCpu);
+    }
+
+    #[test]
+    fn high_cpu_below_the_working_set_ceiling_does_not_raise_the_limit() {
+        let mut s = sample(ProcessRole::Renderer);
+        s.current_cap_mb = 28;
+        s.working_set_mb = 27.9;
+        s.cpu_percent = 18.0;
+        s.high_cpu_ms = 20_000;
+        assert_eq!(decide_adjustment(s), None);
+    }
+
+    #[test]
+    fn working_set_must_reach_the_full_ceiling() {
+        assert!(!working_set_at_ceiling(27.99, 28));
+        assert!(working_set_at_ceiling(28.0, 28));
+        assert!(!working_set_at_ceiling(f64::NAN, 28));
+    }
+
+    #[test]
+    fn main_ceiling_cannot_grow_above_thirty_six_megabytes() {
+        let mut s = sample(ProcessRole::Main);
+        s.cpu_percent = 50.0;
+        s.high_cpu_ms = 20_000;
+        assert_eq!(decide_adjustment(s), None);
     }
 
     #[test]
@@ -178,11 +228,21 @@ mod tests {
     }
 
     #[test]
-    fn audio_processes_never_receive_a_ceiling() {
+    fn audio_has_a_fixed_automatic_ceiling_and_is_not_adaptive() {
         let mut s = sample(ProcessRole::Audio);
         s.cpu_percent = 50.0;
         s.high_cpu_ms = 20_000;
+        assert_eq!(ProcessRole::Audio.baseline_cap_mb(), Some(36));
+        assert_eq!(ProcessRole::Audio.minimum_cap_mb(), None);
+        assert_eq!(ProcessRole::Audio.maximum_cap_mb(), None);
         assert_eq!(decide_adjustment(s), None);
+        assert_eq!(ProcessRole::Audio.manual_default_cap_mb(), 36);
+    }
+
+    #[test]
+    fn main_and_audio_manual_defaults_are_thirty_six_megabytes() {
+        assert_eq!(ProcessRole::Main.manual_default_cap_mb(), 36);
+        assert_eq!(ProcessRole::Audio.manual_default_cap_mb(), 36);
     }
 
     #[test]
