@@ -1,14 +1,14 @@
 # Server migration and release gate
 
-## Current preview status
+## Current release-candidate status
 
-The Rust source now contains an adaptive policy, Win32 process discovery and working-set calls, a loopback-only dashboard API, an internal per-install token, Windows 10/11 validation, legacy recovery hooks, per-user startup, and a recovery-aware uninstall command. The intended behavior across supported Windows 10/11 x64 desktop PCs is substantial reduction of Spotify's resident working set while minimized or hidden. This is a residency change, not a decommit: the process's commit charge normally stays the same, trimmed pages can remain cached in RAM, and dirty private pages may be written to the pagefile later under memory pressure. The exact reduction varies by PC and workload. On very low-end hardware, the window can briefly appear black during restore without that alone proving the page reloaded; test whether the previous UI page and state return, and record any input delay. The full cross-device end-to-end test matrix remains required.
+The Rust server implements the adaptive policy, Win32 process discovery and working-set calls, a loopback-only dashboard API, an internal per-install token, Windows 10/11 validation, legacy recovery hooks, per-user startup, and recovery-aware upgrade/uninstall commands. Automatic limits apply to Spotify's process tree after the configured background delay; Audio-role processes receive a fixed 36 MB ceiling and are not adaptively adjusted. In manual mode, 36 MB is the Audio default and can be overridden per process. The selected delay is shared by automatic and manual modes. The master dashboard switch disables both modes, stops new limits, and retries any pending restoration. This is a residency change, not a decommit: the process's commit charge normally stays the same, trimmed pages can remain cached in RAM, and dirty private pages may be written to the pagefile later under memory pressure. The exact reduction varies by PC and workload. On very low-end hardware, the window can briefly appear black during restore without that alone proving the page reloaded; test whether the previous UI page and state return, and record any input delay. The full cross-device end-to-end test matrix remains required.
 
-The server is the Memory Sentry backend for the preview installer. It uses no third-party Rust crates in the current core, so there is no global Node.js/Koffi requirement for new installs. Legacy Node recovery is retained to help previous users restore old limits safely.
+The server is the Memory Sentry backend installed by the official per-user Setup EXE. It uses no third-party Rust crates in the current core, so new installations do not require Node.js or Koffi at runtime. Legacy Node recovery is retained to help previous users restore old limits safely.
 
 ## Important safety model
 
-1. The dedicated Spotify audio-service process is excluded from working-set changes.
+1. Audio-role processes receive the fixed 36 MB automatic ceiling and are excluded from adaptive changes.
 2. Every memory mutation verifies the target process creation timestamp before changing or restoring limits.
 3. Original working-set limits are written to recovery storage before an initial cap is applied.
 4. Recovery records survive failed restoration and block upgrade/uninstall when the running server or recovery state cannot be verified.
