@@ -106,6 +106,7 @@ extern "system" {
     fn IsWindowVisible(hwnd: Handle) -> i32;
     fn IsIconic(hwnd: Handle) -> i32;
     fn GetForegroundWindow() -> Handle;
+    fn GetWindowThreadProcessId(hwnd: Handle, process_id: *mut u32) -> u32;
 }
 
 #[link(name = "bcrypt")]
@@ -357,7 +358,24 @@ pub fn restore_working_set_limits(
     result
 }
 
-pub fn window_state(hwnd: usize, has_processes: bool) -> String {
+pub fn foreground_process_id() -> Option<u32> {
+    let foreground = unsafe { GetForegroundWindow() };
+    if foreground.is_null() {
+        return None;
+    }
+    let mut process_id = 0;
+    let thread_id = unsafe { GetWindowThreadProcessId(foreground, &mut process_id) };
+    if thread_id == 0 || process_id == 0 {
+        None
+    } else {
+        Some(process_id)
+    }
+}
+
+pub fn window_state(hwnd: usize, has_processes: bool, is_foreground: bool) -> String {
+    if is_foreground {
+        return "foreground".to_string();
+    }
     if hwnd == 0 {
         return if has_processes { "window-not-found" } else { "not-running" }.to_string();
     }
@@ -368,11 +386,7 @@ pub fn window_state(hwnd: usize, has_processes: bool) -> String {
     if unsafe { IsWindowVisible(window) } == 0 {
         return "hidden".to_string();
     }
-    if unsafe { GetForegroundWindow() } == window {
-        "foreground".to_string()
-    } else {
-        "background-visible".to_string()
-    }
+    "background-visible".to_string()
 }
 
 pub fn random_token() -> Result<String, String> {
