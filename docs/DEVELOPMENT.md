@@ -4,7 +4,7 @@
 
 - Stable Rust toolchain.
 - Windows 10/11 x64 desktop for full runtime verification.
-- Node.js 22+ only if recovering an earlier Node-based installation or running the legacy JavaScript policy tests.
+- Node.js 22+ for package validation (`node tests/validate-package.js`) and, if needed, recovery of an earlier Node-based installation.
 - Inno Setup 6 to compile the per-user Setup EXE.
 
 ## Validate
