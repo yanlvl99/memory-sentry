@@ -18,7 +18,7 @@ The Marketplace entry only displays the project and links to this GitHub reposit
 
 The listing should not describe the result as released or swapped-out memory. Memory Sentry limits each eligible process's **resident working set**; it does not free or decommit that memory, and commit charge normally stays the same. Trimmed pages usually remain cached in RAM and can return through a soft page fault, while modified private pages may later be written to the pagefile under memory pressure.
 
-The separate server process exposes its API only on loopback, uses an internal per-install token, validates Spotify's HTTPS Origin and loopback Host header, and writes recovery data before changing process limits. Automatic mode gives Audio-role processes a fixed 36 MB ceiling without adaptive adjustments; manual mode uses 36 MB as the default, which can be overridden per process. The server refuses unsafe removal if recovery cannot be confirmed. Logs and metrics remain on the PC.
+The separate server process exposes its API only on loopback, uses an internal per-install token, validates Spotify's HTTPS Origin and loopback Host header, and writes recovery data before changing process limits. Automatic mode gives Audio-role processes a fixed 36 MB ceiling without adaptive adjustments; manual mode uses 36 MB as the default and supports persistent role-wide overrides that survive Spotify restarts and PID changes. Original limits are backed up for each process instance. The server refuses unsafe removal if recovery cannot be confirmed. Logs and metrics remain on the PC.
 
 ## Listing readiness
 
