@@ -35,19 +35,19 @@ A previous version may have working-set-backup.json containing original Win32 li
 
 ## Spotify takes a moment to accept input after being restored
 
-Memory Sentry is designed to substantially reduce Spotify's resident working set while minimized or hidden on supported Windows 10/11 x64 desktop PCs. Actual savings vary by PC and workload.
+Memory Sentry is designed to substantially reduce Spotify's resident working set while minimized, hidden, or in the background on supported Windows 10/11 x64 desktop PCs. Actual savings vary by PC and workload.
 
 On very low-end PCs, the window can briefly appear black while Spotify's interface becomes visible again. **That alone does not prove a reload or loss of state.** Check whether the previous page and UI state return as they were. Input may also take a few seconds to respond after the window is restored. A persistent black screen, lost state, crash, interrupted playback, or unusably long delay is not something to dismiss as normal.
 
-The dashboard's **Limit restoration duration** measures the server's limit-restoration operation, not the time until Spotify accepts the first input. Page faults may contribute to delay, but the available counters do not identify the cause of a particular event. If the problem persists, disable automatic optimization and include local logs plus manually measured restore-to-interaction times in a report.
+The dashboard's **Limit restoration duration** measures the server's limit-restoration operation, not the time until Spotify accepts the first input. Page faults may contribute to delay, but the available counters do not identify the cause of a particular event. If the problem persists, turn **Memory Sentry off** with the dashboard power switch to stop both automatic and manual limits, then include local logs plus manually measured restore-to-interaction times in a report. Turning off only **Automatic policy** selects manual mode and does not stop background limits.
 
 ## Memory dropped, but commit size or pagefile usage did not
 
 This is expected. Memory Sentry limits the **resident working set**, meaning how much of each Spotify process is currently in physical RAM. It does not free or decommit the process's memory. Task Manager's **Memory** column and the dashboard show working-set memory; the **Commit size** column can stay unchanged.
 
-Trimmed pages usually remain cached in RAM on the standby/transition lists and can come back through a soft page fault without disk I/O. Private pages modified by the process may later be written to the pagefile if Windows needs their physical frames for something else, so the pagefile is not bypassed by a special mechanism and committed memory is not reduced. What distinguishes Memory Sentry from one-shot "RAM optimizer" tools is that it applies adaptive limits only to Spotify's process tree, protects audio-service processes, and restores the original limits; it does not claim to release memory that the process still owns.
+Trimmed pages usually remain cached in RAM on the standby/transition lists and can come back through a soft page fault without disk I/O. Private pages modified by the process may later be written to the pagefile if Windows needs their physical frames for something else, so the pagefile is not bypassed by a special mechanism and committed memory is not reduced. What distinguishes Memory Sentry from one-shot "RAM optimizer" tools is that it applies adaptive ceilings only to Spotify's process tree, gives audio-session processes a fixed 36 MB automatic ceiling, and restores the original limits; it does not claim to release memory that the process still owns.
 
-If hard page faults, pagefile I/O, or restore latency rise sharply on a low-memory PC, the limits may be too aggressive for that machine. Disable automatic optimization and include the measurements in a report.
+If hard page faults, pagefile I/O, or restore latency rise sharply on a low-memory PC, the limits may be too aggressive for that machine. Turn **Memory Sentry off** with the dashboard power switch to stop automatic and manual limits, then include the measurements in a report. Turning off only **Automatic policy** switches to manual limits.
 
 ## Uninstall stops because recovery failed
 
