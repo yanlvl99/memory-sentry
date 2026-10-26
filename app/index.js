@@ -12,7 +12,7 @@ const MSS_PT = MSS_LOCALE === 'pt-BR';
 
 const MSS_TEXT = {
   en: {
-    kicker: 'SPICETIFY · WINDOWS MEMORY TOOL · RELEASE CANDIDATE v1.0.0-rc.1', title: 'Memory Sentry',
+    kicker: 'SPICETIFY · WINDOWS MEMORY TOOL · RELEASE CANDIDATE v1.0.0-rc.2', title: 'Memory Sentry',
     intro: 'Choose automatic or per-process manual limits for Spotify in the background. The dashboard power switch turns memory management on or off; original Windows limits are saved before changes and restored when management is disabled or Spotify returns to the foreground.',
     connected: 'Server connected', unavailable: 'Connection unavailable', waiting: 'Waiting for server',
     pluginEnabled: 'Memory Sentry on', pluginDisabled: 'Memory Sentry off', pluginToggleHint: 'Turn memory management on or off; disabling restores original process limits.', pluginDisabledNote: 'Memory Sentry is off. Original limits are restored and no automatic or manual caps will be applied.', pluginActivatedFlash: 'MEMORY SENTRY ACTIVATED', pluginDisabledFlash: 'MEMORY SENTRY DEACTIVATED', pluginDisabledRestoring: 'Memory Sentry is off. It is retrying restoration of the original limits for {count} process(es); no new limits will be applied.',
@@ -48,7 +48,7 @@ const MSS_TEXT = {
     window: { foreground: 'Spotify in foreground', 'background-visible': 'Spotify visible in background', minimized: 'Spotify minimized', hidden: 'Spotify window hidden', 'not-running': 'Spotify is not running', 'window-not-found': 'Spotify found; window not located', 'window-check-error': 'Window state unavailable', 'not-detected': 'Waiting for detection' }
   },
   pt: {
-    kicker: 'SPICETIFY · FERRAMENTA DE RAM PARA WINDOWS · RELEASE CANDIDATE v1.0.0-rc.1', title: 'Memory Sentry',
+    kicker: 'SPICETIFY · FERRAMENTA DE RAM PARA WINDOWS · RELEASE CANDIDATE v1.0.0-rc.2', title: 'Memory Sentry',
     intro: 'Escolha limites automáticos ou manuais por processo para o Spotify em segundo plano. O botão liga/desliga do painel ativa ou desativa o gerenciamento; os limites originais do Windows são salvos antes das alterações e restaurados ao desativar o gerenciamento ou quando o Spotify volta ao primeiro plano.',
     connected: 'Servidor conectado', unavailable: 'Conexão indisponível', waiting: 'Aguardando servidor',
     pluginEnabled: 'Memory Sentry ativado', pluginDisabled: 'Memory Sentry desativado', pluginToggleHint: 'Ativa ou desativa o gerenciamento de memória; ao desativar, restaura os limites originais.', pluginDisabledNote: 'O Memory Sentry está desativado. Os limites originais foram restaurados e nenhum limite será aplicado.', pluginActivatedFlash: 'MEMORY SENTRY ATIVADO', pluginDisabledFlash: 'MEMORY SENTRY DESATIVADO', pluginDisabledRestoring: 'O Memory Sentry está desativado. Tentando restaurar os limites originais de {count} processo(s); nenhum novo limite será aplicado.',
