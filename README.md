@@ -2,30 +2,17 @@
 
 [![Release](https://img.shields.io/github/v/release/yanlvl99/spicetify-memory-sentry?include_prereleases&sort=semver&label=release)](https://github.com/yanlvl99/spicetify-memory-sentry/releases) [![Version](https://img.shields.io/github/v/tag/yanlvl99/spicetify-memory-sentry?include_prereleases&sort=semver&label=version)](https://github.com/yanlvl99/spicetify-memory-sentry/tags) [![Downloads](https://img.shields.io/github/downloads/yanlvl99/spicetify-memory-sentry/total?label=all%20release%20downloads)](https://github.com/yanlvl99/spicetify-memory-sentry/releases) [![Validation](https://github.com/yanlvl99/spicetify-memory-sentry/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/yanlvl99/spicetify-memory-sentry/actions/workflows/validate.yml) [![License](https://img.shields.io/github/license/yanlvl99/spicetify-memory-sentry?label=license)](LICENSE) ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue) ![Status](https://img.shields.io/badge/status-experimental-orange) [![Requires Spicetify](https://img.shields.io/badge/requires-Spicetify-1DB954)](docs/INSTALLATION.md)
 
+![Memory Sentry banner](assets/readme-banner.svg)
+
 **Windows 10 and Windows 11 desktop editions only. Requires Spotify Desktop and Spicetify CLI.** Memory Sentry is an experimental open-source project. Its automatic policy applies process working-set ceilings while Spotify is minimized, hidden, or in the background; Main is capped at 36 MB and Audio processes receive a fixed 36 MB ceiling. Turning off **Automatic policy** selects manual mode, which applies role defaults or saved role-wide limits in the background. A saved role limit follows matching process types when PIDs change between Spotify launches. Original limits remain backed up separately for each process instance. The separate dashboard power switch disables Memory Sentry and restores original Windows limits.
 
 ## Spicetify is required by the current release
 
 The supported release is **not a standalone Spotify app**. It requires Spotify Desktop and Spicetify CLI installed for the same Windows user. The plugin runs as a Spicetify Custom App; a separate Memory Sentry server performs the Windows process-memory operations. A standalone interface could be added as a future adaptation, but a no-Spicetify installation mode is **not implemented or supported today**. For the supported setup, use the official installer and keep Spicetify installed.
 
-## Preview: Task Manager with and without Memory Sentry
+![Memory Sentry: Spotify working-set comparison before and after optimization](assets/readme-preview.svg)
 
-<table>
-  <thead>
-    <tr>
-      <th width="50%">With Memory Sentry</th>
-      <th width="50%">Without Memory Sentry</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><img src="assets/COM-sharp.svg" alt="Task Manager capture with Memory Sentry enabled" width="100%" /></td>
-      <td align="center"><img src="assets/SEM-sharp.svg" alt="Task Manager capture without Memory Sentry" width="100%" /></td>
-    </tr>
-  </tbody>
-</table>
-
-*These previews use the supplied `COM.png` and `SEM.png` captures with restrained SVG sharpening; the original PNG files remain unchanged. This is an illustrative comparison, not a controlled benchmark or a promise of the same RAM reduction on another PC.*
+*Illustrative comparison, not a controlled benchmark or a promise of the same RAM reduction on another PC.*
 
 ## Observed memory and restore behavior
 
@@ -43,7 +30,7 @@ This is not a one-shot "RAM optimizer": automatic mode manages Spotify's process
 
 Windows 10 and Windows 11 may also keep some trimmed pages in memory compression, so the exact mix of standby pages, compressed pages, and pagefile-backed pages depends on the system and memory pressure.
 
-> **1.0.0-rc.1 release candidate — still experimental.** On supported Windows 10/11 x64 desktop PCs, optimization is intended to reduce Spotify's resident memory while minimized, hidden, or in the background; audio processes use a fixed 36 MB ceiling. The amount and restore behavior vary by machine. Very low-end PCs may briefly show a black window during restore; this does not necessarily mean the page reloaded if it returns to the previous state. The full Windows 10/11 release test matrix remains open, so this is not a stable-release claim.
+> **1.0.0-rc.2 release candidate — still experimental.** On supported Windows 10/11 x64 desktop PCs, optimization is intended to reduce Spotify's resident memory while minimized, hidden, or in the background; audio processes use a fixed 36 MB ceiling. The amount and restore behavior vary by machine. Very low-end PCs may briefly show a black window during restore; this does not necessarily mean the page reloaded if it returns to the previous state. The full Windows 10/11 release test matrix remains open, so this is not a stable-release claim.
 
 ## The only supported installation method
 
