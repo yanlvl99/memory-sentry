@@ -35,7 +35,7 @@ Memory Sentry is designed to substantially reduce Spotify's resident working set
 
 On very low-end PCs, the window can briefly appear black while Spotify's interface becomes visible again. **That alone does not prove a reload or loss of state.** Check whether the previous page and UI state return as they were. Input may also take a few seconds to respond after the window is restored. A persistent black screen, lost state, crash, interrupted playback, or unusably long delay is not something to dismiss as normal.
 
-The dashboard's **Limit restoration duration** measures the server's limit-restoration operation, not the time until Spotify accepts the first input. Page faults may contribute to delay, but the available counters do not identify the cause of a particular event. If the problem persists, turn **Memory Sentry off** with the dashboard power switch to stop both automatic and manual limits, then include local logs plus manually measured restore-to-interaction times in a report. Turning off only **Automatic policy** selects manual mode and does not stop background limits.
+The dashboard's **Limit restoration duration** measures the server's limit-restoration operation, not the time until Spotify accepts the first input. Page faults may contribute to delay, but the available counters do not identify the cause of a particular event. If the problem persists, turn **Memory Sentry off** by selecting **Disabled** in the memory mode to stop both automatic and manual limits, then include local logs plus manually measured restore-to-interaction times in a report. Selecting **Manual** only switches policy and does not stop limits.
 
 ## Working set dropped, but commit size or pagefile activity did not
 
@@ -45,7 +45,7 @@ Private working set, commit size, and pagefile I/O are different measurements. P
 
 The server applies role-based ceilings only to Spotify's process tree. Audio-role processes receive a fixed 36 MB automatic ceiling and are excluded from adaptive adjustments. Original limits are recorded for recovery; this does not mean that every restore is guaranteed to complete immediately.
 
-If hard faults, pagefile I/O, or restore latency rise sharply on a low-memory PC, the limits may be too aggressive for that machine. Turn **Memory Sentry off** with the dashboard power switch to stop automatic and manual limits, then include the measurements in a report. Turning off only **Automatic policy** selects manual mode and does not stop background limits.
+If hard faults, pagefile I/O, or restore latency rise sharply on a low-memory PC, the limits may be too aggressive for that machine. Turn **Memory Sentry off** by selecting **Disabled** in the memory mode to stop automatic and manual limits, then include the measurements in a report. Selecting **Manual** only switches policy and does not stop limits.
 
 ## Uninstall stops because recovery failed
 

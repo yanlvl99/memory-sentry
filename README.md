@@ -16,9 +16,10 @@ The current release requires Spotify Desktop and Spicetify CLI for the same Wind
 
 ## Features
 
-- Automatic and manual working-set limits for Spotify processes in the background.
+- Automatic and manual working-set limits for Spotify processes while Spotify is outside the foreground.
+- Choose which window states trigger optimization: window behind another app, minimized, hidden, or any combination of the three.
 - Role-based limits with persistent manual role overrides.
-- A master power switch that stops new limits and requests restoration of recorded Windows limits.
+- A three-state memory mode (Automatic, Manual, Disabled); Disabled stops new limits and requests restoration of recorded Windows limits.
 - Local-only dashboard and diagnostics; the server does not upload telemetry.
 
 ## Policy and controls
@@ -29,7 +30,7 @@ In automatic mode, a ceiling can increase by 8 MB only when CPU usage is at leas
 
 In manual mode, role defaults are Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB, and Crashpad 16 MB. A manual limit below the process role's default requires a **five-second warning countdown** and explicit confirmation.
 
-The **same configured background delay applies in both modes**. The **dashboard power switch is the master on/off control**: disabling Memory Sentry stops new limits and requests restoration of original limits. If restoration cannot be confirmed immediately, pending recovery data is retained for retry.
+The **same configured delay applies in both modes**, and it only starts once Spotify enters a window state you enabled under **Optimize when**. When Spotify returns to the foreground, or enters a state you did not enable, original limits are restored. The **Disabled** mode is the master on/off control: it stops new limits and requests restoration of original limits. If restoration cannot be confirmed immediately, pending recovery data is retained for retry.
 
 ## Requirements
 

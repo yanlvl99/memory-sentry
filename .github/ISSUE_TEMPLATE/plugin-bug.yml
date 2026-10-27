@@ -73,7 +73,7 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: List the exact steps that trigger the problem. For policy/settings issues, include the dashboard power state, automatic/manual mode, selected background delay, and Spotify window state.
+      description: List the exact steps that trigger the problem. For policy/settings issues, include the dashboard memory mode, the enabled trigger states (window behind, minimized, hidden), selected delay, and Spotify window state.
       placeholder: |
         1. Open Spotify
         2. Select Memory Sentry in the sidebar
