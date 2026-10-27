@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Rename the `native/rust` source tree to `server/` (Cargo package `memory-sentry-server`) and use "server" as the product term throughout the code, installer and documentation, describing Rust only as the current implementation language.
+- Rebuild the dashboard as a settings panel: a three-state memory mode (Automatic, Manual, Disabled) above the process list, per-process working-set bars with memory and ceiling on hover, and diagnostics folded into a single section.
 - Let the user choose which window states trigger optimization (window behind another app, minimized, hidden) with independent checkboxes; the server keeps at least one state enabled and falls back to the previous all-background behavior for existing settings files.
 - Detect the Spotify window state by enumerating real top-level windows in the server (`EnumWindows`, with `IsWindowVisible`, `IsIconic` and DWM cloaking) instead of the PowerShell `MainWindowHandle` probe, which cannot see a window hidden in the tray. Minimized-to-tray is now reported as `hidden` reliably on every pass, a leftover window of the same process can no longer keep the state stuck on `foreground`, and each transition logs the window counts behind the decision.
 - Keep the background wait and any active limits while the window state cannot be read, so a momentary `window-not-found` during a tray hide no longer restarts the configured delay.

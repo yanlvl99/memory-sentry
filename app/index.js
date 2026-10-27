@@ -1,9 +1,8 @@
 // Memory Sentry Custom App entry point: mounts the dashboard and guards the bundle.
-// Spicetify concatenates the manifest subfiles before this file, so the token must stay here.
 // The installer replaces __MSS_TOKEN__ with an internal per-install access token.
+// Spicetify concatenates the manifest subfiles before this file, so the token must stay here.
 
 const MSS_TOKEN = '__MSS_TOKEN__';
-
 
 function MSSDebugToggle(value, onChange) {
   const Toggle = Spicetify.ReactComponent && Spicetify.ReactComponent.Toggle;
@@ -17,6 +16,7 @@ function MSSDebugToggle(value, onChange) {
     'aria-label': tx('debugMode')
   });
 }
+
 
 function MSSApp() {
   const R = MSSReact;
@@ -62,17 +62,14 @@ function MSSApp() {
       screenFlashTimer.current = null;
     }, 560);
   }
-  async function togglePluginEnabled(enabled) {
+  async function setMode(mode) {
     if (saving || !helperRunning || typeof status?.config?.enabled !== 'boolean') return;
-    const previousConfig = config;
     setManualWarning(null);
     setManualMessage(null);
-    const saved = await saveSettings({ ...config, enabled: Boolean(enabled) });
-    if (!saved) {
-      setConfig(previousConfig);
-      return;
-    }
-    showScreenFlash(Boolean(enabled));
+    const nextConfig = { ...config, enabled: mode !== 'disabled', autoOptimize: mode === 'automatic' };
+    const saved = await saveSettings(nextConfig);
+    if (!saved) return;
+    if (config.enabled !== nextConfig.enabled) showScreenFlash(nextConfig.enabled);
   }
 
   R.useEffect(() => {
@@ -353,45 +350,58 @@ function MSSApp() {
   const targets = Array.isArray(memory.targets) ? memory.targets : [];
   const events = Array.isArray(status?.recentEvents) ? status.recentEvents : [];
   const manualReady = config.enabled && !config.autoOptimize && savedAutoOptimize === false;
-  const card = (label, value, unit, note) => h('section', { className: 'mss-card' }, h('div', { className: 'mss-card-label' }, label), h('div', { className: 'mss-number' }, value, unit ? h('span', { className: 'mss-unit' }, unit) : null), debug && note ? h('div', { className: 'mss-note' }, note) : null);
+
+  const serverLabel = status?.helper ? `${status.helper.runtime || 'Server'} ${status.helper.version || ''}` : (MSS_PT ? 'Servidor' : 'Server');
+
+  const cappedCount = targets.filter(target => target.capped).length;
+  const maxMemoryMB = targets.reduce((max, target) => Math.max(max, memory.privateWorkingSet ? Number(target.privateWorkingSetMB || 0) : Number(target.workingSetMB || 0)), 0) || 1;
 
   return h('main', { className: 'mss-page' },
-    h('header', { className: 'mss-hero' },
-      h('div', { className: 'mss-hero-copy' },
-        h('div', { className: 'mss-kicker' }, tx('kicker')),
+    h('header', { className: 'mss-topbar' },
+      h('div', { className: 'mss-brand' },
         h('h1', { className: 'mss-title' }, tx('title')),
-        h('div', { className: 'mss-copy' }, tx('intro')),
-        h('div', { className: 'mss-small mss-window-state' }, `${MSSWindowLabel(spotify.windowState || 'not-detected')} · ${MSS_PT ? 'Idioma automático: português' : 'Auto language: English'}`)
+        h('div', { className: 'mss-subtitle' }, tx('brandSubtitle'))
       ),
-      h('aside', { className: 'mss-hero-controls' },
-        h('div', { className: `mss-pill ${error ? 'mss-pill-error' : (helperRunning ? 'mss-pill-connected' : 'mss-pill-waiting')}` }, h('span', { className: 'mss-dot', style: { background: error ? '#e05252' : (helperRunning ? 'var(--spice-button,#1ed760)' : '#d6a03d') } }), error ? tx('unavailable') : (helperRunning ? tx('connected') : tx('waiting'))),
-        h('label', { className: `mss-power ${config.enabled ? 'mss-power-on' : 'mss-power-off'}${saving || !helperRunning || typeof status?.config?.enabled !== 'boolean' ? ' mss-power-disabled' : ''}`, title: tx('pluginToggleHint') },
-          h('input', { type: 'checkbox', role: 'switch', 'aria-label': tx('pluginToggleHint'), checked: Boolean(config.enabled), disabled: saving || !helperRunning || typeof status?.config?.enabled !== 'boolean', onChange: event => { void togglePluginEnabled(event.target.checked); } }),
-          h('span', { className: 'mss-power-copy' },
-            h('span', { className: 'mss-power-title' }, tx(config.enabled ? 'pluginEnabled' : 'pluginDisabled')),
-            h('span', { className: 'mss-power-hint' }, tx('pluginToggleHint'))
-          ),
-          h('span', { className: 'mss-switch-track', 'aria-hidden': 'true' }, h('span', { className: 'mss-switch-thumb' }))
-        ),
-        h('div', { className: 'mss-debug-row', title: tx('debugHint') },
-          h('span', { className: 'mss-debug-label' }, tx('debugMode')),
-          MSSDebugToggle(debug, applyDebug)
+      h('div', { className: 'mss-topbar-controls' },
+        h('div', { className: `mss-pill ${error ? 'mss-pill-error' : (helperRunning ? 'mss-pill-connected' : 'mss-pill-waiting')}`, role: 'status' },
+          h('span', { className: 'mss-dot', 'aria-hidden': 'true', style: { background: error ? '#e05252' : (helperRunning ? 'var(--spice-button,#1ed760)' : '#d6a03d') } }),
+          error ? tx('unavailable') : (helperRunning ? tx('connected') : tx('waiting'))
         )
       )
     ),
     error ? h('section', { className: 'mss-notice mss-notice-error' }, h('strong', null, tx('helperMissingTitle')), h('p', { style: { margin: '7px 0 0' } }, `${tx('helperMissingBody')} ${error}`), h('div', { className: 'mss-actions' }, h('button', { className: 'mss-btn mss-btn-primary', onClick: MSSOpenGitHub }, tx('helperButton')), h('button', { className: 'mss-btn mss-btn-secondary', onClick: MSSOpenInstallGuide }, tx('installGuideButton')))) : null,
-    !config.enabled ? h('div', { className: 'mss-notice mss-notice-warn', role: 'status' }, status?.cap?.cappedProcesses ? tx('pluginDisabledRestoring', { count: status.cap.cappedProcesses }) : tx('pluginDisabledNote')) : null,
-    h('div', { className: 'mss-notice mss-notice-warn mss-safety-note' }, tx('safety')),
-    h('div', { className: 'mss-grid' },
-      card(tx(memory.privateWorkingSet ? 'privateWorkingSetRam' : 'spotifyRam'), MSSFormatMB(memory.spotifyTotalMB), 'MB', tx(memory.privateWorkingSet ? 'privateWorkingSetNote' : 'ramNote')),
-      card(tx('spotifyProcesses'), Number(memory.targetCount || 0).toLocaleString(MSS_LOCALE), ''),
-      debug ? card(tx('pageFaults'), telemetry.pageFaultDelta == null ? '—' : Number(telemetry.pageFaultDelta).toLocaleString(MSS_LOCALE), '', tx('pageFaultNote')) : null,
-      debug ? card(tx('pageFaultRate'), telemetry.pageFaultsPerSecond == null ? '—' : Number(telemetry.pageFaultsPerSecond).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 }), '/s', tx('pageFaultRateNote')) : null,
-      debug ? card(tx('adaptiveChanges'), Number(telemetry.adaptiveAdjustments || 0).toLocaleString(MSS_LOCALE), '', tx('adaptiveNote')) : null,
-      debug ? card(tx('restoreDuration'), telemetry.lastRestoreDurationMs == null ? '—' : Number(telemetry.lastRestoreDurationMs).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 }), telemetry.lastRestoreDurationMs == null ? '' : 'ms', tx('restoreNote')) : null
+    h('section', { className: 'mss-summary' },
+      h('div', { className: 'mss-summary-label' }, tx('ramCard')),
+      h('div', { className: 'mss-summary-row' },
+        h('span', { className: 'mss-summary-value', title: tx(memory.privateWorkingSet ? 'privateWorkingSetNote' : 'ramNote') }, MSSFormatMB(memory.spotifyTotalMB), h('small', null, 'MB')),
+        h('span', { className: 'mss-summary-note' }, `${Number(memory.targetCount || 0).toLocaleString(MSS_LOCALE)} ${tx('processesCard').toLowerCase()} · ${cappedCount} ${tx('withCap')}`),
+        h('span', { className: 'mss-summary-note', title: debug ? (spotify.windowStateReason || '') : undefined }, `${MSSWindowLabel(spotify.windowState || 'not-detected')}${debug && spotify.windowStateReason ? ` (${String(spotify.windowStateReason).split(' ')[0]})` : ''} · ${serverLabel}`)
+      )
     ),
-    h('section', { className: 'mss-section' },
-      h('div', { className: 'mss-section-head' }, h('h2', { className: 'mss-h2' }, tx('processes')), h('span', { className: 'mss-small' }, tx('updated', { time: MSSDate(memory.sampledAt) }))),
+    h('section', { className: 'mss-toolbar' },
+      h('div', { className: 'mss-toolbar-row' },
+        h('div', { className: 'mss-seg', role: 'group', 'aria-label': tx('modeLabel') },
+          h('button', { type: 'button', className: `mss-seg-btn${config.enabled && config.autoOptimize ? ' mss-on' : ''}`, 'aria-pressed': Boolean(config.enabled && config.autoOptimize), disabled: saving || !helperRunning || typeof status?.config?.enabled !== 'boolean', onClick: () => { void setMode('automatic'); } }, tx('segAuto')),
+          h('button', { type: 'button', className: `mss-seg-btn${config.enabled && !config.autoOptimize ? ' mss-on' : ''}`, 'aria-pressed': Boolean(config.enabled && !config.autoOptimize), disabled: saving || !helperRunning || typeof status?.config?.enabled !== 'boolean', onClick: () => { void setMode('manual'); } }, tx('segManual')),
+          h('button', { type: 'button', className: `mss-seg-btn${!config.enabled ? ' mss-on' : ''}`, 'aria-pressed': !config.enabled, disabled: saving || !helperRunning || typeof status?.config?.enabled !== 'boolean', onClick: () => { void setMode('disabled'); } }, tx('segDisabled'))
+        ),
+      ),
+      h('div', { className: 'mss-toolbar-row' },
+        h('label', { className: 'mss-tool' }, h('span', null, tx('delayShort')),
+          h('select', { className: 'mss-select', disabled: saving || !helperRunning || !config.enabled, value: String(config.hiddenDelaySeconds), onChange: event => setField('hiddenDelaySeconds', Number(event.target.value)) }, [1, 2, 3, 5, 8, 10, 15, 20, 30].map(n => h('option', { key: n, value: String(n) }, tx('seconds', { value: n }))))),
+        h('label', { className: 'mss-tool' }, h('span', null, tx('releaseShort')),
+          h('select', { className: 'mss-select', disabled: saving || !helperRunning || !config.enabled, value: config.trimToCap !== false ? 'ceiling' : 'aggressive', onChange: event => setField('trimToCap', event.target.value === 'ceiling') }, h('option', { value: 'ceiling' }, tx('releaseCeiling')), h('option', { value: 'aggressive' }, tx('releaseAggressive')))),
+        h('span', { className: 'mss-tool-note' }, tx(saving ? 'saving' : 'autoSavedShort'))
+      )
+    ),
+    !config.enabled ? h('div', { className: 'mss-notice mss-notice-warn', role: 'status' }, status?.cap?.cappedProcesses ? tx('pluginDisabledRestoring', { count: status.cap.cappedProcesses }) : tx('pluginDisabledNote')) : null,
+    config.enabled && !config.autoOptimize ? h('div', { className: 'mss-notice' }, h('strong', null, tx('manualMode')), ' · ', tx('manualExplanation')) : null,
+    h('section', { className: 'mss-table' },
+      h('div', { className: 'mss-table-head' },
+        h('span', null, tx('processes')),
+        h('span', { className: 'mss-col-bar' }, tx('memoryLabel')),
+        h('span', { className: 'mss-col-state' }, tx('stateLabel'))
+      ),
       targets.length ? h('div', { className: 'mss-list' }, targets.map(process => {
         const key = `${process.pid}:${process.creation}`;
         const displayedMemoryMB = memory.privateWorkingSet ? process.privateWorkingSetMB : process.workingSetMB;
@@ -405,10 +415,22 @@ function MSSApp() {
           : process.manualCapMB != null
             ? tx('manualConfigured', { value: process.manualCapMB })
             : tx('manualCurrent', { value: defaultMB });
+        const memoryMB = Number(displayedMemoryMB || 0);
+        const ceilingMB = process.capped ? Number(process.limitMB ?? process.manualCapMB ?? defaultMB) : null;
+        const ceilingText = ceilingMB != null ? `${tx('capLabel')} ${ceilingMB} MB` : tx('noCapLabel');
+        const over = ceilingMB != null && memoryMB > ceilingMB;
+        const pct = Math.min(100, Math.max(3, (memoryMB / maxMemoryMB) * 100));
+        const peekText = displayedMemoryMB == null ? '—' : `${MSSFormatMB(displayedMemoryMB)} MB · ${ceilingText}`;
         return h('div', { className: 'mss-process', key },
-          h('div', null, h('div', { className: 'mss-process-name' }, `${MSSRoleLabel(process.role)} · PID ${process.pid}`), meta ? h('div', { className: 'mss-process-meta' }, meta) : null),
-          h('span', { className: 'mss-tag' }, process.manual ? (MSS_PT ? 'Manual' : 'Manual') : (process.protectedAudio ? (MSS_PT ? 'Áudio' : 'Audio') : (process.capped ? (MSS_PT ? 'Adaptativo' : 'Adaptive') : process.role))),
-          h('div', { className: 'mss-memory' }, displayedMemoryMB == null ? '—' : `${MSSFormatMB(displayedMemoryMB)} MB${process.capped ? ` / ${process.limitMB} MB` : ''}`),
+          h('div', { className: 'mss-process-main' },
+            h('div', { className: 'mss-process-name' }, MSSRoleLabel(process.role), h('span', { className: 'mss-role' }, MSS_ROLE_NAMES[process.role] || process.role)),
+            meta ? h('div', { className: 'mss-process-meta' }, meta) : null
+          ),
+          h('div', { className: 'mss-bar-cell', tabIndex: 0, 'aria-label': peekText },
+            h('div', { className: 'mss-bar', 'aria-hidden': 'true' }, h('i', { className: over ? 'mss-fill-over' : '', style: { width: `${pct.toFixed(1)}%` } })),
+            h('span', { className: 'mss-peek' }, peekText)
+          ),
+          h('span', { className: `mss-tag${over ? ' mss-tag-over' : (process.capped ? ' mss-tag-on' : '')}` }, process.manual ? (MSS_PT ? 'Manual' : 'Manual') : (process.protectedAudio ? (MSS_PT ? 'Áudio' : 'Audio') : (process.capped ? (MSS_PT ? 'Adaptativo' : 'Adaptive') : process.role))),
           manualReady ? h('div', { className: 'mss-manual-controls' },
             h('label', { className: 'mss-small', htmlFor: `mss-limit-${key}` }, tx('manualLimit')),
             h('input', { id: `mss-limit-${key}`, className: 'mss-input', type: 'number', min: 8, max: 512, step: 1, value: manualInputs[key] ?? String(process.manualCapMB ?? defaultMB), disabled: busy || !config.enabled, onChange: event => { const value = event.target.value; setManualInputs(previous => ({ ...previous, [key]: value })); scheduleManualLimit(process, key, value); } }),
@@ -416,27 +438,40 @@ function MSSApp() {
           ) : null
         );
       })) : h('div', { className: 'mss-empty' }, tx('noneDetected')),
+      targets.length ? h('div', { className: 'mss-small mss-hover-hint' }, tx('hoverHint')) : null,
       config.enabled && !config.autoOptimize && !manualReady ? h('div', { className: 'mss-notice mss-notice-warn' }, tx('saveBeforeManual')) : null,
-      manualMessage ? h('div', { className: `mss-notice${manualMessage.error ? ' mss-notice-error' : ''}` }, manualMessage.text) : null,
-      debug && telemetry.lastAdaptiveAdjustmentAt ? h('div', { className: 'mss-actions' }, h('span', { className: 'mss-small' }, tx('lastAdjustment', { time: MSSDate(telemetry.lastAdaptiveAdjustmentAt) }))) : null,
-      debug && status?.lastAction ? h('div', { className: 'mss-notice' }, tx('lastAction', { count: status.lastAction.applied || 0 })) : null
+      manualMessage ? h('div', { className: `mss-notice${manualMessage.error ? ' mss-notice-error' : ''}` }, manualMessage.text) : null
     ),
-    h('section', { className: 'mss-section' },
-      h('div', { className: 'mss-section-head' }, h('h2', { className: 'mss-h2' }, tx('behavior')), h('span', { className: 'mss-small' }, debug && helperRunning ? `${status?.helper?.runtime || 'Server'} ${status?.helper?.version || ''}` : (MSS_PT ? 'Servidor' : 'Server'))),
-      h('label', { className: 'mss-check', style: { marginBottom: '18px' } }, h('input', { type: 'checkbox', role: 'switch', disabled: saving || !helperRunning || !config.enabled, checked: Boolean(config.autoOptimize), onChange: event => { setManualWarning(null); setField('autoOptimize', event.target.checked); } }), h('span', null, h('strong', null, tx('active')), h('br'), h('span', { className: 'mss-small' }, tx('autoExplanation')))),
-      !config.autoOptimize ? h('div', { className: 'mss-notice' }, h('strong', null, tx('manualMode')), ' · ', tx('manualExplanation')) : null,
-      h('div', { className: 'mss-setting-group-head' }, h('h3', { className: 'mss-setting-group-title' }, tx('backgroundSettings')), h('span', { className: 'mss-small' }, tx('backgroundSettingsHint'))),
-      h('div', { className: 'mss-settings' }, h('label', { className: 'mss-setting' }, h('span', { className: 'mss-setting-label' }, tx('delay')), h('select', { className: 'mss-select', disabled: saving || !helperRunning || !config.enabled, value: String(config.hiddenDelaySeconds), onChange: event => setField('hiddenDelaySeconds', Number(event.target.value)) }, [1, 2, 3, 5, 8, 10, 15, 20, 30].map(n => h('option', { key: n, value: String(n) }, tx('seconds', { value: n })))), h('span', { className: 'mss-small' }, tx('delayExplanation'))),
-        h('label', { className: 'mss-setting' }, h('span', { className: 'mss-setting-label' }, tx('releaseMode')), h('select', { className: 'mss-select', disabled: saving || !helperRunning || !config.enabled, value: config.trimToCap !== false ? 'ceiling' : 'aggressive', onChange: event => setField('trimToCap', event.target.value === 'ceiling') }, h('option', { value: 'ceiling' }, tx('releaseCeiling')), h('option', { value: 'aggressive' }, tx('releaseAggressive'))), h('span', { className: 'mss-small' }, tx('releaseModeExplanation')))),
-      settingsError ? h('div', { className: 'mss-notice mss-notice-error', role: 'alert' }, settingsError) : null,
-      h('div', { className: 'mss-actions' }, h('span', { className: 'mss-small' }, tx(saving ? 'saving' : 'autoSaved')))
-    ),
-    debug ? h('section', { className: 'mss-section' }, h('div', { className: 'mss-section-head' }, h('h2', { className: 'mss-h2' }, tx('events')), h('span', { className: 'mss-small' }, status?.helper ? `${status.helper.runtime || 'Server'} ${status.helper.version || ''}` : (MSS_PT ? 'Servidor' : 'Server'))),
-      events.length ? h('div', { className: 'mss-events' }, events.map((event, i) => h('div', { className: 'mss-event', key: `${event.time}-${i}` }, h('span', { className: 'mss-event-time' }, MSSDate(event.time)), h('span', { className: 'mss-event-msg' }, MSSLocalizeEvent(event.message))))) : h('div', { className: 'mss-empty' }, tx('noEvents')),
+    settingsError ? h('div', { className: 'mss-notice mss-notice-error', role: 'alert' }, settingsError) : null,
+    h('section', { className: 'mss-diag' },
+      h('div', { className: 'mss-diag-head' },
+        h('div', null,
+          h('div', { className: 'mss-diag-title' }, tx('debugMode')),
+          h('div', { className: 'mss-small' }, tx('debugHint'))
+        ),
+        MSSDebugToggle(debug, applyDebug)
+      ),
+      debug ? h('div', { className: 'mss-diag-body' },
+        h('div', { className: 'mss-diag-grid' },
+          h('div', null, h('span', null, tx('pageFaults')), h('strong', null, telemetry.pageFaultDelta == null ? '—' : Number(telemetry.pageFaultDelta).toLocaleString(MSS_LOCALE))),
+          h('div', null, h('span', null, tx('pageFaultRate')), h('strong', null, telemetry.pageFaultsPerSecond == null ? '—' : Number(telemetry.pageFaultsPerSecond).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 }))),
+          h('div', null, h('span', null, tx('adaptiveChanges')), h('strong', null, Number(telemetry.adaptiveAdjustments || 0).toLocaleString(MSS_LOCALE))),
+          h('div', null, h('span', null, tx('restoreDuration')), h('strong', null, telemetry.lastRestoreDurationMs == null ? '—' : `${Number(telemetry.lastRestoreDurationMs).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 })} ms`))
+        ),
+        telemetry.lastAdaptiveAdjustmentAt ? h('div', { className: 'mss-small' }, tx('lastAdjustment', { time: MSSDate(telemetry.lastAdaptiveAdjustmentAt) })) : null,
+        status?.lastAction ? h('div', { className: 'mss-notice' }, tx('lastAction', { count: status.lastAction.applied || 0 })) : null,
+        h('div', { className: 'mss-small', style: { marginTop: '4px' } }, tx('events')),
+        events.length ? h('div', { className: 'mss-events' }, events.map((event, i) => h('div', { className: 'mss-event', key: `${event.time}-${i}` }, h('span', { className: 'mss-event-time' }, MSSDate(event.time)), h('span', { className: 'mss-event-msg' }, MSSLocalizeEvent(event.message))))) : h('div', { className: 'mss-empty' }, tx('noEvents'))
+      ) : null,
       status?.lastError ? h('div', { className: 'mss-notice mss-notice-error' }, MSSLocalizeEvent(status.lastError)) : null
-    ) : (status?.lastError ? h('div', { className: 'mss-notice mss-notice-error' }, MSSLocalizeEvent(status.lastError)) : null),
-
-    h('footer', { className: 'mss-footer' }, tx('footer'))
+    ),
+    h('details', { className: 'mss-fineprint' }, h('summary', null, tx('safetySummary')), h('p', null, tx('intro')), h('p', null, tx('safety'))),
+    h('footer', { className: 'mss-footer' },
+      h('span', null, 'Windows 10/11 x64'),
+      h('span', null, 'GPL-3.0'),
+      h('span', null, MSS_PT ? 'nada sai do PC' : 'nothing leaves the PC'),
+      h('span', null, `${tx('footer')} · ${MSS_PT ? 'Idioma automático: português' : 'Auto language: English'}`)
+    )
   );
 }
 
