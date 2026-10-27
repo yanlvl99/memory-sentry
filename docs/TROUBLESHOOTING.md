@@ -29,10 +29,6 @@ Setup does not require Spotify to be manually closed. It prepares or shuts down 
 
 Install [Spicetify CLI](https://spicetify.app/) for the same Windows user account that runs Spotify. Reopen Setup after installation. The installer reports this prerequisite before changing installed files and does not silently download or execute Spicetify on the user's behalf.
 
-## Setup refuses a legacy migration
-
-A previous version may have working-set-backup.json containing original Win32 limits. Setup stops its matching old Node server and tries the old server's restore command before deleting legacy files. If Node.js 22+ is missing, install it temporarily from https://nodejs.org/en/download and rerun setup. If any limit cannot be restored, keep the recovery files and contact support; do not delete the backup or force the upgrade.
-
 ## Spotify takes a moment to accept input after being restored
 
 Memory Sentry is designed to substantially reduce Spotify's resident working set while minimized, hidden, or in the background on supported Windows 10/11 x64 desktop PCs. Actual savings vary by PC and workload.
