@@ -34,7 +34,7 @@ The **same configured background delay applies in both modes**. The **dashboard 
 ## Requirements
 
 - Windows 10 or Windows 11 desktop edition, x64.
-- Spotify Desktop and Spicetify CLI installed for the same Windows user.
+- [Spotify Desktop](https://open.spotify.com/download) and [Spicetify CLI](https://spicetify.app/) installed for the same Windows user.
 
 Windows Server, Windows ARM64, macOS, and Linux are not supported by this release.
 
