@@ -206,6 +206,15 @@
 .mss-seg-btn + .mss-seg-btn { border-left: 1px solid var(--mss-border); }
 .mss-seg-btn.mss-on { background: rgba(255, 255, 255, 0.1); color: var(--spice-text, #f5f5f5); font-weight: 600; }
 .mss-seg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.mss-when { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mss-when-label { font-size: 12px; color: var(--mss-dim); }
+.mss-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mss-muted); cursor: pointer; }
+.mss-check input { appearance: none; width: 15px; height: 15px; margin: 0; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 3px; background: transparent; cursor: inherit; display: grid; place-content: center; transition: background 120ms ease, border-color 120ms ease; }
+.mss-check input::after { content: ''; width: 8px; height: 4px; border-left: 2px solid #0b0b0b; border-bottom: 2px solid #0b0b0b; transform: rotate(-45deg) translateY(-1px); opacity: 0; }
+.mss-check input:checked { background: var(--spice-button, #1ed760); border-color: transparent; }
+.mss-check input:checked::after { opacity: 1; }
+.mss-check input:disabled { opacity: 0.5; cursor: not-allowed; }
+.mss-check input:disabled + span { opacity: 0.5; }
 
 .mss-toolbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
 

@@ -17,7 +17,6 @@ function MSSDebugToggle(value, onChange) {
   });
 }
 
-
 function MSSApp() {
   const R = MSSReact;
   const [status, setStatus] = R.useState(null);
@@ -28,7 +27,7 @@ function MSSApp() {
   const [settingsLoaded, setSettingsLoaded] = R.useState(false);
   const [savedAutoOptimize, setSavedAutoOptimize] = R.useState(null);
   const [debug, setDebug] = R.useState(() => { try { return window.localStorage.getItem('mss.debugMode') === '1'; } catch (_) { return false; } });
-  const [config, setConfig] = R.useState({ enabled: true, autoOptimize: true, hiddenDelaySeconds: 2, trimToCap: true });
+  const [config, setConfig] = R.useState({ enabled: true, autoOptimize: true, hiddenDelaySeconds: 2, trimToCap: true, optimizeWhenBackground: true, optimizeWhenMinimized: true, optimizeWhenHidden: true });
   const [manualInputs, setManualInputs] = R.useState({});
   const [manualWarning, setManualWarning] = R.useState(null);
   const manualApplyTimers = R.useRef(new Map());
@@ -72,6 +71,13 @@ function MSSApp() {
     if (config.enabled !== nextConfig.enabled) showScreenFlash(nextConfig.enabled);
   }
 
+  const triggerKeys = ['optimizeWhenBackground', 'optimizeWhenMinimized', 'optimizeWhenHidden'];
+  const activeTriggers = () => triggerKeys.filter(key => config[key]).length;
+  function setTrigger(key, value) {
+    if (!value && activeTriggers() <= 1) return;
+    setField(key, value);
+  }
+
   R.useEffect(() => {
     let alive = true;
     async function refresh() {
@@ -80,7 +86,7 @@ function MSSApp() {
         if (!alive) return;
         setStatus(data); setError('');
         if (!settingsLoaded && data.config) {
-          const loadedConfig = { enabled: data.config.enabled !== false, autoOptimize: data.config.autoOptimize !== false, hiddenDelaySeconds: data.config.hiddenDelaySeconds || 2, trimToCap: data.config.trimToCap !== false };
+          const loadedConfig = { enabled: data.config.enabled !== false, autoOptimize: data.config.autoOptimize !== false, hiddenDelaySeconds: data.config.hiddenDelaySeconds || 2, trimToCap: data.config.trimToCap !== false, optimizeWhenBackground: data.config.optimizeWhenBackground !== false, optimizeWhenMinimized: data.config.optimizeWhenMinimized !== false, optimizeWhenHidden: data.config.optimizeWhenHidden !== false };
           setConfig(loadedConfig);
           setSavedAutoOptimize(loadedConfig.autoOptimize);
           setSettingsLoaded(true);
@@ -240,7 +246,7 @@ function MSSApp() {
     setSettingsError('');
     try {
       const result = await MSSRequest('/api/config', { method: 'POST', body: nextConfig });
-      const savedConfig = { enabled: typeof result.config?.enabled === 'boolean' ? result.config.enabled : nextConfig.enabled !== false, autoOptimize: result.config.autoOptimize, hiddenDelaySeconds: result.config.hiddenDelaySeconds, trimToCap: result.config.trimToCap !== false };
+      const savedConfig = { enabled: typeof result.config?.enabled === 'boolean' ? result.config.enabled : nextConfig.enabled !== false, autoOptimize: result.config.autoOptimize, hiddenDelaySeconds: result.config.hiddenDelaySeconds, trimToCap: result.config.trimToCap !== false, optimizeWhenBackground: result.config.optimizeWhenBackground !== false, optimizeWhenMinimized: result.config.optimizeWhenMinimized !== false, optimizeWhenHidden: result.config.optimizeWhenHidden !== false };
       setConfig(savedConfig);
       setSavedAutoOptimize(savedConfig.autoOptimize);
       setError('');
@@ -385,6 +391,13 @@ function MSSApp() {
           h('button', { type: 'button', className: `mss-seg-btn${config.enabled && !config.autoOptimize ? ' mss-on' : ''}`, 'aria-pressed': Boolean(config.enabled && !config.autoOptimize), disabled: saving || !helperRunning || typeof status?.config?.enabled !== 'boolean', onClick: () => { void setMode('manual'); } }, tx('segManual')),
           h('button', { type: 'button', className: `mss-seg-btn${!config.enabled ? ' mss-on' : ''}`, 'aria-pressed': !config.enabled, disabled: saving || !helperRunning || typeof status?.config?.enabled !== 'boolean', onClick: () => { void setMode('disabled'); } }, tx('segDisabled'))
         ),
+        h('div', { className: 'mss-when', role: 'group', 'aria-label': tx('whenLabel') },
+          h('span', { className: 'mss-when-label' }, tx('whenLabel')),
+          [['optimizeWhenBackground', 'whenBackground'], ['optimizeWhenMinimized', 'whenMinimized'], ['optimizeWhenHidden', 'whenHidden']].map(([key, label]) => h('label', { className: 'mss-check', key },
+            h('input', { type: 'checkbox', checked: Boolean(config[key]), disabled: saving || !helperRunning || !config.enabled || (Boolean(config[key]) && activeTriggers() <= 1), onChange: event => setTrigger(key, event.target.checked) }),
+            h('span', null, tx(label))
+          ))
+        )
       ),
       h('div', { className: 'mss-toolbar-row' },
         h('label', { className: 'mss-tool' }, h('span', null, tx('delayShort')),
