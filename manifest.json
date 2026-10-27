@@ -1,6 +1,6 @@
 {
   "name": "Memory Sentry",
-  "description": "Windows 10 and Windows 11 only. Requires Spotify Desktop and Spicetify CLI. The plugin runs inside Spicetify; the Memory Sentry server is installed separately from GitHub Releases. This Marketplace entry only links to the project and cannot install it. No telemetry.",
+  "description": "Reduce Spotify's RAM usage while minimized, at the cost of slower interface loading when restored.",
   "preview": "assets/marketplace-cover.svg",
   "readme": "README.md",
   "authors": [
@@ -10,11 +10,8 @@
     }
   ],
   "tags": [
-    "spotify",
-    "performance",
     "memory",
     "windows",
-    "open-source",
     "experimental"
   ]
 }
