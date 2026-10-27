@@ -4,6 +4,19 @@
 
 const MSS_TOKEN = '__MSS_TOKEN__';
 
+function MSSPositionPeek(event) {
+  const cell = event && event.currentTarget;
+  if (!cell || typeof cell.getBoundingClientRect !== 'function') return;
+  const peek = cell.querySelector('.mss-peek');
+  if (!peek) return;
+  const rect = cell.getBoundingClientRect();
+  const point = typeof event.clientX === 'number' ? event.clientX - rect.left : rect.width / 2;
+  const half = (peek.offsetWidth || 0) / 2;
+  const min = Math.min(half, rect.width / 2);
+  const max = Math.max(rect.width - half, rect.width / 2);
+  peek.style.left = `${Math.min(Math.max(point, min), max)}px`;
+}
+
 function MSSDebugToggle(value, onChange) {
   const Toggle = Spicetify.ReactComponent && Spicetify.ReactComponent.Toggle;
   if (typeof Toggle !== 'function') {
@@ -439,7 +452,7 @@ function MSSApp() {
             h('div', { className: 'mss-process-name' }, MSSRoleLabel(process.role), h('span', { className: 'mss-role' }, MSS_ROLE_NAMES[process.role] || process.role)),
             meta ? h('div', { className: 'mss-process-meta' }, meta) : null
           ),
-          h('div', { className: 'mss-bar-cell', tabIndex: 0, 'aria-label': peekText },
+          h('div', { className: 'mss-bar-cell', tabIndex: 0, 'aria-label': peekText, onMouseMove: MSSPositionPeek, onMouseEnter: MSSPositionPeek },
             h('div', { className: 'mss-bar', 'aria-hidden': 'true' }, h('i', { className: over ? 'mss-fill-over' : '', style: { width: `${pct.toFixed(1)}%` } })),
             h('span', { className: 'mss-peek' }, peekText)
           ),
