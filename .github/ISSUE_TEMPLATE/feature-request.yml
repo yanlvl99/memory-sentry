@@ -9,7 +9,7 @@ body:
         Thanks for suggesting an improvement.
 
         Before you start:
-        - Search [existing issues](https://github.com/yanlvl99/spicetify-memory-sentry/issues) first.
+        - Search [existing issues](https://github.com/yanlvl99/memory-sentry/issues) first.
         - Keep the scope realistic: the supported release is Windows 10/11 x64 desktop with Spotify Desktop and Spicetify CLI. Standalone no-Spicetify mode and macOS/Linux are not implemented.
 
   - type: checkboxes

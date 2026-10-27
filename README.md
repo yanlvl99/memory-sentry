@@ -1,8 +1,8 @@
 # Memory Sentry
 
-[![Release](https://img.shields.io/github/v/release/yanlvl99/spicetify-memory-sentry?include_prereleases&sort=semver&label=release)](https://github.com/yanlvl99/spicetify-memory-sentry/releases)
-[![Validation](https://github.com/yanlvl99/spicetify-memory-sentry/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/yanlvl99/spicetify-memory-sentry/actions/workflows/validate.yml)
-[![License](https://img.shields.io/github/license/yanlvl99/spicetify-memory-sentry?label=license)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/yanlvl99/memory-sentry?include_prereleases&sort=semver&label=release)](https://github.com/yanlvl99/memory-sentry/releases)
+[![Validation](https://github.com/yanlvl99/memory-sentry/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/yanlvl99/memory-sentry/actions/workflows/validate.yml)
+[![License](https://img.shields.io/github/license/yanlvl99/memory-sentry?label=license)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue)
 ![Status](https://img.shields.io/badge/status-experimental-orange)
 
@@ -40,7 +40,7 @@ Windows Server, Windows ARM64, macOS, and Linux are not supported by this releas
 
 ## Installation
 
-Download **Memory Sentry Setup** and the matching SHA-256 checksum from the [official GitHub Releases page](https://github.com/yanlvl99/spicetify-memory-sentry/releases), verify the checksum, and follow the [Installation Guide](docs/INSTALLATION.md). The official per-user Setup EXE is the only supported installation method. The Marketplace entry only links to the project repository; it does not install or distribute the server.
+Download **Memory Sentry Setup** and the matching SHA-256 checksum from the [official GitHub Releases page](https://github.com/yanlvl99/memory-sentry/releases), verify the checksum, and follow the [Installation Guide](docs/INSTALLATION.md). The official per-user Setup EXE is the only supported installation method. The Marketplace entry only links to the project repository; it does not install or distribute the server.
 
 No unsigned release can guarantee zero SmartScreen warnings. This release is unsigned, and a checksum verifies file integrity—not publisher identity. Do not disable security tools or blindly bypass warnings.
 

@@ -9,8 +9,8 @@ body:
         Thanks for taking the time to report a plugin issue.
 
         Before you start:
-        - Install Memory Sentry with the **official installer** from [GitHub Releases](https://github.com/yanlvl99/spicetify-memory-sentry/releases). The Marketplace entry only links to this project and does not install it.
-        - Search [existing issues](https://github.com/yanlvl99/spicetify-memory-sentry/issues) first.
+        - Install Memory Sentry with the **official installer** from [GitHub Releases](https://github.com/yanlvl99/memory-sentry/releases). The Marketplace entry only links to this project and does not install it.
+        - Search [existing issues](https://github.com/yanlvl99/memory-sentry/issues) first.
         - Attach logs as text or files; screenshots are welcome for visual issues.
 
   - type: checkboxes

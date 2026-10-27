@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Installation guide
-    url: https://github.com/yanlvl99/spicetify-memory-sentry/blob/main/docs/INSTALLATION.md
+    url: https://github.com/yanlvl99/memory-sentry/blob/main/docs/INSTALLATION.md
     about: Supported setup steps and requirements for Windows 10/11 x64 with Spicetify.
   - name: Troubleshooting
-    url: https://github.com/yanlvl99/spicetify-memory-sentry/blob/main/docs/TROUBLESHOOTING.md
+    url: https://github.com/yanlvl99/memory-sentry/blob/main/docs/TROUBLESHOOTING.md
     about: Common problems, logs, and safe recovery guidance.
   - name: Security policy
-    url: https://github.com/yanlvl99/spicetify-memory-sentry/blob/main/SECURITY.md
+    url: https://github.com/yanlvl99/memory-sentry/blob/main/SECURITY.md
     about: Report vulnerabilities or antivirus false positives privately.

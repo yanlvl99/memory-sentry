@@ -4,7 +4,7 @@ Memory Sentry is an independent community project for Windows 10/11 x64 desktop 
 
 ## Distribution
 
-The official per-user Setup EXE and its SHA-256 checksum are published on the [GitHub Releases page](https://github.com/yanlvl99/spicetify-memory-sentry/releases). The Setup package contains the server, Custom App, and installation/removal flows.
+The official per-user Setup EXE and its SHA-256 checksum are published on the [GitHub Releases page](https://github.com/yanlvl99/memory-sentry/releases). The Setup package contains the server, Custom App, and installation/removal flows.
 
 The Marketplace listing is discovery-only: it links to this repository and does not host or install Memory Sentry. Users must download the official Setup EXE from GitHub Releases; this repository does not publish a separate portable ZIP.
 

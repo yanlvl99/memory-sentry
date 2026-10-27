@@ -9,10 +9,10 @@ body:
         Thanks for taking the time to report a server issue.
 
         Before you start:
-        - Install Memory Sentry with the **official installer** from [GitHub Releases](https://github.com/yanlvl99/spicetify-memory-sentry/releases) and keep Spicetify installed.
-        - Search [existing issues](https://github.com/yanlvl99/spicetify-memory-sentry/issues) first.
+        - Install Memory Sentry with the **official installer** from [GitHub Releases](https://github.com/yanlvl99/memory-sentry/releases) and keep Spicetify installed.
+        - Search [existing issues](https://github.com/yanlvl99/memory-sentry/issues) first.
         - **Do not delete recovery files, manually bypass an uninstall stop, or run Setup as Administrator** to work around a problem. Report it instead.
-        - For suspected malware or antivirus false positives, use [SECURITY.md](https://github.com/yanlvl99/spicetify-memory-sentry/blob/main/SECURITY.md) instead of this form.
+        - For suspected malware or antivirus false positives, use [SECURITY.md](https://github.com/yanlvl99/memory-sentry/blob/main/SECURITY.md) instead of this form.
 
   - type: checkboxes
     id: preflight
