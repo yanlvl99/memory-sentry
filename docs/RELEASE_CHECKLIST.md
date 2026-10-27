@@ -34,6 +34,6 @@ Do not call the release stable until all required real-desktop tests are complet
 
 - [ ] CI passes on the exact release commit.
 - [ ] Setup EXE and SHA-256 files are attached to the correct release.
-- [ ] Mark v1.0.0-rc.2 as a prerelease; create stable v1.0.0 only after every required Windows 10/11 real-desktop test passes.
+- [ ] Mark v1.0.0-rc.3 as a prerelease; create stable v1.0.0 only after every required Windows 10/11 real-desktop test passes.
 - [ ] Never state the release has no antivirus warnings; the current executable is unsigned.
 - [ ] Verify the exact GitHub repository topic `spicetify-apps`, then submit the discovery listing. The listing only links to the repository and cannot install Memory Sentry.

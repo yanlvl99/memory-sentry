@@ -48,7 +48,7 @@ body:
     attributes:
       label: Memory Sentry version
       description: Shown in the dashboard, Setup filename, or `MemorySentry.exe --version`.
-      placeholder: e.g. 1.0.0-rc.2
+      placeholder: e.g. 1.0.0-rc.3
     validations:
       required: true
 

@@ -10,7 +10,7 @@
 
 Memory Sentry is an open-source utility for managing the resident working set of Spotify Desktop processes while Spotify runs in the background.
 
-**Current release:** `1.0.0-rc.2` — experimental release candidate, not a stable release.
+**Current release:** `1.0.0-rc.3` — experimental release candidate, not a stable release.
 
 The current release requires Spotify Desktop and Spicetify CLI for the same Windows user. The Spicetify Custom App communicates with the Memory Sentry server, which runs as a **separate per-user process**, is currently implemented in Rust, and performs the Windows memory operations. Memory Sentry is an independent community project, not an official Spotify or Spicetify product.
 
