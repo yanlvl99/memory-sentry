@@ -1,8 +1,8 @@
 # Memory Sentry
 
-[![Release](https://img.shields.io/github/v/release/yanlvl99/spicetify-memory-sentry?include_prereleases&sort=semver&label=release)](https://github.com/yanlvl99/spicetify-memory-sentry/releases)
-[![Validation](https://github.com/yanlvl99/spicetify-memory-sentry/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/yanlvl99/spicetify-memory-sentry/actions/workflows/validate.yml)
-[![License](https://img.shields.io/github/license/yanlvl99/spicetify-memory-sentry?label=license)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/yanlvl99/memory-sentry?include_prereleases&sort=semver&label=release)](https://github.com/yanlvl99/memory-sentry/releases)
+[![Validation](https://github.com/yanlvl99/memory-sentry/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/yanlvl99/memory-sentry/actions/workflows/validate.yml)
+[![License](https://img.shields.io/github/license/yanlvl99/memory-sentry?label=license)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue)
 ![Status](https://img.shields.io/badge/status-experimental-orange)
 
@@ -16,9 +16,10 @@ The current release requires Spotify Desktop and Spicetify CLI for the same Wind
 
 ## Features
 
-- Automatic and manual working-set limits for Spotify processes in the background.
+- Automatic and manual working-set limits for Spotify processes while Spotify is outside the foreground.
+- Choose which window states trigger optimization: window behind another app, minimized, hidden, or any combination of the three.
 - Role-based limits with persistent manual role overrides.
-- A master power switch that stops new limits and requests restoration of recorded Windows limits.
+- A three-state memory mode (Automatic, Manual, Disabled); Disabled stops new limits and requests restoration of recorded Windows limits.
 - Local-only dashboard and diagnostics; the server does not upload telemetry.
 
 ## Policy and controls
@@ -29,7 +30,7 @@ In automatic mode, a ceiling can increase by 8 MB only when CPU usage is at leas
 
 In manual mode, role defaults are Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB, and Crashpad 16 MB. A manual limit below the process role's default requires a **five-second warning countdown** and explicit confirmation.
 
-The **same configured background delay applies in both modes**. The **dashboard power switch is the master on/off control**: disabling Memory Sentry stops new limits and requests restoration of original limits. If restoration cannot be confirmed immediately, pending recovery data is retained for retry.
+The **same configured delay applies in both modes**, and it only starts once Spotify enters a window state you enabled under **Optimize when**. When Spotify returns to the foreground, or enters a state you did not enable, original limits are restored. The **Disabled** mode is the master on/off control: it stops new limits and requests restoration of original limits. If restoration cannot be confirmed immediately, pending recovery data is retained for retry.
 
 ## Requirements
 
@@ -40,7 +41,7 @@ Windows Server, Windows ARM64, macOS, and Linux are not supported by this releas
 
 ## Installation
 
-Download **Memory Sentry Setup** and the matching SHA-256 checksum from the [official GitHub Releases page](https://github.com/yanlvl99/spicetify-memory-sentry/releases), verify the checksum, and follow the [Installation Guide](docs/INSTALLATION.md). The official per-user Setup EXE is the only supported installation method. The Marketplace entry only links to the project repository; it does not install or distribute the server.
+Download **Memory Sentry Setup** and the matching SHA-256 checksum from the [official GitHub Releases page](https://github.com/yanlvl99/memory-sentry/releases), verify the checksum, and follow the [Installation Guide](docs/INSTALLATION.md). The official per-user Setup EXE is the only supported installation method. The Marketplace entry only links to the project repository; it does not install or distribute the server.
 
 No unsigned release can guarantee zero SmartScreen warnings. This release is unsigned, and a checksum verifies file integrity—not publisher identity. Do not disable security tools or blindly bypass warnings.
 

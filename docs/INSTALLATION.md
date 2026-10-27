@@ -6,7 +6,7 @@
 
 ## The only supported installation method
 
-1. Open the official release page: https://github.com/yanlvl99/spicetify-memory-sentry/releases
+1. Open the official release page: https://github.com/yanlvl99/memory-sentry/releases
 2. Download **Memory Sentry Setup** and the `.sha256` checksum attached to that same release.
 3. Verify the checksum. It confirms file integrity, not publisher identity.
 4. Run Setup as the same Windows user that runs Spotify and Spicetify. Do not run as Administrator.

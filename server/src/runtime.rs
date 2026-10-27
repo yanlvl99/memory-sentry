@@ -42,6 +42,9 @@ struct Settings {
     auto_optimize: bool,
     hidden_delay_seconds: u64,
     trim_to_cap: bool,
+    optimize_when_background: bool,
+    optimize_when_minimized: bool,
+    optimize_when_hidden: bool,
     manual_caps: BTreeMap<(u32, u64), u32>,
     manual_role_caps: BTreeMap<String, u32>,
 }
@@ -161,6 +164,7 @@ struct AppState {
     hwnd: usize,
     window_title: String,
     window_state: String,
+    window_state_reason: String,
     hidden_since_ms: u64,
     last_restore_attempt_at_ms: u64,
     last_memory_sample_at_ms: u64,
@@ -410,6 +414,9 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
         .unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS)
         .clamp(1, 30);
     let trim_to_cap = parse_json_bool(&raw, "trimToCap").unwrap_or(true);
+    let optimize_when_background = parse_json_bool(&raw, "optimizeWhenBackground").unwrap_or(true);
+    let optimize_when_minimized = parse_json_bool(&raw, "optimizeWhenMinimized").unwrap_or(true);
+    let optimize_when_hidden = parse_json_bool(&raw, "optimizeWhenHidden").unwrap_or(true);
     let manual_caps = parse_manual_caps(&raw);
     let manual_role_caps = parse_manual_role_caps(&raw);
     Ok(Settings {
@@ -419,6 +426,9 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
         auto_optimize,
         hidden_delay_seconds,
         trim_to_cap,
+        optimize_when_background,
+        optimize_when_minimized,
+        optimize_when_hidden,
         manual_caps,
         manual_role_caps,
     })
@@ -442,8 +452,8 @@ fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
         .collect::<Vec<_>>()
         .join(", ");
     let contents = format!(
-        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"manualCaps\": [{}],\n  \"manualRoleCaps\": [{}],\n  \"version\": \"{}\"\n}}\n",
-        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, manual_caps, manual_role_caps, VERSION
+        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"optimizeWhenBackground\": {},\n  \"optimizeWhenMinimized\": {},\n  \"optimizeWhenHidden\": {},\n  \"manualCaps\": [{}],\n  \"manualRoleCaps\": [{}],\n  \"version\": \"{}\"\n}}\n",
+        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, manual_caps, manual_role_caps, VERSION
     );
     let mut file = File::create(&temp).map_err(|e| format!("Could not stage settings: {e}"))?;
     file.write_all(contents.as_bytes())
@@ -779,6 +789,11 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
             .unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS)
             .clamp(1, 30),
         trim_to_cap: parse_json_bool(&existing_raw, "trimToCap").unwrap_or(true),
+        optimize_when_background: parse_json_bool(&existing_raw, "optimizeWhenBackground")
+            .unwrap_or(true),
+        optimize_when_minimized: parse_json_bool(&existing_raw, "optimizeWhenMinimized")
+            .unwrap_or(true),
+        optimize_when_hidden: parse_json_bool(&existing_raw, "optimizeWhenHidden").unwrap_or(true),
         manual_caps: parse_manual_caps(&existing_raw),
         manual_role_caps: parse_manual_role_caps(&existing_raw),
     };
@@ -1268,6 +1283,7 @@ fn build_state(base: PathBuf, settings: Settings) -> AppState {
         hwnd: 0,
         window_title: String::new(),
         window_state: "not-detected".to_string(),
+        window_state_reason: "startup".to_string(),
         hidden_since_ms: 0,
         last_restore_attempt_at_ms: 0,
         last_memory_sample_at_ms: 0,
@@ -1360,15 +1376,12 @@ pub fn run_monitor() -> Result<(), String> {
                 platform::foreground_process_id(),
                 s.snapshot.processes.iter().map(|process| process.pid),
             );
-            let current_window_state =
-                platform::window_state(s.hwnd, !s.snapshot.processes.is_empty(), is_foreground);
+            let (current_window_state, reason) = observe_window_state(&mut s, is_foreground);
             if current_window_state != s.window_state {
+                let message = format!("Spotify window state: {current_window_state} ({reason})");
                 s.window_state = current_window_state.clone();
-                log_event(
-                    &mut s,
-                    format!("Spotify window state: {current_window_state}"),
-                    "info",
-                );
+                s.window_state_reason = reason;
+                log_event(&mut s, message, "info");
             }
             let now = now_ms();
             if now.saturating_sub(s.last_memory_sample_at_ms) >= MEMORY_SAMPLE_INTERVAL_MS {
@@ -1432,43 +1445,13 @@ fn accept_snapshot(state: &mut AppState, mut snapshot: platform::Snapshot) {
     state.snapshot_at_ms = sampled_at;
     state.snapshot_serial += 1;
     state.snapshot_ok = true;
-    let chosen = state
-        .snapshot
-        .windows
-        .iter()
-        .filter(|window| state.snapshot.processes.iter().any(|p| p.pid == window.pid))
-        .min_by_key(|window| {
-            let command = state
-                .snapshot
-                .processes
-                .iter()
-                .find(|p| p.pid == window.pid)
-                .map(|p| p.cmd.as_str())
-                .unwrap_or("");
-            if is_child_process_command(command) {
-                1
-            } else {
-                0
-            }
-        });
-    if let Some(window) = chosen {
-        state.root_pid = Some(window.pid);
-        state.hwnd = window.hwnd;
-        state.window_title = window.title.clone();
-    } else {
-        state.root_pid = None;
-        state.hwnd = 0;
-        state.window_title.clear();
-    }
     let is_foreground = spotify_process_is_foreground(
         platform::foreground_process_id(),
         state.snapshot.processes.iter().map(|process| process.pid),
     );
-    state.window_state = platform::window_state(
-        state.hwnd,
-        !state.snapshot.processes.is_empty(),
-        is_foreground,
-    );
+    let (window_state, reason) = observe_window_state(state, is_foreground);
+    state.window_state = window_state;
+    state.window_state_reason = reason;
     state.last_error.clear();
     // Drop stale profiles only when the snapshot proves that a PID has a new creation identity.
     let active: BTreeMap<u32, u64> = state
@@ -2197,12 +2180,80 @@ fn reconcile_manual_caps(state: &mut AppState) {
     }
 }
 
-fn should_manage_limits_in_background(window_state: &str) -> bool {
-    matches!(window_state, "minimized" | "hidden" | "background-visible")
+fn should_manage_limits(settings: &Settings, window_state: &str) -> bool {
+    match window_state {
+        "background-visible" => settings.optimize_when_background,
+        "minimized" => settings.optimize_when_minimized,
+        "hidden" => settings.optimize_when_hidden,
+        _ => false,
+    }
 }
 
 fn background_delay_elapsed(since: u64, now: u64, delay_seconds: u64) -> bool {
     since > 0 && now.saturating_sub(since) >= delay_seconds.saturating_mul(1000)
+}
+
+/// Reads the live window list and records which window represents Spotify now.
+/// Detection no longer depends on a remembered handle: the window manager is asked
+/// on every pass, so hiding to the tray, a destroyed window and a recreated one are
+/// all classified from current facts instead of from cached state.
+fn observe_window_state(state: &mut AppState, is_foreground: bool) -> (String, String) {
+    let pids: Vec<u32> = state.snapshot.processes.iter().map(|p| p.pid).collect();
+    let evidence = |rule: &str, list: &[platform::WindowCandidate]| {
+        format!(
+            "{rule} candidates={} onScreen={} iconic={} foreground={}",
+            list.len(),
+            list.iter().filter(|window| window.on_screen).count(),
+            list.iter().filter(|window| window.iconic).count(),
+            is_foreground,
+        )
+    };
+    if pids.is_empty() {
+        state.root_pid = None;
+        state.hwnd = 0;
+        state.window_title.clear();
+        return ("not-running".to_string(), evidence("no-processes", &[]));
+    }
+    let candidates = platform::window_candidates(&pids);
+    if candidates.is_empty() {
+        return ("window-not-found".to_string(), evidence("no-titled-window", &[]));
+    }
+    // Helper processes can own titled windows too; the Spotify main process decides
+    // the state whenever one of its windows is in the list.
+    let root_pids: Vec<u32> = state
+        .snapshot
+        .processes
+        .iter()
+        .filter(|process| !is_child_process_command(&process.cmd))
+        .map(|process| process.pid)
+        .collect();
+    let preferred: Vec<platform::WindowCandidate> = candidates
+        .iter()
+        .filter(|window| root_pids.contains(&window.pid))
+        .cloned()
+        .collect();
+    let pool: &[platform::WindowCandidate] = if preferred.is_empty() { &candidates } else { &preferred };
+    let (name, chosen) = platform::classify_windows(pool, is_foreground);
+    let rule = match name {
+        "foreground" => "foreground-window",
+        "background-visible" => "visible-window",
+        "minimized" => "iconic-window",
+        _ => "window-off-screen",
+    };
+    let reason = evidence(rule, pool);
+    if let Some(window) = chosen {
+        state.hwnd = window.hwnd;
+        state.root_pid = Some(window.pid);
+        state.window_title = window.title.clone();
+    }
+    (name.to_string(), reason)
+}
+
+fn window_state_is_unknown(window_state: &str) -> bool {
+    matches!(
+        window_state,
+        "window-not-found" | "not-detected" | "window-check-error"
+    )
 }
 
 fn maybe_auto_optimize(state: &mut AppState, now: u64) {
@@ -2226,7 +2277,13 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
         return;
     }
     if !state.settings.auto_optimize {
-        if should_manage_limits_in_background(&state.window_state) {
+        // An unreadable window state says nothing about eligibility. Restoring here
+        // would drop limits during the instant a tray hide is destroying the window,
+        // and the wait would restart on the next sample instead of finishing.
+        if window_state_is_unknown(&state.window_state) {
+            return;
+        }
+        if should_manage_limits(&state.settings, &state.window_state) {
             if state.hidden_since_ms == 0 {
                 state.hidden_since_ms = now;
                 log_event(
@@ -2260,7 +2317,10 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
         }
         return;
     }
-    let hidden = should_manage_limits_in_background(&state.window_state);
+    if window_state_is_unknown(&state.window_state) {
+        return;
+    }
+    let hidden = should_manage_limits(&state.settings, &state.window_state);
     if !hidden {
         state.hidden_since_ms = 0;
         if !state.active_caps.is_empty()
@@ -2437,8 +2497,8 @@ fn refresh_memory(state: &mut AppState, now: u64) {
 
 fn public_config(settings: &Settings) -> String {
     format!(
-        "{{\"enabled\":{},\"autoOptimize\":{},\"hiddenDelaySeconds\":{},\"trimToCap\":{},\"policy\":{{\"minMB\":{},\"maxMB\":{},\"cpuHighPercent\":{}}}}}",
-        settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, MIN_CAP_MB, MAX_CAP_MB, HIGH_CPU_PERCENT
+        "{{\"enabled\":{},\"autoOptimize\":{},\"hiddenDelaySeconds\":{},\"trimToCap\":{},\"optimizeWhenBackground\":{},\"optimizeWhenMinimized\":{},\"optimizeWhenHidden\":{},\"policy\":{{\"minMB\":{},\"maxMB\":{},\"cpuHighPercent\":{}}}}}",
+        settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, MIN_CAP_MB, MAX_CAP_MB, HIGH_CPU_PERCENT
     )
 }
 
@@ -2491,8 +2551,17 @@ fn status_payload(state: &AppState) -> String {
         let default_cap = role.manual_default_cap_mb();
         let manual_cap = configured_manual_cap(&state.settings, p, *role);
         let adaptive_status = profile.map(|p| p.last_reason.as_str()).unwrap_or("baseline");
+        let original_limits = platform::read_original_limits(p.pid, p.creation).ok();
+        let original_unlimited = original_limits
+            .as_ref()
+            .map(|limits| limits.maximum >= usize::MAX / 2)
+            .unwrap_or(false);
+        let original_maximum_mb = original_limits
+            .as_ref()
+            .filter(|_| !original_unlimited)
+            .map(|limits| (limits.maximum as f64 / (1024.0 * 1024.0)).round());
         format!(
-            "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"protectedAudio\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{}}}",
+            "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"protectedAudio\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{},\"originalMaximumMB\":{},\"originalCeilingUnlimited\":{}}}",
             p.pid, json_quote(&p.creation.to_string()), json_quote(role_name(*role)),
             json_optional_number(p.working_set_mb),
             json_optional_number(p.private_working_set_mb),
@@ -2508,7 +2577,9 @@ fn status_payload(state: &AppState) -> String {
             current_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
             manual_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
             default_cap,
-            json_quote(adaptive_status)
+            json_quote(adaptive_status),
+            json_optional_number(original_maximum_mb),
+            original_unlimited
         )
     }).collect();
 
@@ -2565,13 +2636,14 @@ fn status_payload(state: &AppState) -> String {
     );
 
     format!(
-        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{},\"audioProtected\":true,\"audioFixedCapMB\":36}}}}",
+        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"windowStateReason\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{},\"audioProtected\":true,\"audioFixedCapMB\":36}}}}",
         json_quote(VERSION),
         json_quote(&state.started_at),
         state.root_pid.is_some(),
         state.root_pid.map(|p| p.to_string()).unwrap_or_else(|| "null".to_string()),
         json_quote(&state.window_title),
         json_quote(&state.window_state),
+        json_quote(&state.window_state_reason),
         hidden_seconds,
         public_config(&state.settings),
         memory,
@@ -2810,7 +2882,7 @@ fn set_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
         }
         return Err(error);
     }
-    if should_manage_limits_in_background(&state.window_state) {
+    if should_manage_limits(&state.settings, &state.window_state) {
         if let Err(error) = apply_manual_cap(state, &process, role, cap_mb) {
             if let Some(previous) = previous {
                 state.settings.manual_role_caps.insert(role_key.clone(), previous);
@@ -2873,7 +2945,7 @@ fn clear_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
         state.settings.manual_caps.extend(previous_process_caps);
         return Err(error);
     }
-    if should_manage_limits_in_background(&state.window_state) {
+    if should_manage_limits(&state.settings, &state.window_state) {
         reconcile_manual_caps(state);
     } else {
         let records: Vec<BackupRecord> = state
@@ -2899,6 +2971,18 @@ fn update_config(state: &mut AppState, body: &str) -> Result<(), String> {
     }
     if let Some(value) = parse_json_bool(body, "trimToCap") {
         next.trim_to_cap = value;
+    }
+    if let Some(value) = parse_json_bool(body, "optimizeWhenBackground") {
+        next.optimize_when_background = value;
+    }
+    if let Some(value) = parse_json_bool(body, "optimizeWhenMinimized") {
+        next.optimize_when_minimized = value;
+    }
+    if let Some(value) = parse_json_bool(body, "optimizeWhenHidden") {
+        next.optimize_when_hidden = value;
+    }
+    if !next.optimize_when_background && !next.optimize_when_minimized && !next.optimize_when_hidden {
+        next.optimize_when_background = true;
     }
     next.hidden_delay_seconds = parse_json_number(body, "hiddenDelaySeconds")
         .unwrap_or(next.hidden_delay_seconds)
@@ -2934,11 +3018,14 @@ fn update_config(state: &mut AppState, body: &str) -> Result<(), String> {
     log_event(
         state,
         format!(
-            "Settings updated: enabled={}, autoOptimize={}, hiddenDelaySeconds={}, trimToCap={}",
+            "Settings updated: enabled={}, autoOptimize={}, hiddenDelaySeconds={}, trimToCap={}, optimizeWhen(bg/min/hidden)={}/{}/{}",
             state.settings.enabled,
             state.settings.auto_optimize,
             state.settings.hidden_delay_seconds,
-            state.settings.trim_to_cap
+            state.settings.trim_to_cap,
+            state.settings.optimize_when_background,
+            state.settings.optimize_when_minimized,
+            state.settings.optimize_when_hidden
         ),
         "info",
     );
@@ -3377,11 +3464,105 @@ mod tests {
 
     #[test]
     fn managed_limits_are_active_only_outside_the_foreground() {
-        assert!(should_manage_limits_in_background("minimized"));
-        assert!(should_manage_limits_in_background("hidden"));
-        assert!(should_manage_limits_in_background("background-visible"));
-        assert!(!should_manage_limits_in_background("foreground"));
-        assert!(!should_manage_limits_in_background("window-not-found"));
+        let settings = Settings {
+            port: DEFAULT_PORT,
+            token: "a".repeat(64),
+            enabled: true,
+            auto_optimize: true,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
+            manual_caps: BTreeMap::new(),
+            manual_role_caps: BTreeMap::new(),
+        };
+        assert!(should_manage_limits(&settings, "minimized"));
+        assert!(should_manage_limits(&settings, "hidden"));
+        assert!(should_manage_limits(&settings, "background-visible"));
+        assert!(!should_manage_limits(&settings, "foreground"));
+        assert!(!should_manage_limits(&settings, "window-not-found"));
+    }
+
+    #[test]
+    fn an_unreadable_window_state_never_restarts_the_background_wait() {
+        assert!(window_state_is_unknown("window-not-found"));
+        assert!(window_state_is_unknown("not-detected"));
+        assert!(!window_state_is_unknown("hidden"));
+        assert!(!window_state_is_unknown("minimized"));
+        assert!(!window_state_is_unknown("foreground"));
+
+        let base = std::env::temp_dir().join(format!(
+            "mss-unknown-window-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let settings = Settings {
+            port: DEFAULT_PORT,
+            token: "a".repeat(64),
+            enabled: true,
+            auto_optimize: true,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            trim_to_cap: true,
+            optimize_when_background: false,
+            optimize_when_minimized: false,
+            optimize_when_hidden: true,
+            manual_caps: BTreeMap::new(),
+            manual_role_caps: BTreeMap::new(),
+        };
+        let mut state = build_state(base.clone(), settings);
+        state.window_state = "window-not-found".to_string();
+        state.hidden_since_ms = 10_000;
+        maybe_auto_optimize(&mut state, 12_000);
+        assert_eq!(state.hidden_since_ms, 10_000);
+
+        state.settings.auto_optimize = false;
+        maybe_auto_optimize(&mut state, 13_000);
+        assert_eq!(state.hidden_since_ms, 10_000);
+
+        state.window_state = "foreground".to_string();
+        maybe_auto_optimize(&mut state, 14_000);
+        assert_eq!(state.hidden_since_ms, 0);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn each_trigger_state_can_be_disabled_but_never_all_three() {
+        let base = std::env::temp_dir().join(format!(
+            "mss-triggers-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let settings = Settings {
+            port: DEFAULT_PORT,
+            token: "a".repeat(64),
+            enabled: true,
+            auto_optimize: true,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
+            manual_caps: BTreeMap::new(),
+            manual_role_caps: BTreeMap::new(),
+        };
+        let mut state = build_state(base.clone(), settings);
+        update_config(
+            &mut state,
+            r#"{"optimizeWhenMinimized":false,"optimizeWhenHidden":false}"#,
+        )
+        .expect("partial trigger change should save");
+        assert!(!state.settings.optimize_when_minimized);
+        assert!(!state.settings.optimize_when_hidden);
+        assert!(state.settings.optimize_when_background);
+        update_config(&mut state, r#"{"optimizeWhenBackground":false}"#)
+            .expect("an all-off trigger set should be coerced");
+        assert!(state.settings.optimize_when_background);
+        let loaded = load_settings(&state.settings_path).expect("trigger states should persist");
+        assert!(loaded.optimize_when_background);
+        assert!(!loaded.optimize_when_minimized);
+        assert!(!loaded.optimize_when_hidden);
+        let _ = fs::remove_dir_all(base);
     }
 
     #[test]
@@ -3410,6 +3591,9 @@ mod tests {
             auto_optimize: false,
             hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
             trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
             manual_caps: BTreeMap::from([((42, 100), 40)]),
             manual_role_caps: BTreeMap::from([("Renderer".to_string(), 52)]),
         };
@@ -3478,6 +3662,9 @@ mod tests {
             auto_optimize: true,
             hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
             trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
         };
@@ -3509,6 +3696,9 @@ mod tests {
             auto_optimize: false,
             hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
             trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
         };

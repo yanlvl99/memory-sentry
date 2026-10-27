@@ -9,8 +9,8 @@ body:
         Thanks for your question.
 
         Before you start:
-        - Read [Installation](https://github.com/yanlvl99/spicetify-memory-sentry/blob/main/docs/INSTALLATION.md) and [Troubleshooting](https://github.com/yanlvl99/spicetify-memory-sentry/blob/main/docs/TROUBLESHOOTING.md).
-        - Search [existing issues](https://github.com/yanlvl99/spicetify-memory-sentry/issues) first.
+        - Read [Installation](https://github.com/yanlvl99/memory-sentry/blob/main/docs/INSTALLATION.md) and [Troubleshooting](https://github.com/yanlvl99/memory-sentry/blob/main/docs/TROUBLESHOOTING.md).
+        - Search [existing issues](https://github.com/yanlvl99/memory-sentry/issues) first.
         - If you found a reproducible defect, use the plugin or server bug form instead.
 
   - type: checkboxes

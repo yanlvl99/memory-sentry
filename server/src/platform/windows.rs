@@ -103,10 +103,22 @@ extern "system" {
 
 #[link(name = "user32")]
 extern "system" {
+    fn IsWindow(hwnd: Handle) -> i32;
     fn IsWindowVisible(hwnd: Handle) -> i32;
     fn IsIconic(hwnd: Handle) -> i32;
     fn GetForegroundWindow() -> Handle;
     fn GetWindowThreadProcessId(hwnd: Handle, process_id: *mut u32) -> u32;
+    fn EnumWindows(callback: Option<unsafe extern "system" fn(Handle, isize) -> i32>, param: isize) -> i32;
+    fn GetWindow(hwnd: Handle, relationship: i32) -> Handle;
+    fn GetWindowLongW(hwnd: Handle, index: i32) -> i32;
+    fn GetWindowTextLengthW(hwnd: Handle) -> i32;
+    fn GetWindowTextW(hwnd: Handle, buffer: *mut u16, max_count: i32) -> i32;
+    fn GetWindowRect(hwnd: Handle, rect: *mut WindowRect) -> i32;
+}
+
+#[link(name = "dwmapi")]
+extern "system" {
+    fn DwmGetWindowAttribute(hwnd: Handle, attribute: u32, value: *mut c_void, size: u32) -> i32;
 }
 
 #[link(name = "bcrypt")]
@@ -148,17 +160,9 @@ pub struct ProcessRow {
     pub error_code: i32,
 }
 
-#[derive(Clone, Debug)]
-pub struct WindowRow {
-    pub pid: u32,
-    pub hwnd: usize,
-    pub title: String,
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
     pub processes: Vec<ProcessRow>,
-    pub windows: Vec<WindowRow>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -372,21 +376,156 @@ pub fn foreground_process_id() -> Option<u32> {
     }
 }
 
-pub fn window_state(hwnd: usize, has_processes: bool, is_foreground: bool) -> String {
-    if is_foreground {
-        return "foreground".to_string();
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct WindowRect {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+const GW_OWNER: i32 = 4;
+const GWL_EXSTYLE: i32 = -20;
+const WS_EX_TOOLWINDOW: i32 = 0x0000_0080;
+const WS_EX_NOACTIVATE: i32 = 0x0800_0000;
+const DWMWA_CLOAKED: u32 = 14;
+
+/// One titled top-level window owned by one of the scanned processes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WindowCandidate {
+    pub pid: u32,
+    pub hwnd: usize,
+    pub title: String,
+    pub on_screen: bool,
+    pub iconic: bool,
+    pub area: i64,
+}
+
+/// The shell can keep WS_VISIBLE on a window it stopped presenting (another virtual
+/// desktop, a suppressed UWP or shell surface), so visibility alone is not proof that
+/// the user can see the window.
+fn is_window_cloaked(window: Handle) -> bool {
+    let mut cloaked: i32 = 0;
+    unsafe {
+        DwmGetWindowAttribute(
+            window,
+            DWMWA_CLOAKED,
+            &mut cloaked as *mut i32 as *mut c_void,
+            std::mem::size_of::<i32>() as u32,
+        ) == 0
+            && cloaked != 0
     }
-    if hwnd == 0 {
-        return if has_processes { "window-not-found" } else { "not-running" }.to_string();
+}
+
+struct WindowScan {
+    pids: Vec<u32>,
+    found: Vec<WindowCandidate>,
+}
+
+unsafe extern "system" fn scan_top_level_window(window: Handle, param: isize) -> i32 {
+    let scan = &mut *(param as *mut WindowScan);
+    if IsWindow(window) == 0 {
+        return 1;
     }
-    let window = hwnd as Handle;
-    if unsafe { IsIconic(window) } != 0 {
-        return "minimized".to_string();
+    let mut pid = 0;
+    if GetWindowThreadProcessId(window, &mut pid) == 0 || !scan.pids.contains(&pid) {
+        return 1;
     }
-    if unsafe { IsWindowVisible(window) } == 0 {
-        return "hidden".to_string();
+    // Owned windows are dialogs, and tool or no-activate windows are notifications,
+    // tray icons and invisible Electron support surfaces. None of them is the main
+    // Spotify window we are looking for.
+    if !GetWindow(window, GW_OWNER).is_null() {
+        return 1;
     }
-    "background-visible".to_string()
+    if GetWindowLongW(window, GWL_EXSTYLE) & (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) != 0 {
+        return 1;
+    }
+    let title_length = GetWindowTextLengthW(window);
+    if title_length <= 0 {
+        return 1;
+    }
+    let mut buffer = vec![0u16; title_length as usize + 1];
+    let written = GetWindowTextW(window, buffer.as_mut_ptr(), buffer.len() as i32);
+    let title = String::from_utf16_lossy(&buffer[..written.max(0) as usize]);
+    let mut rect = WindowRect::default();
+    let _ = GetWindowRect(window, &mut rect);
+    let area = (rect.right - rect.left).max(0) as i64 * (rect.bottom - rect.top).max(0) as i64;
+    // A window without a usable area is a support surface (Spotify keeps a 1x1
+    // "GDI+ Window", plus IME and 0x0 helper windows). They can carry a title while
+    // never being the app window, and a real window hidden to the tray keeps its last
+    // size, so requiring a plausible area separates "hidden" from "leftover garbage".
+    const MINIMUM_WINDOW_AREA: i64 = 256;
+    if area < MINIMUM_WINDOW_AREA {
+        return 1;
+    }
+    let on_screen = IsWindowVisible(window) != 0 && !is_window_cloaked(window);
+    scan.found.push(WindowCandidate {
+        pid,
+        hwnd: window as usize,
+        title,
+        on_screen,
+        iconic: IsIconic(window) != 0,
+        area,
+    });
+    1
+}
+
+/// Every titled top-level window of the given processes, read straight from the window
+/// manager. This replaces the PowerShell MainWindowHandle probe: the .NET property only
+/// accepts unowned *visible* windows, so it always reports 0 once Spotify hides itself
+/// in the tray, and the handle it does return can be destroyed at any moment.
+pub fn window_candidates(pids: &[u32]) -> Vec<WindowCandidate> {
+    if pids.is_empty() {
+        return Vec::new();
+    }
+    let mut scan = WindowScan {
+        pids: pids.to_vec(),
+        found: Vec::new(),
+    };
+    unsafe {
+        EnumWindows(Some(scan_top_level_window), &mut scan as *mut WindowScan as isize);
+    }
+    scan.found.sort_by_key(|window| (window.pid, window.hwnd));
+    scan.found
+}
+
+/// The window that best represents the process: the largest one the user can see,
+/// then the largest minimized one, then the largest hidden one.
+fn largest_window(list: &[WindowCandidate]) -> Option<&WindowCandidate> {
+    list.iter()
+        .filter(|window| window.on_screen && !window.iconic)
+        .max_by_key(|window| window.area)
+        .or_else(|| {
+            list.iter()
+                .filter(|window| window.iconic)
+                .max_by_key(|window| window.area)
+        })
+        .or_else(|| list.iter().max_by_key(|window| window.area))
+}
+
+/// Window state plus the window that represents it. A minimized window is still
+/// visible and carries IsIconic, a tray-hidden window is neither visible nor cloaked
+/// but still has a size. "Foreground" additionally requires something of Spotify to be
+/// on screen: after a tray hide the shell can hand focus to a leftover window of the
+/// same process, and trusting the process id alone would keep reporting foreground.
+pub fn classify_windows(
+    candidates: &[WindowCandidate],
+    is_foreground: bool,
+) -> (&'static str, Option<&WindowCandidate>) {
+    if candidates.is_empty() {
+        return ("window-not-found", None);
+    }
+    if is_foreground && candidates.iter().any(|window| window.on_screen) {
+        return ("foreground", largest_window(candidates));
+    }
+    if candidates.iter().any(|window| window.on_screen && !window.iconic) {
+        return ("background-visible", largest_window(candidates));
+    }
+    if candidates.iter().any(|window| window.iconic) {
+        return ("minimized", largest_window(candidates));
+    }
+    ("hidden", largest_window(candidates))
 }
 
 pub fn random_token() -> Result<String, String> {
@@ -455,14 +594,6 @@ try {
       $cpuMs.ToString($culture), $ws.ToString($culture),
       $private.ToString($culture), $faults.ToString($culture), $cmd64))
   }
-  foreach ($w in @(Get-Process -Name Spotify -ErrorAction SilentlyContinue)) {
-    $hwnd = 0
-    try { $hwnd = [long]$w.MainWindowHandle.ToInt64() } catch {}
-    if ($hwnd -ne 0) {
-      $title64 = [Convert]::ToBase64String($utf8.GetBytes([string]$w.MainWindowTitle))
-      [Console]::Out.WriteLine(('W|{0}|{1}|{2}' -f $w.Id, $hwnd, $title64))
-    }
-  }
 } catch {
   [Console]::Error.WriteLine($_.Exception.Message)
   exit 2
@@ -515,14 +646,6 @@ try {
                     private_mb: (private > 0.0).then_some(private / (1024.0 * 1024.0)),
                     page_fault_count, page_faults_delta: None, error_code,
                 });
-            }
-            Some("W") if parts.len() == 4 => {
-                let pid = parts[1].parse::<u32>().unwrap_or(0);
-                let hwnd = parts[2].parse::<usize>().unwrap_or(0);
-                let title = String::from_utf8_lossy(&decode_base64(parts[3])).into_owned();
-                if pid > 0 && hwnd != 0 {
-                    snapshot.windows.push(WindowRow { pid, hwnd, title });
-                }
             }
             _ => {}
         }
@@ -975,5 +1098,63 @@ mod tests {
         if let Ok(pids) = result {
             assert!(pids.windows(2).all(|pair| pair[0] <= pair[1]));
         }
+    }
+
+    #[test]
+    fn classify_windows_separates_tray_hidden_from_minimized_and_visible() {
+        let window = |on_screen: bool, iconic: bool, area: i64| WindowCandidate {
+            pid: 10,
+            hwnd: 1,
+            title: "Spotify".to_string(),
+            on_screen,
+            iconic,
+            area,
+        };
+        assert_eq!(
+            classify_windows(&[window(false, false, 1_920_000)], false).0,
+            "hidden"
+        );
+        assert_eq!(
+            classify_windows(&[window(true, true, 1_920_000)], false).0,
+            "minimized"
+        );
+        assert_eq!(
+            classify_windows(&[window(true, false, 1_920_000)], false).0,
+            "background-visible"
+        );
+        assert_eq!(
+            classify_windows(&[window(true, false, 1_920_000)], true).0,
+            "foreground"
+        );
+        assert_eq!(classify_windows(&[], false).0, "window-not-found");
+        // A leftover window of the same process holding focus must not pretend the
+        // app is still in the foreground when nothing of it is on screen.
+        assert_eq!(
+            classify_windows(&[window(false, false, 1_920_000)], true).0,
+            "hidden"
+        );
+        // Any window that is really on screen wins over a hidden main window.
+        assert_eq!(
+            classify_windows(
+                &[window(false, false, 1_920_000), window(true, false, 100)],
+                false
+            )
+            .0,
+            "background-visible"
+        );
+        assert_eq!(
+            classify_windows(&[window(false, false, 100), window(false, false, 9_000)], false)
+                .1
+                .map(|found| found.area),
+            Some(9_000)
+        );
+    }
+
+    #[test]
+    fn window_candidate_scan_accepts_the_current_process_without_panicking() {
+        assert!(window_candidates(&[]).is_empty());
+        let own = std::process::id();
+        let found = window_candidates(&[own]);
+        assert!(found.iter().all(|window| window.pid == own));
     }
 }
