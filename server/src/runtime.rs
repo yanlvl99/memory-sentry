@@ -164,6 +164,7 @@ struct AppState {
     hwnd: usize,
     window_title: String,
     window_state: String,
+    window_state_reason: String,
     hidden_since_ms: u64,
     last_restore_attempt_at_ms: u64,
     last_memory_sample_at_ms: u64,
@@ -1282,6 +1283,7 @@ fn build_state(base: PathBuf, settings: Settings) -> AppState {
         hwnd: 0,
         window_title: String::new(),
         window_state: "not-detected".to_string(),
+        window_state_reason: "startup".to_string(),
         hidden_since_ms: 0,
         last_restore_attempt_at_ms: 0,
         last_memory_sample_at_ms: 0,
@@ -1374,15 +1376,12 @@ pub fn run_monitor() -> Result<(), String> {
                 platform::foreground_process_id(),
                 s.snapshot.processes.iter().map(|process| process.pid),
             );
-            let current_window_state =
-                platform::window_state(s.hwnd, !s.snapshot.processes.is_empty(), is_foreground);
+            let (current_window_state, reason) = observe_window_state(&mut s, is_foreground);
             if current_window_state != s.window_state {
+                let message = format!("Spotify window state: {current_window_state} ({reason})");
                 s.window_state = current_window_state.clone();
-                log_event(
-                    &mut s,
-                    format!("Spotify window state: {current_window_state}"),
-                    "info",
-                );
+                s.window_state_reason = reason;
+                log_event(&mut s, message, "info");
             }
             let now = now_ms();
             if now.saturating_sub(s.last_memory_sample_at_ms) >= MEMORY_SAMPLE_INTERVAL_MS {
@@ -1446,43 +1445,13 @@ fn accept_snapshot(state: &mut AppState, mut snapshot: platform::Snapshot) {
     state.snapshot_at_ms = sampled_at;
     state.snapshot_serial += 1;
     state.snapshot_ok = true;
-    let chosen = state
-        .snapshot
-        .windows
-        .iter()
-        .filter(|window| state.snapshot.processes.iter().any(|p| p.pid == window.pid))
-        .min_by_key(|window| {
-            let command = state
-                .snapshot
-                .processes
-                .iter()
-                .find(|p| p.pid == window.pid)
-                .map(|p| p.cmd.as_str())
-                .unwrap_or("");
-            if is_child_process_command(command) {
-                1
-            } else {
-                0
-            }
-        });
-    if let Some(window) = chosen {
-        state.root_pid = Some(window.pid);
-        state.hwnd = window.hwnd;
-        state.window_title = window.title.clone();
-    } else {
-        state.root_pid = None;
-        state.hwnd = 0;
-        state.window_title.clear();
-    }
     let is_foreground = spotify_process_is_foreground(
         platform::foreground_process_id(),
         state.snapshot.processes.iter().map(|process| process.pid),
     );
-    state.window_state = platform::window_state(
-        state.hwnd,
-        !state.snapshot.processes.is_empty(),
-        is_foreground,
-    );
+    let (window_state, reason) = observe_window_state(state, is_foreground);
+    state.window_state = window_state;
+    state.window_state_reason = reason;
     state.last_error.clear();
     // Drop stale profiles only when the snapshot proves that a PID has a new creation identity.
     let active: BTreeMap<u32, u64> = state
@@ -2224,6 +2193,69 @@ fn background_delay_elapsed(since: u64, now: u64, delay_seconds: u64) -> bool {
     since > 0 && now.saturating_sub(since) >= delay_seconds.saturating_mul(1000)
 }
 
+/// Reads the live window list and records which window represents Spotify now.
+/// Detection no longer depends on a remembered handle: the window manager is asked
+/// on every pass, so hiding to the tray, a destroyed window and a recreated one are
+/// all classified from current facts instead of from cached state.
+fn observe_window_state(state: &mut AppState, is_foreground: bool) -> (String, String) {
+    let pids: Vec<u32> = state.snapshot.processes.iter().map(|p| p.pid).collect();
+    let evidence = |rule: &str, list: &[platform::WindowCandidate]| {
+        format!(
+            "{rule} candidates={} onScreen={} iconic={} foreground={}",
+            list.len(),
+            list.iter().filter(|window| window.on_screen).count(),
+            list.iter().filter(|window| window.iconic).count(),
+            is_foreground,
+        )
+    };
+    if pids.is_empty() {
+        state.root_pid = None;
+        state.hwnd = 0;
+        state.window_title.clear();
+        return ("not-running".to_string(), evidence("no-processes", &[]));
+    }
+    let candidates = platform::window_candidates(&pids);
+    if candidates.is_empty() {
+        return ("window-not-found".to_string(), evidence("no-titled-window", &[]));
+    }
+    // Helper processes can own titled windows too; the Spotify main process decides
+    // the state whenever one of its windows is in the list.
+    let root_pids: Vec<u32> = state
+        .snapshot
+        .processes
+        .iter()
+        .filter(|process| !is_child_process_command(&process.cmd))
+        .map(|process| process.pid)
+        .collect();
+    let preferred: Vec<platform::WindowCandidate> = candidates
+        .iter()
+        .filter(|window| root_pids.contains(&window.pid))
+        .cloned()
+        .collect();
+    let pool: &[platform::WindowCandidate] = if preferred.is_empty() { &candidates } else { &preferred };
+    let (name, chosen) = platform::classify_windows(pool, is_foreground);
+    let rule = match name {
+        "foreground" => "foreground-window",
+        "background-visible" => "visible-window",
+        "minimized" => "iconic-window",
+        _ => "window-off-screen",
+    };
+    let reason = evidence(rule, pool);
+    if let Some(window) = chosen {
+        state.hwnd = window.hwnd;
+        state.root_pid = Some(window.pid);
+        state.window_title = window.title.clone();
+    }
+    (name.to_string(), reason)
+}
+
+fn window_state_is_unknown(window_state: &str) -> bool {
+    matches!(
+        window_state,
+        "window-not-found" | "not-detected" | "window-check-error"
+    )
+}
+
 fn maybe_auto_optimize(state: &mut AppState, now: u64) {
     if !state.settings.enabled {
         state.hidden_since_ms = 0;
@@ -2245,6 +2277,12 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
         return;
     }
     if !state.settings.auto_optimize {
+        // An unreadable window state says nothing about eligibility. Restoring here
+        // would drop limits during the instant a tray hide is destroying the window,
+        // and the wait would restart on the next sample instead of finishing.
+        if window_state_is_unknown(&state.window_state) {
+            return;
+        }
         if should_manage_limits(&state.settings, &state.window_state) {
             if state.hidden_since_ms == 0 {
                 state.hidden_since_ms = now;
@@ -2277,6 +2315,9 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
                 );
             }
         }
+        return;
+    }
+    if window_state_is_unknown(&state.window_state) {
         return;
     }
     let hidden = should_manage_limits(&state.settings, &state.window_state);
@@ -2595,13 +2636,14 @@ fn status_payload(state: &AppState) -> String {
     );
 
     format!(
-        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{},\"audioProtected\":true,\"audioFixedCapMB\":36}}}}",
+        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"windowStateReason\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{},\"audioProtected\":true,\"audioFixedCapMB\":36}}}}",
         json_quote(VERSION),
         json_quote(&state.started_at),
         state.root_pid.is_some(),
         state.root_pid.map(|p| p.to_string()).unwrap_or_else(|| "null".to_string()),
         json_quote(&state.window_title),
         json_quote(&state.window_state),
+        json_quote(&state.window_state_reason),
         hidden_seconds,
         public_config(&state.settings),
         memory,
@@ -3422,7 +3464,7 @@ mod tests {
 
     #[test]
     fn managed_limits_are_active_only_outside_the_foreground() {
-let settings = Settings {
+        let settings = Settings {
             port: DEFAULT_PORT,
             token: "a".repeat(64),
             enabled: true,
@@ -3442,7 +3484,86 @@ let settings = Settings {
         assert!(!should_manage_limits(&settings, "window-not-found"));
     }
 
+    #[test]
+    fn an_unreadable_window_state_never_restarts_the_background_wait() {
+        assert!(window_state_is_unknown("window-not-found"));
+        assert!(window_state_is_unknown("not-detected"));
+        assert!(!window_state_is_unknown("hidden"));
+        assert!(!window_state_is_unknown("minimized"));
+        assert!(!window_state_is_unknown("foreground"));
 
+        let base = std::env::temp_dir().join(format!(
+            "mss-unknown-window-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let settings = Settings {
+            port: DEFAULT_PORT,
+            token: "a".repeat(64),
+            enabled: true,
+            auto_optimize: true,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            trim_to_cap: true,
+            optimize_when_background: false,
+            optimize_when_minimized: false,
+            optimize_when_hidden: true,
+            manual_caps: BTreeMap::new(),
+            manual_role_caps: BTreeMap::new(),
+        };
+        let mut state = build_state(base.clone(), settings);
+        state.window_state = "window-not-found".to_string();
+        state.hidden_since_ms = 10_000;
+        maybe_auto_optimize(&mut state, 12_000);
+        assert_eq!(state.hidden_since_ms, 10_000);
+
+        state.settings.auto_optimize = false;
+        maybe_auto_optimize(&mut state, 13_000);
+        assert_eq!(state.hidden_since_ms, 10_000);
+
+        state.window_state = "foreground".to_string();
+        maybe_auto_optimize(&mut state, 14_000);
+        assert_eq!(state.hidden_since_ms, 0);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn each_trigger_state_can_be_disabled_but_never_all_three() {
+        let base = std::env::temp_dir().join(format!(
+            "mss-triggers-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let settings = Settings {
+            port: DEFAULT_PORT,
+            token: "a".repeat(64),
+            enabled: true,
+            auto_optimize: true,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
+            manual_caps: BTreeMap::new(),
+            manual_role_caps: BTreeMap::new(),
+        };
+        let mut state = build_state(base.clone(), settings);
+        update_config(
+            &mut state,
+            r#"{"optimizeWhenMinimized":false,"optimizeWhenHidden":false}"#,
+        )
+        .expect("partial trigger change should save");
+        assert!(!state.settings.optimize_when_minimized);
+        assert!(!state.settings.optimize_when_hidden);
+        assert!(state.settings.optimize_when_background);
+        update_config(&mut state, r#"{"optimizeWhenBackground":false}"#)
+            .expect("an all-off trigger set should be coerced");
+        assert!(state.settings.optimize_when_background);
+        let loaded = load_settings(&state.settings_path).expect("trigger states should persist");
+        assert!(loaded.optimize_when_background);
+        assert!(!loaded.optimize_when_minimized);
+        assert!(!loaded.optimize_when_hidden);
+        let _ = fs::remove_dir_all(base);
+    }
 
     #[test]
     fn manual_caps_are_persisted_by_pid_and_full_creation_identity() {
