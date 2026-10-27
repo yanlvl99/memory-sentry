@@ -1,7 +1,7 @@
-//! Command-line entry point for the Memory Sentry Windows companion.
+//! Command-line entry point for the Memory Sentry server.
 //!
 //! Windows 10 and Windows 11 desktop editions only. The platform-independent
-//! policy remains testable cross-platform, but native operations fail closed off Windows.
+//! policy remains testable cross-platform, but Win32 operations fail closed off Windows.
 
 #[cfg(windows)]
 #[path = "platform/windows.rs"]
@@ -29,7 +29,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     if args.first().map(String::as_str) == Some("--version") {
-        println!("Memory Sentry native companion {}", env!("CARGO_PKG_VERSION"));
+        println!("Memory Sentry server {}", env!("CARGO_PKG_VERSION"));
         return;
     }
     if args.first().map(String::as_str) == Some("--self-test") {

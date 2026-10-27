@@ -7,9 +7,9 @@ on:
       - 'v*'
     paths:
       - '.github/workflows/release.yml'
-      - 'native/rust/Cargo.toml'
-      - 'native/rust/Cargo.lock'
-      - 'native/rust/src/runtime.rs'
+      - 'server/Cargo.toml'
+      - 'server/Cargo.lock'
+      - 'server/src/runtime.rs'
       - 'installer/inno/MemorySentry.iss'
       - 'CHANGELOG.md'
       - 'scripts/build-package.ps1'
@@ -35,7 +35,7 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $cargo = Get-Content native/rust/Cargo.toml -Raw
+          $cargo = Get-Content server/Cargo.toml -Raw
           if ($cargo -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw "Could not read Cargo version." }
           $version = $Matches[1]
           if ($env:GITHUB_REF_TYPE -eq "tag") {
@@ -45,9 +45,9 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag_name=v$version" >> $env:GITHUB_OUTPUT
       - name: Run Rust tests
-        run: cargo test --manifest-path native/rust/Cargo.toml --locked
-      - name: Build native Windows x64 companion
-        run: cargo build --release --manifest-path native/rust/Cargo.toml --target x86_64-pc-windows-msvc --locked
+        run: cargo test --manifest-path server/Cargo.toml --locked
+      - name: Build Windows x64 server
+        run: cargo build --release --manifest-path server/Cargo.toml --target x86_64-pc-windows-msvc --locked
       - name: Validate JavaScript and package metadata
         run: node tests/validate-package.js
       - name: Install Inno Setup 6

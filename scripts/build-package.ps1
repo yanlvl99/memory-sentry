@@ -6,19 +6,19 @@ $ProgressPreference = "SilentlyContinue"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
 if (-not $Version) {
-    $cargo = Get-Content -LiteralPath (Join-Path $Root "native\rust\Cargo.toml") -Raw
-    if ($cargo -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw "Could not read native companion version from Cargo.toml." }
+    $cargo = Get-Content -LiteralPath (Join-Path $Root "server\Cargo.toml") -Raw
+    if ($cargo -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw "Could not read server version from Cargo.toml." }
     $Version = $Matches[1]
 }
 if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z.+-]*$') { throw "Invalid release version: $Version" }
 
-$CargoManifest = Join-Path $Root "native\rust\Cargo.toml"
+$CargoManifest = Join-Path $Root "server\Cargo.toml"
 & cargo build --release --manifest-path $CargoManifest --target x86_64-pc-windows-msvc --locked
 if ($LASTEXITCODE -ne 0) { throw "Rust release build failed with exit code $LASTEXITCODE." }
 
-$Binary = Join-Path $Root "native\rust\target\x86_64-pc-windows-msvc\release\memory-sentry-native.exe"
+$Binary = Join-Path $Root "server\target\x86_64-pc-windows-msvc\release\memory-sentry-server.exe"
 if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
-    throw "Compiled Windows companion not found at $Binary. Run cargo build --release for x86_64-pc-windows-msvc first."
+    throw "Compiled Windows server not found at $Binary. Run cargo build --release for x86_64-pc-windows-msvc first."
 }
 $VersionOutput = & $Binary "--version" 2>&1
 if ($LASTEXITCODE -ne 0 -or ($VersionOutput -join " ") -notmatch [regex]::Escape($Version)) {

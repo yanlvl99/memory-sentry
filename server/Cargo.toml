@@ -1,15 +1,15 @@
 [package]
-name = "memory-sentry-native"
+name = "memory-sentry-server"
 version = "1.0.0-rc.2"
 edition = "2021"
 rust-version = "1.75"
 publish = false
-description = "Native adaptive Windows companion for Memory Sentry"
+description = "Windows server for Memory Sentry, implemented in Rust"
 
 [lib]
 name = "memory_sentry_core"
 path = "src/lib.rs"
 
 [[bin]]
-name = "memory-sentry-native"
+name = "memory-sentry-server"
 path = "src/main.rs"

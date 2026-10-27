@@ -1,10 +1,10 @@
 # Server migration and release gate
 
-This document tracks the move from the legacy Node.js companion to the native Rust server and the remaining release-validation work. For user-facing installation steps, see [INSTALLATION.md](INSTALLATION.md); for repeatable behavior measurements, see [BENCHMARKING.md](BENCHMARKING.md).
+This document tracks the move from the legacy Node.js server to the current server, which is implemented in Rust, and the remaining release-validation work. For user-facing installation steps, see [INSTALLATION.md](INSTALLATION.md); for repeatable behavior measurements, see [BENCHMARKING.md](BENCHMARKING.md).
 
 ## Current release-candidate status
 
-The Rust companion implements process discovery, Windows working-set operations, the loopback dashboard API, per-install authentication, recovery persistence, per-user startup, and guarded upgrade/uninstall commands. It uses no third-party Rust crates in the current core. New installations do not require Node.js or Koffi; Node.js 22+ may be needed temporarily to recover limits saved by the legacy Node.js version.
+The server implements process discovery, Windows working-set operations, the loopback dashboard API, per-install authentication, recovery persistence, per-user startup, and guarded upgrade/uninstall commands. The current implementation is written in Rust and uses no third-party crates in its core. New installations do not require Node.js or Koffi; Node.js 22+ may be needed temporarily to recover limits saved by the legacy Node.js version.
 
 Automatic limits apply to Spotify's process tree after the configured background delay. Audio-role processes receive a fixed 36 MB automatic ceiling and are not adaptively adjusted. In manual mode, 36 MB is the Audio default and can be overridden per process role. Role overrides persist across Spotify restarts and PID changes, while original limits are backed up per process instance. The same configured background delay applies in automatic and manual modes.
 
@@ -24,7 +24,7 @@ The master dashboard power switch stops new limits and retries pending restorati
 
 - [x] Port the adaptive decision policy with unit tests.
 - [x] Add Win32 working-set, window-state, process-identity, and token primitives.
-- [x] Add a Rust runtime implementation matching the dashboard API.
+- [x] Add the server runtime implementation, in Rust, matching the dashboard API.
 - [x] Add setup/uninstall registration and legacy Node.js recovery.
 - [x] Add CI policy tests and Windows x64 compile/package jobs.
 - [x] Run the safe `--version` and `--self-test` commands on the Windows runner and build the validation Setup EXE.

@@ -14,7 +14,7 @@ function read(relative) { return fs.readFileSync(path.join(root, relative), 'utf
 const requiredFiles = [
   'app/index.js', 'app/manifest.json',
   '.gitignore', 'manifest.json', 'README.md', 'LICENSE', 'PRIVACY.md', 'SECURITY.md',
-  'CHANGELOG.md', 'docs/BENCHMARKING.md', 'docs/MARKETPLACE.md', 'docs/INSTALLATION.md', 'docs/RUST-MIGRATION.md', 'docs/RELEASE_CHECKLIST.md', 'docs/DEVELOPMENT.md', 'docs/TROUBLESHOOTING.md', 'installer/inno/MemorySentry.iss',   'scripts/build-package.ps1', 'scripts/swap-server.ps1', 'native/rust/src/main.rs', 'native/rust/src/lib.rs', 'native/rust/src/runtime.rs', 'native/rust/src/platform/windows.rs', 'assets/marketplace-cover.svg', 'assets/readme-preview.svg', 'assets/readme-banner.svg',
+  'CHANGELOG.md', 'docs/BENCHMARKING.md', 'docs/MARKETPLACE.md', 'docs/INSTALLATION.md', 'docs/SERVER-MIGRATION.md', 'docs/RELEASE_CHECKLIST.md', 'docs/DEVELOPMENT.md', 'docs/TROUBLESHOOTING.md', 'installer/inno/MemorySentry.iss',   'scripts/build-package.ps1', 'scripts/swap-server.ps1', 'server/src/main.rs', 'server/src/lib.rs', 'server/src/runtime.rs', 'server/src/platform/windows.rs', 'assets/marketplace-cover.svg', 'assets/readme-preview.svg', 'assets/readme-banner.svg',
   '.github/ISSUE_TEMPLATE/config.yml', '.github/ISSUE_TEMPLATE/feature-request.yml', '.github/ISSUE_TEMPLATE/plugin-bug.yml', '.github/ISSUE_TEMPLATE/question.yml', '.github/ISSUE_TEMPLATE/server-bug.yml',
   '.github/workflows/validate.yml', '.github/workflows/release.yml'
 ];
@@ -32,14 +32,14 @@ check('artwork uses standalone SVGs with vector elements and no external PNG lin
 check('PNG sources, archive and obsolete screenshot assets were removed', !fs.readdirSync(path.join(root, 'assets')).some(file => /\.png$/i.test(file) || /\.zip$/i.test(file)) && ['COM.png', 'SEM.png', 'assets/COM-sharp.svg', 'assets/SEM-sharp.svg', 'assets/marketplace-banner.svg', 'assets/marketplace-preview-sharp.svg', 'preview.png', 'assets/marketplace-preview.svg'].every(file => !fs.existsSync(path.join(root, file))));
 check('README keeps the banner and omits the obsolete comparison preview', /assets\/readme-banner\.svg/.test(read('README.md')) && !/assets\/readme-preview\.svg/.test(read('README.md')) && !/not a controlled benchmark/i.test(read('README.md')));
 check('Marketplace description explains minimized RAM savings and the restore-time trade-off', /Reduce Spotify's RAM usage while minimized/i.test(marketplaceManifest.description) && /slower interface loading when restored/i.test(marketplaceManifest.description) && marketplaceManifest.description.length <= 120);
-check('official Setup declares supported Windows 10/11 desktop only', /Windows 10/.test(read('installer/inno/MemorySentry.iss')) && /Windows 11/.test(read('installer/inno/MemorySentry.iss')) && /detect_supported_client_os/.test(read('native/rust/src/runtime.rs')));
+check('official Setup declares supported Windows 10/11 desktop only', /Windows 10/.test(read('installer/inno/MemorySentry.iss')) && /Windows 11/.test(read('installer/inno/MemorySentry.iss')) && /detect_supported_client_os/.test(read('server/src/runtime.rs')));
 check('local publishing helper and generated archives are ignored', /\/PUSH-TO-GITHUB\.bat/.test(read('.gitignore')) && /\*\.bundle/.test(read('.gitignore')) && /\*\.zip/.test(read('.gitignore')));
 check('development guide documents Rust build and package validation without local publishing scripts', /cargo test/.test(read('docs/DEVELOPMENT.md')) && /scripts\/build-package\.ps1/.test(read('docs/DEVELOPMENT.md')) && !/PUSH-TO-GITHUB\.bat/i.test(read('docs/DEVELOPMENT.md')));
 check('README explains server requirement', /Memory Sentry server/i.test(read('README.md')) && /separate per-user process/i.test(read('README.md')));
 check('README documents adaptive CPU and headroom rules', /six consecutive seconds/i.test(read('README.md')) && /ten seconds/i.test(read('README.md')) && /full current working-set ceiling/i.test(read('README.md')));
 check('README documents the master switch, shared delay and five-second warning', /dashboard power switch is the master on\/off control/i.test(read('README.md')) && /same configured background delay applies in both modes/i.test(read('README.md')) && /five-second warning countdown/i.test(read('README.md')));
 check('changelog uses the current five-second manual warning', /five-second warning countdown/i.test(read('CHANGELOG.md')) && !/15-second warning countdown/i.test(read('CHANGELOG.md')));
-check('docs distinguish the fixed automatic Audio ceiling from its manual default', /fixed 36 MB automatic ceiling/i.test(read('docs/RELEASE_CHECKLIST.md')) && /manual mode.*36 MB is the Audio default and can be overridden per process role/i.test(read('docs/RUST-MIGRATION.md')) && /manual mode uses 36 MB as the default and supports persistent role-wide overrides/i.test(read('docs/MARKETPLACE.md')));
+check('docs distinguish the fixed automatic Audio ceiling from its manual default', /fixed 36 MB automatic ceiling/i.test(read('docs/RELEASE_CHECKLIST.md')) && /manual mode.*36 MB is the Audio default and can be overridden per process role/i.test(read('docs/SERVER-MIGRATION.md')) && /manual mode uses 36 MB as the default and supports persistent role-wide overrides/i.test(read('docs/MARKETPLACE.md')));
 check('troubleshooting uses the master switch to stop all background limits', /turn \*\*Memory Sentry off\*\* with the dashboard power switch/i.test(read('docs/TROUBLESHOOTING.md')) && /Turning off only \*\*Automatic policy\*\* selects manual mode/i.test(read('docs/TROUBLESHOOTING.md')));
 check('issue templates request current policy state and use the correct log files', /visible in background.*automatic\/manual mode.*selected background delay/.test(read('.github/ISSUE_TEMPLATE/server-bug.yml')) && ['setup.log', 'startup.log', 'helper.log'].every(name => read('.github/ISSUE_TEMPLATE/server-bug.yml').includes(`\`${name}\``)) && /dashboard power state, automatic\/manual mode, selected background delay/.test(read('.github/ISSUE_TEMPLATE/plugin-bug.yml')) && /Windows 11 24H2/.test(read('.github/ISSUE_TEMPLATE/plugin-bug.yml')));
 check('dashboard distinguishes master power from automatic/manual policy', /dashboard power switch turns memory management on or off/i.test(read('app/index.js')) && /botão liga\/desliga do painel ativa ou desativa o gerenciamento/i.test(read('app/index.js')));
@@ -56,11 +56,11 @@ const setupScript = read('installer/inno/MemorySentry.iss');
 const buildScript = read('scripts/build-package.ps1');
 const buildScriptSwap = read('scripts/swap-server.ps1');
 const validation = read('.github/workflows/validate.yml');
-const rustCargo = read('native/rust/Cargo.toml');
-const rustLib = read('native/rust/src/lib.rs');
-const rustMain = read('native/rust/src/main.rs');
-const rustRuntime = read('native/rust/src/runtime.rs');
-const rustPlatform = read('native/rust/src/platform/windows.rs');
+const rustCargo = read('server/Cargo.toml');
+const rustLib = read('server/src/lib.rs');
+const rustMain = read('server/src/main.rs');
+const rustRuntime = read('server/src/runtime.rs');
+const rustPlatform = read('server/src/platform/windows.rs');
 check('dashboard supports automatic Portuguese and English', /navigator\.language/i.test(app) && /pt-BR/i.test(app) && /Auto language: English/i.test(app));
 check('dashboard has a GitHub release button when helper is absent', /MSSOpenGitHub/i.test(app) && /github\.com\/yanlvl99\/spicetify-memory-sentry/i.test(app));
 check('dashboard offers setup/help links without a Node.js button', /MSSOpenGitHub/.test(app) && /MSSOpenInstallGuide/.test(app) && !/MSSOpenNode|nodeButton|nodejs\.org/.test(app));
@@ -89,7 +89,7 @@ check('dashboard explains local-only diagnostics', /No telemetry is uploaded/i.t
 check('Custom App replaces per-install token placeholder', app.includes('__MSS_TOKEN__'));
 check('Custom App calls local status/config endpoints', app.includes('/api/status') && app.includes('/api/config'));
 
-check('official Setup uses native preflight and recovery-aware commands', /MemorySentry\.exe/.test(setupScript) && /--check-install/.test(setupScript) && /--check-spicetify/.test(setupScript) && /--prepare-upgrade/.test(setupScript) && /--pre-uninstall/.test(setupScript));
+check('official Setup uses server preflight and recovery-aware commands', /MemorySentry\.exe/.test(setupScript) && /--check-install/.test(setupScript) && /--check-spicetify/.test(setupScript) && /--prepare-upgrade/.test(setupScript) && /--pre-uninstall/.test(setupScript));
 check('Inno Setup packages the app and guards install/upgrade/uninstall', /PrivilegesRequired=lowest/.test(setupScript) && /--check-os/.test(setupScript) && /--prepare-upgrade/.test(setupScript) && /InitializeUninstall/.test(setupScript) && /--pre-uninstall/.test(setupScript));
 check('build script compiles Inno setup and writes checksums', /ISCC\.exe/.test(buildScript) && /SHA256/.test(buildScript) && /\.sha256"/.test(buildScript) && /MemorySentrySetup-/.test(buildScript));
 check('dashboard preserves detailed local API failures', app.includes('err && err.message') && app.includes("setError(tx('statusError') + ' [' + detail + ']')"));
@@ -99,24 +99,24 @@ check('single-instance mutex clears stale Win32 last-error state', rustPlatform.
 check('Rust launcher records early startup failures and verifies API readiness', rustRuntime.includes('startup.log') && rustRuntime.includes('request_status(settings.port, &settings.token)') && rustRuntime.includes('failed to become ready after 5 seconds'));
 check('Rust configure failures are logged for the installer dialog', rustMain.includes('log_setup_failure(&error)') && rustMain.includes('setup.log') && setupScript.includes('SetupFailureDetails()'));
 check('Inno Setup reads its ANSI diagnostic buffer with the required type', /LogText:\s*AnsiString/.test(setupScript) && /LoadStringFromFile\(LogFile, LogText\)/.test(setupScript));
-check('installer shows a dedicated missing-Spicetify prerequisite message', rustMain.includes('"--check-spicetify"') && setupScript.includes("RunBundledCompanion('--check-spicetify', Code)") && setupScript.includes('SpicetifyMissing'));
+check('installer shows a dedicated missing-Spicetify prerequisite message', rustMain.includes('"--check-spicetify"') && setupScript.includes("RunBundledServer('--check-spicetify', Code)") && setupScript.includes('SpicetifyMissing'));
 check('single Setup flow does not require Spotify to be manually closed', !/ensure_spotify_closed/.test(rustRuntime) && !/Get-Process -Name Spotify/.test(rustRuntime) && /CloseApplications=no/.test(setupScript));
 const configureBody = rustRuntime.slice(rustRuntime.indexOf('pub fn configure_install('), rustRuntime.indexOf('fn find_node()'));
 check('local API starts and passes readiness before Spicetify apply', configureBody.indexOf('launch_monitor()') >= 0 && configureBody.indexOf('launch_monitor()') < configureBody.indexOf('apply_spicetify(&cli)'));
 check('PID waits verify the actual Memory Sentry executable path', rustRuntime.includes('process_matches_executable(pid, &installed_exe)') && rustPlatform.includes('QueryFullProcessImageNameW'));
 check('failed API bind removes helper.pid', rustRuntime.includes('if let Err(error) = start_api(Arc::clone(&shared))') && rustRuntime.includes('let _ = fs::remove_file(&pid_file);'));
 const launcherBody = rustRuntime.slice(rustRuntime.indexOf('pub fn launch_monitor()'));
-check('Rust launcher creates startup diagnostics before reading settings', launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') >= 0 && launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') < launcherBody.indexOf('load_settings(&settings_path)') && launcherBody.includes('Could not load companion settings'));
-check('installer always launches the companion after setup', setupScript.includes('Flags: runhidden') && !setupScript.includes('Flags: postinstall nowait skipifsilent runhidden'));
+check('Server launcher creates startup diagnostics before reading settings', launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') >= 0 && launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') < launcherBody.indexOf('load_settings(&settings_path)') && launcherBody.includes('Could not load server settings'));
+check('installer always launches the server after setup', setupScript.includes('Flags: runhidden') && !setupScript.includes('Flags: postinstall nowait skipifsilent runhidden'));
 check('redundant batch and PowerShell installer entry points are absent', ['Install.bat','Uninstall.bat','installer/Install.ps1','installer/Uninstall.ps1'].every(file => !fs.existsSync(path.join(root, file))));
 check('official Setup is per-user and does not request elevation', /PrivilegesRequired=lowest/.test(setupScript) && !/RunAs|Verb\s+RunAs/i.test(setupScript));
-check('Inno uninstaller invokes recovery-aware native pre-uninstall', /InitializeUninstall/.test(setupScript) && /RunInstalledCompanion\('--pre-uninstall', Code\)/.test(setupScript) && /Recovery data exists but the companion executable is missing/.test(setupScript));
-check('source Inno installer preserves app recovery guard', /Recovery data exists but the companion executable is missing/.test(setupScript) && /No program files were removed/.test(setupScript));
+check('Inno uninstaller invokes recovery-aware server pre-uninstall', /InitializeUninstall/.test(setupScript) && /RunInstalledServer\('--pre-uninstall', Code\)/.test(setupScript) && /Recovery data exists but the server executable is missing/.test(setupScript));
+check('source Inno installer preserves app recovery guard', /Recovery data exists but the server executable is missing/.test(setupScript) && /No program files were removed/.test(setupScript));
 
 check('CI runs package validation', validation.includes('node tests/validate-package.js'));
-check('release versions are aligned on 1.0.0-rc.2', rustCargo.includes('version = "1.0.0-rc.2"') && read('native/rust/Cargo.lock').includes('version = "1.0.0-rc.2"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.2";') && setupScript.includes('#define AppVersion "1.0.0-rc.2"') && setupScript.includes('VersionInfoVersion=1.0.0.2') && read('README.md').includes('1.0.0-rc.2') && app.includes('v1.0.0-rc.2'));
+check('release versions are aligned on 1.0.0-rc.2', rustCargo.includes('version = "1.0.0-rc.2"') && read('server/Cargo.lock').includes('version = "1.0.0-rc.2"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.2";') && setupScript.includes('#define AppVersion "1.0.0-rc.2"') && setupScript.includes('VersionInfoVersion=1.0.0.2') && read('README.md').includes('1.0.0-rc.2') && app.includes('v1.0.0-rc.2'));
 check('semantic prereleases are never marked as latest stable', read('.github/workflows/release.yml').includes("contains(steps.version.outputs.version, '-')") && read('.github/workflows/release.yml').includes("!contains(steps.version.outputs.version, '-')"));
-check('Rust scaffold uses a minimal standard-library dependency policy', rustCargo.includes('name = "memory-sentry-native"') && !rustCargo.includes('[dependencies]'));
+check('Rust scaffold uses a minimal standard-library dependency policy', rustCargo.includes('name = "memory-sentry-server"') && !rustCargo.includes('[dependencies]'));
 check('Rust policy has pure, testable adaptive logic', rustLib.includes('decide_adjustment') && rustLib.includes('working_set_at_ceiling') && rustLib.includes('#[cfg(test)]'));
 check('Rust binary exposes OS, install-preflight, upgrade, configure, monitor, and uninstall commands', ['--check-os', '--check-install', '--check-spicetify', '--prepare-upgrade', '--configure', '--monitor', '--pre-uninstall', '--restore-limits'].every(command => rustMain.includes(command)));
 check('server can be swapped in place while Spotify keeps running', rustMain.includes('"--swap"') && rustRuntime.includes('pub fn swap_server') && buildScriptSwap.includes('--swap'));
@@ -131,7 +131,7 @@ check('manual mode applies persistent per-role overrides across changing process
 check('automatic and manual limits are restricted to background window states', rustRuntime.includes('should_manage_limits_in_background') && rustRuntime.includes('"background-visible"'));
 check('manual caps persist process creation identity and are recorded in recovery backups', rustRuntime.includes('manualCaps') && rustRuntime.includes('manual: fields') && rustRuntime.includes('if r.manual { \"manual\" }'));
 check('policy transitions restore active limits before switching modes', rustRuntime.includes('next.auto_optimize != state.settings.auto_optimize') && rustRuntime.includes('policy mode changed') && rustRuntime.includes('failed > 0'));
-check('Rust native layer protects process identity before each working-set mutation', rustPlatform.includes('set_working_set_limits') && rustPlatform.includes('creation != expected_creation') && rustPlatform.includes('restore_working_set_limits'));
+check('server Windows layer protects process identity before each working-set mutation', rustPlatform.includes('set_working_set_limits') && rustPlatform.includes('creation != expected_creation') && rustPlatform.includes('restore_working_set_limits'));
 check('Rust startup and instance locking are per-user and single-instance', rustPlatform.includes('acquire_single_instance') && rustRuntime.includes('register_startup') && rustRuntime.includes('127.0.0.1'));
 check('Rust migration stops the legacy monitor before invoking its one-shot restore command', (rustRuntime.match(/stop_legacy_node_helper\(&base\)\?;/g) || []).length === 2);
 check('Rust dashboard port remains consistent with the Custom App endpoint', /const MSS_API = 'http:\/\/127\.0\.0\.1:38472'/.test(app) && /port: DEFAULT_PORT/.test(rustRuntime));
@@ -150,4 +150,4 @@ for (const [name, source] of [['app/index.js', app]]) {
   catch (error) { check(`JavaScript syntax: ${name} (${error.message})`, false); }
 }
 if (failures) process.exitCode = 1;
-else console.log('\nAll static package checks passed. Native Win32 behavior still requires a Windows runtime test.');
+else console.log('\nAll static package checks passed. Win32 behavior still requires a Windows runtime test.');

@@ -11,14 +11,14 @@
 
 From the repository root:
 
-    cargo test --manifest-path native/rust/Cargo.toml --locked
-    cargo build --release --manifest-path native/rust/Cargo.toml --target x86_64-pc-windows-msvc --locked
+    cargo test --manifest-path server/Cargo.toml --locked
+    cargo build --release --manifest-path server/Cargo.toml --target x86_64-pc-windows-msvc --locked
     node tests/validate-package.js
 
 For the resulting Windows binary, these commands do not apply working-set caps:
 
-    native\rust\target\x86_64-pc-windows-msvc\release\memory-sentry-native.exe --version
-    native\rust\target\x86_64-pc-windows-msvc\release\memory-sentry-native.exe --self-test
+    server\target\x86_64-pc-windows-msvc\release\memory-sentry-server.exe --version
+    server\target\x86_64-pc-windows-msvc\release\memory-sentry-server.exe --self-test
 
 The OS check must be run on a Windows 10/11 desktop edition. GitHub-hosted Windows runners are Windows Server, which is intentionally rejected by the product OS check.
 
@@ -34,16 +34,18 @@ To test a new server build without restarting Spotify or the plugin, run:
 
     powershell -ExecutionPolicy Bypass -File scripts\swap-server.ps1
 
-The script builds the release binary (pass `-SkipBuild` to reuse the last build) and runs `memory-sentry-native.exe --swap <exe>`. The running instance restores its limits and exits, the new build replaces it in `%LOCALAPPDATA%\SpicetifyMemorySentry`, and the monitor relaunches. The plugin reconnects by itself on its next poll, so Spotify stays open throughout.
+The script builds the release binary (pass `-SkipBuild` to reuse the last build) and runs `memory-sentry-server.exe --swap <exe>`. The running instance restores its limits and exits, the new build replaces it in `%LOCALAPPDATA%\SpicetifyMemorySentry`, and the monitor relaunches. The plugin reconnects by itself on its next poll, so Spotify stays open throughout.
 
 The release mode selector in the dashboard controls whether trimming releases memory only down to the current ceiling (`trimToCap`, default) or as much unused memory as possible. The setting is saved through `/api/config`; aggressive mode requests a one-time trim when applying a manual limit or lowering an automatic ceiling.
 
 ## Architecture
 
+The server is implemented in Rust; the Custom App is JavaScript served to Spotify.
+
 - app/index.js: Spicetify plugin installed by the official per-user Setup EXE; automatic English/Brazilian Portuguese localization and missing-server help.
-- native/rust/src/lib.rs: platform-independent adaptive policy and unit tests.
-- native/rust/src/platform/windows.rs: Win32 process/memory/window primitives, process identity checks, Windows version gate and per-user single-instance lock.
-- native/rust/src/runtime.rs: adaptive process monitor, recovery store, loopback API, configuration, logs, upgrade and uninstall actions.
+- server/src/lib.rs: platform-independent adaptive policy and unit tests.
+- server/src/platform/windows.rs: Win32 process/memory/window primitives, process identity checks, Windows version gate and per-user single-instance lock.
+- server/src/runtime.rs: adaptive process monitor, recovery store, loopback API, configuration, logs, upgrade and uninstall actions.
 - installer/inno/MemorySentry.iss: per-user Setup EXE and uninstall wizard.
 - [BENCHMARKING.md](BENCHMARKING.md): repeatable RAM and interaction-latency tests.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): release gates.

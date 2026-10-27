@@ -4,13 +4,13 @@ Do not call the release stable until all required real-desktop tests are complet
 
 ## Build and package
 
-- [ ] cargo test for native/rust/Cargo.toml passes.
+- [ ] cargo test for server/Cargo.toml passes.
 - [ ] Windows x64 build succeeds for x86_64-pc-windows-msvc.
 - [ ] Inno Setup compiles the per-user setup executable in CI.
 - [ ] Only the official Setup EXE and its SHA-256 checksum are uploaded and independently verified.
 - [ ] Setup version and the version stated in README agree; the changelog accurately describes the unreleased changes.
 - [ ] Marketplace manifest and preview exist, root README is valid, and the repository topic spicetify-apps is verified.
-- [ ] No Node.js requirement remains for new Rust installs. Any remaining Node dependency is clearly documented as legacy recovery only.
+- [ ] No Node.js requirement remains for new server installations. Any remaining Node dependency is clearly documented as legacy recovery only.
 
 ## Required Windows 10 and Windows 11 desktop validation
 
