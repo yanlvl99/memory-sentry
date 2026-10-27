@@ -29,6 +29,11 @@ check('Spicetify Custom App manifest is valid', Boolean(appManifest.name && appM
 const appSubfiles = Array.isArray(appManifest.subfiles) ? appManifest.subfiles : [];
 for (const file of appSubfiles) check(`exists: app/${file} (subfile)`, fs.existsSync(path.join(root, 'app', file)));
 check('Custom App manifest does not list index.js as a subfile', !appSubfiles.includes('index.js'));
+const appIndex = read('app/index.js');
+const appScript = [...appSubfiles.map(file => read(`app/${file}`)), appIndex].join('\n;\n');
+const appStyles = fs.existsSync(path.join(root, 'app/style.css')) ? read('app/style.css') : '';
+const app = appScript + '\n' + appStyles;
+check('Custom App source avoids ES module syntax because subfiles are concatenated', !/^\s*(?:import|export)\b/m.test(appScript));
 check('root manifest is Marketplace metadata', marketplaceManifest.name === 'Memory Sentry' && marketplaceManifest.preview === 'assets/marketplace-cover.svg' && marketplaceManifest.readme === 'README.md' && !marketplaceManifest.main);
 check('Marketplace metadata uses the selected discovery tags and author attribution', JSON.stringify(marketplaceManifest.tags) === JSON.stringify(['memory', 'windows', 'experimental']) && marketplaceManifest.authors?.some(author => author.url === 'https://github.com/yanlvl99'));
 check('artwork uses standalone SVGs with vector elements and no external PNG links', [['marketplace-cover.svg', '1600', '1600'], ['readme-preview.svg', '1600', '1000'], ['readme-banner.svg', '1800', '700']].every(([file, width, height]) => { const svg = read(`assets/${file}`); return /^<svg\b/.test(svg) && new RegExp(`width="${width}"`).test(svg) && new RegExp(`height="${height}"`).test(svg) && /<path\b/.test(svg) && !/href=["'](?!data:)[^"']*\.png/i.test(svg); }));
@@ -45,7 +50,7 @@ check('changelog uses the current five-second manual warning', /five-second warn
 check('docs distinguish the fixed automatic Audio ceiling from its manual default', /fixed 36 MB automatic ceiling/i.test(read('docs/RELEASE_CHECKLIST.md')) && /manual mode.*36 MB is the Audio default and can be overridden per process role/i.test(read('docs/SERVER-MIGRATION.md')) && /manual mode uses 36 MB as the default and supports persistent role-wide overrides/i.test(read('docs/MARKETPLACE.md')));
 check('troubleshooting uses the master switch to stop all background limits', /turn \*\*Memory Sentry off\*\* with the dashboard power switch/i.test(read('docs/TROUBLESHOOTING.md')) && /Turning off only \*\*Automatic policy\*\* selects manual mode/i.test(read('docs/TROUBLESHOOTING.md')));
 check('issue templates request current policy state and use the correct log files', /visible in background.*automatic\/manual mode.*selected background delay/.test(read('.github/ISSUE_TEMPLATE/server-bug.yml')) && ['setup.log', 'startup.log', 'helper.log'].every(name => read('.github/ISSUE_TEMPLATE/server-bug.yml').includes(`\`${name}\``)) && /dashboard power state, automatic\/manual mode, selected background delay/.test(read('.github/ISSUE_TEMPLATE/plugin-bug.yml')) && /Windows 11 24H2/.test(read('.github/ISSUE_TEMPLATE/plugin-bug.yml')));
-check('dashboard distinguishes master power from automatic/manual policy', /dashboard power switch turns memory management on or off/i.test(read('app/index.js')) && /botão liga\/desliga do painel ativa ou desativa o gerenciamento/i.test(read('app/index.js')));
+check('dashboard distinguishes master power from automatic/manual policy', /dashboard power switch turns memory management on or off/i.test(app) && /botão liga\/desliga do painel ativa ou desativa o gerenciamento/i.test(app));
 check('README documents unsigned SmartScreen limitations', /No unsigned release can guarantee zero SmartScreen/i.test(read('README.md')));
 check('GPL-3.0 license is present', /GNU GENERAL PUBLIC LICENSE/i.test(read('LICENSE')) && /Version 3, 29 June 2007/i.test(read('LICENSE')));
 check('privacy explicitly states no uploads', /No information is uploaded/i.test(read('PRIVACY.md')));
@@ -54,9 +59,6 @@ check('Marketplace preview exists', fs.existsSync(path.join(root, marketplaceMan
 check('release publishes only the official Setup EXE and SHA-256', /MemorySentrySetup-\*\.exe/.test(read('.github/workflows/release.yml')) && /MemorySentrySetup-\*\.exe\.sha256/.test(read('.github/workflows/release.yml')) && !/MemorySentry-\*windows-x64\.zip/.test(read('.github/workflows/release.yml')) && /action-gh-release/i.test(read('.github/workflows/release.yml')));
 check('build output has one supported installer and no custom portable ZIP', /MemorySentrySetup-/.test(read('scripts/build-package.ps1')) && !/Compress-Archive/.test(read('scripts/build-package.ps1')) && !/MemorySentry-.*windows-x64\.zip/.test(read('scripts/build-package.ps1')));
 
-const appIndex = read('app/index.js');
-const app = [...appSubfiles.map(file => read(`app/${file}`)), appIndex].join('\n;\n');
-check('Custom App source avoids ES module syntax because subfiles are concatenated', !/^\s*(?:import|export)\b/m.test(app));
 const setupScript = read('installer/inno/MemorySentry.iss');
 const buildScript = read('scripts/build-package.ps1');
 const buildScriptSwap = read('scripts/swap-server.ps1');
@@ -67,7 +69,7 @@ const rustMain = read('server/src/main.rs');
 const rustRuntime = read('server/src/runtime.rs');
 const rustPlatform = read('server/src/platform/windows.rs');
 check('dashboard supports automatic Portuguese and English', /navigator\.language/i.test(app) && /pt-BR/i.test(app) && /Auto language: English/i.test(app));
-check('dashboard has a GitHub release button when helper is absent', /MSSOpenGitHub/i.test(app) && /github\.com\/yanlvl99\/spicetify-memory-sentry/i.test(app));
+check('dashboard has a GitHub release button when helper is absent', /MSSOpenGitHub/i.test(app) && /github\.com\/yanlvl99\/memory-sentry/i.test(app));
 check('dashboard offers setup/help links without a Node.js button', /MSSOpenGitHub/.test(app) && /MSSOpenInstallGuide/.test(app) && !/MSSOpenNode|nodeButton|nodejs\.org/.test(app));
 check('dashboard links to official releases and a generic installation guide', /MSS_RELEASES_URL/.test(app) && /MSS_INSTALL_GUIDE_URL/.test(app) && /installGuideButton/.test(app) && !/Marketplace setup guide|Guia de instalação do Marketplace/.test(app));
 check('documentation describes one install path and Marketplace linking only', /only supported installation method/i.test(read('docs/INSTALLATION.md')) && /only links to the project repository/i.test(read('docs/INSTALLATION.md')) && !/Path B/.test(read('docs/INSTALLATION.md')));
@@ -158,7 +160,7 @@ if (warningSecondsSource) {
     vm.runInNewContext(`${warningSecondsSource}; MSSManualWarningSeconds(5000, 5000)`) === 0);
 } else check('below-default warning countdown function exists', false);
 
-for (const [name, source] of [['app/index.js + subfiles', app]]) {
+for (const [name, source] of [['app/index.js + subfiles', appScript]]) {
   try { new vm.Script(source, { filename: name }); check(`JavaScript syntax: ${name}`, true); }
   catch (error) { check(`JavaScript syntax: ${name} (${error.message})`, false); }
 }
@@ -180,7 +182,7 @@ const appSandbox = {
   console
 };
 try {
-  vm.runInNewContext(app, appSandbox, { filename: 'app-bundle.js' });
+  vm.runInNewContext(appScript, appSandbox, { filename: 'app-bundle.js' });
   check('Custom App registers render() with a stubbed Spicetify and no DOM access at load', typeof appSandbox.render === 'function');
 } catch (error) {
   check(`Custom App loads with a stubbed Spicetify (${error.message})`, false);
