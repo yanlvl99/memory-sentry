@@ -450,6 +450,11 @@ function MSSApp() {
         const over = ceilingMB != null && memoryMB > ceilingMB;
         const pct = Math.min(100, Math.max(3, (memoryMB / maxMemoryMB) * 100));
         const peekText = displayedMemoryMB == null ? '—' : `${MSSFormatMB(displayedMemoryMB)} MB · ${ceilingText}`;
+        const tagText = over
+          ? tx('tagOver')
+          : (process.manual ? tx('tagManual')
+            : (process.capped ? tx('tagAdaptive')
+              : (process.protectedAudio ? tx('tagFixed') : tx('tagNoCeiling'))));
         return h('div', { className: 'mss-process', key },
           h('div', { className: 'mss-process-main' },
             h('div', { className: 'mss-process-name' }, MSSRoleLabel(process.role), h('span', { className: 'mss-role' }, MSS_ROLE_NAMES[process.role] || process.role)),
@@ -459,7 +464,7 @@ function MSSApp() {
             h('div', { className: 'mss-bar', 'aria-hidden': 'true' }, h('i', { className: over ? 'mss-fill-over' : '', style: { width: `${pct.toFixed(1)}%` } })),
             h('span', { className: 'mss-peek' }, peekText)
           ),
-          h('span', { className: `mss-tag${over ? ' mss-tag-over' : (process.capped ? ' mss-tag-on' : '')}` }, process.manual ? (MSS_PT ? 'Manual' : 'Manual') : (process.protectedAudio ? (MSS_PT ? 'Áudio' : 'Audio') : (process.capped ? (MSS_PT ? 'Adaptativo' : 'Adaptive') : process.role))),
+          h('span', { className: `mss-tag${over ? ' mss-tag-over' : (process.capped ? ' mss-tag-on' : '')}` }, tagText),
           manualReady ? h('div', { className: 'mss-manual-controls' },
             h('label', { className: 'mss-small', htmlFor: `mss-limit-${key}` }, tx('manualLimit')),
             h('input', { id: `mss-limit-${key}`, className: 'mss-input', type: 'number', min: 8, max: 512, step: 1, value: manualInputs[key] ?? String(process.manualCapMB ?? defaultMB), disabled: busy || !config.enabled, onChange: event => { const value = event.target.value; setManualInputs(previous => ({ ...previous, [key]: value })); scheduleManualLimit(process, key, value); } }),
