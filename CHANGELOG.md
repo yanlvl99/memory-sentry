@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Rename the `native/rust` source tree to `server/` (Cargo package `memory-sentry-server`) and use "server" as the product term throughout the code, installer and documentation, describing Rust only as the current implementation language.
+- Let the user choose which window states trigger optimization (window behind another app, minimized, hidden) with independent checkboxes; the server keeps at least one state enabled and falls back to the previous all-background behavior for existing settings files.
 
 ## 1.0.0-rc.2 — Adaptive limits and dashboard controls
 

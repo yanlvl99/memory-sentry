@@ -42,6 +42,9 @@ struct Settings {
     auto_optimize: bool,
     hidden_delay_seconds: u64,
     trim_to_cap: bool,
+    optimize_when_background: bool,
+    optimize_when_minimized: bool,
+    optimize_when_hidden: bool,
     manual_caps: BTreeMap<(u32, u64), u32>,
     manual_role_caps: BTreeMap<String, u32>,
 }
@@ -410,6 +413,9 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
         .unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS)
         .clamp(1, 30);
     let trim_to_cap = parse_json_bool(&raw, "trimToCap").unwrap_or(true);
+    let optimize_when_background = parse_json_bool(&raw, "optimizeWhenBackground").unwrap_or(true);
+    let optimize_when_minimized = parse_json_bool(&raw, "optimizeWhenMinimized").unwrap_or(true);
+    let optimize_when_hidden = parse_json_bool(&raw, "optimizeWhenHidden").unwrap_or(true);
     let manual_caps = parse_manual_caps(&raw);
     let manual_role_caps = parse_manual_role_caps(&raw);
     Ok(Settings {
@@ -419,6 +425,9 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
         auto_optimize,
         hidden_delay_seconds,
         trim_to_cap,
+        optimize_when_background,
+        optimize_when_minimized,
+        optimize_when_hidden,
         manual_caps,
         manual_role_caps,
     })
@@ -442,8 +451,8 @@ fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
         .collect::<Vec<_>>()
         .join(", ");
     let contents = format!(
-        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"manualCaps\": [{}],\n  \"manualRoleCaps\": [{}],\n  \"version\": \"{}\"\n}}\n",
-        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, manual_caps, manual_role_caps, VERSION
+        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"optimizeWhenBackground\": {},\n  \"optimizeWhenMinimized\": {},\n  \"optimizeWhenHidden\": {},\n  \"manualCaps\": [{}],\n  \"manualRoleCaps\": [{}],\n  \"version\": \"{}\"\n}}\n",
+        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, manual_caps, manual_role_caps, VERSION
     );
     let mut file = File::create(&temp).map_err(|e| format!("Could not stage settings: {e}"))?;
     file.write_all(contents.as_bytes())
@@ -779,6 +788,11 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
             .unwrap_or(DEFAULT_HIDDEN_DELAY_SECONDS)
             .clamp(1, 30),
         trim_to_cap: parse_json_bool(&existing_raw, "trimToCap").unwrap_or(true),
+        optimize_when_background: parse_json_bool(&existing_raw, "optimizeWhenBackground")
+            .unwrap_or(true),
+        optimize_when_minimized: parse_json_bool(&existing_raw, "optimizeWhenMinimized")
+            .unwrap_or(true),
+        optimize_when_hidden: parse_json_bool(&existing_raw, "optimizeWhenHidden").unwrap_or(true),
         manual_caps: parse_manual_caps(&existing_raw),
         manual_role_caps: parse_manual_role_caps(&existing_raw),
     };
@@ -2197,8 +2211,13 @@ fn reconcile_manual_caps(state: &mut AppState) {
     }
 }
 
-fn should_manage_limits_in_background(window_state: &str) -> bool {
-    matches!(window_state, "minimized" | "hidden" | "background-visible")
+fn should_manage_limits(settings: &Settings, window_state: &str) -> bool {
+    match window_state {
+        "background-visible" => settings.optimize_when_background,
+        "minimized" => settings.optimize_when_minimized,
+        "hidden" => settings.optimize_when_hidden,
+        _ => false,
+    }
 }
 
 fn background_delay_elapsed(since: u64, now: u64, delay_seconds: u64) -> bool {
@@ -2226,7 +2245,7 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
         return;
     }
     if !state.settings.auto_optimize {
-        if should_manage_limits_in_background(&state.window_state) {
+        if should_manage_limits(&state.settings, &state.window_state) {
             if state.hidden_since_ms == 0 {
                 state.hidden_since_ms = now;
                 log_event(
@@ -2260,7 +2279,7 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
         }
         return;
     }
-    let hidden = should_manage_limits_in_background(&state.window_state);
+    let hidden = should_manage_limits(&state.settings, &state.window_state);
     if !hidden {
         state.hidden_since_ms = 0;
         if !state.active_caps.is_empty()
@@ -2437,8 +2456,8 @@ fn refresh_memory(state: &mut AppState, now: u64) {
 
 fn public_config(settings: &Settings) -> String {
     format!(
-        "{{\"enabled\":{},\"autoOptimize\":{},\"hiddenDelaySeconds\":{},\"trimToCap\":{},\"policy\":{{\"minMB\":{},\"maxMB\":{},\"cpuHighPercent\":{}}}}}",
-        settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, MIN_CAP_MB, MAX_CAP_MB, HIGH_CPU_PERCENT
+        "{{\"enabled\":{},\"autoOptimize\":{},\"hiddenDelaySeconds\":{},\"trimToCap\":{},\"optimizeWhenBackground\":{},\"optimizeWhenMinimized\":{},\"optimizeWhenHidden\":{},\"policy\":{{\"minMB\":{},\"maxMB\":{},\"cpuHighPercent\":{}}}}}",
+        settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, MIN_CAP_MB, MAX_CAP_MB, HIGH_CPU_PERCENT
     )
 }
 
@@ -2810,7 +2829,7 @@ fn set_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
         }
         return Err(error);
     }
-    if should_manage_limits_in_background(&state.window_state) {
+    if should_manage_limits(&state.settings, &state.window_state) {
         if let Err(error) = apply_manual_cap(state, &process, role, cap_mb) {
             if let Some(previous) = previous {
                 state.settings.manual_role_caps.insert(role_key.clone(), previous);
@@ -2873,7 +2892,7 @@ fn clear_manual_cap(state: &mut AppState, body: &str) -> Result<(), String> {
         state.settings.manual_caps.extend(previous_process_caps);
         return Err(error);
     }
-    if should_manage_limits_in_background(&state.window_state) {
+    if should_manage_limits(&state.settings, &state.window_state) {
         reconcile_manual_caps(state);
     } else {
         let records: Vec<BackupRecord> = state
@@ -2899,6 +2918,18 @@ fn update_config(state: &mut AppState, body: &str) -> Result<(), String> {
     }
     if let Some(value) = parse_json_bool(body, "trimToCap") {
         next.trim_to_cap = value;
+    }
+    if let Some(value) = parse_json_bool(body, "optimizeWhenBackground") {
+        next.optimize_when_background = value;
+    }
+    if let Some(value) = parse_json_bool(body, "optimizeWhenMinimized") {
+        next.optimize_when_minimized = value;
+    }
+    if let Some(value) = parse_json_bool(body, "optimizeWhenHidden") {
+        next.optimize_when_hidden = value;
+    }
+    if !next.optimize_when_background && !next.optimize_when_minimized && !next.optimize_when_hidden {
+        next.optimize_when_background = true;
     }
     next.hidden_delay_seconds = parse_json_number(body, "hiddenDelaySeconds")
         .unwrap_or(next.hidden_delay_seconds)
@@ -2934,11 +2965,14 @@ fn update_config(state: &mut AppState, body: &str) -> Result<(), String> {
     log_event(
         state,
         format!(
-            "Settings updated: enabled={}, autoOptimize={}, hiddenDelaySeconds={}, trimToCap={}",
+            "Settings updated: enabled={}, autoOptimize={}, hiddenDelaySeconds={}, trimToCap={}, optimizeWhen(bg/min/hidden)={}/{}/{}",
             state.settings.enabled,
             state.settings.auto_optimize,
             state.settings.hidden_delay_seconds,
-            state.settings.trim_to_cap
+            state.settings.trim_to_cap,
+            state.settings.optimize_when_background,
+            state.settings.optimize_when_minimized,
+            state.settings.optimize_when_hidden
         ),
         "info",
     );
@@ -3377,12 +3411,27 @@ mod tests {
 
     #[test]
     fn managed_limits_are_active_only_outside_the_foreground() {
-        assert!(should_manage_limits_in_background("minimized"));
-        assert!(should_manage_limits_in_background("hidden"));
-        assert!(should_manage_limits_in_background("background-visible"));
-        assert!(!should_manage_limits_in_background("foreground"));
-        assert!(!should_manage_limits_in_background("window-not-found"));
+let settings = Settings {
+            port: DEFAULT_PORT,
+            token: "a".repeat(64),
+            enabled: true,
+            auto_optimize: true,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
+            manual_caps: BTreeMap::new(),
+            manual_role_caps: BTreeMap::new(),
+        };
+        assert!(should_manage_limits(&settings, "minimized"));
+        assert!(should_manage_limits(&settings, "hidden"));
+        assert!(should_manage_limits(&settings, "background-visible"));
+        assert!(!should_manage_limits(&settings, "foreground"));
+        assert!(!should_manage_limits(&settings, "window-not-found"));
     }
+
+
 
     #[test]
     fn manual_caps_are_persisted_by_pid_and_full_creation_identity() {
@@ -3410,6 +3459,9 @@ mod tests {
             auto_optimize: false,
             hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
             trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
             manual_caps: BTreeMap::from([((42, 100), 40)]),
             manual_role_caps: BTreeMap::from([("Renderer".to_string(), 52)]),
         };
@@ -3478,6 +3530,9 @@ mod tests {
             auto_optimize: true,
             hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
             trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
         };
@@ -3509,6 +3564,9 @@ mod tests {
             auto_optimize: false,
             hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
             trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
         };
