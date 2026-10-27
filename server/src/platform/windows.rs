@@ -169,7 +169,7 @@ pub struct OriginalLimits {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct NativeStats {
+pub struct ProcessStats {
     pub creation: u64,
     pub cpu_time_ms: f64,
     pub working_set_mb: f64,
@@ -256,12 +256,12 @@ fn process_stats_with_handle(handle: Handle) -> Result<(f64, Option<f64>, u64), 
     ))
 }
 
-pub fn inspect_process(pid: u32) -> Result<NativeStats, String> {
+pub fn inspect_process(pid: u32) -> Result<ProcessStats, String> {
     let handle = open_process(pid, PROCESS_QUERY_INFORMATION)?;
     let result = (|| {
         let (creation, cpu_time_ms) = process_times(handle)?;
         let (working_set_mb, private_working_set_mb, page_fault_count) = process_stats_with_handle(handle)?;
-        Ok(NativeStats { creation, cpu_time_ms, working_set_mb, private_working_set_mb, page_fault_count })
+        Ok(ProcessStats { creation, cpu_time_ms, working_set_mb, private_working_set_mb, page_fault_count })
     })();
     unsafe { CloseHandle(handle); }
     result
@@ -499,13 +499,13 @@ try {
                 let mut private_working_set_mb = None;
                 let mut page_fault_count = (parts[7].parse::<u64>().is_ok()).then_some(faults as u64);
                 let mut error_code = 0;
-                if let Ok(native) = inspect_process(pid) {
-                    // The native timestamp is the identity later revalidated before every mutation.
-                    creation = native.creation;
-                    cpu_time_ms = native.cpu_time_ms;
-                    working_set_mb = Some(native.working_set_mb);
-                    private_working_set_mb = native.private_working_set_mb;
-                    page_fault_count = Some(native.page_fault_count);
+                if let Ok(stats) = inspect_process(pid) {
+                    // The creation timestamp is the identity later revalidated before every mutation.
+                    creation = stats.creation;
+                    cpu_time_ms = stats.cpu_time_ms;
+                    working_set_mb = Some(stats.working_set_mb);
+                    private_working_set_mb = stats.private_working_set_mb;
+                    page_fault_count = Some(stats.page_fault_count);
                 } else {
                     error_code = -1;
                 }
@@ -592,6 +592,8 @@ impl Drop for SingleInstanceGuard {
 }
 
 pub fn acquire_single_instance() -> Result<SingleInstanceGuard, String> {
+    // The mutex name is a stable cross-version identifier. Do not rename it: an older
+    // build that is still running must keep new instances from starting a second monitor.
     let name: Vec<u16> = "Local\\MemorySentry-Companion".encode_utf16().chain(std::iter::once(0)).collect();
     unsafe { SetLastError(0); }
     let handle = unsafe { CreateMutexW(std::ptr::null_mut(), 1, name.as_ptr()) };

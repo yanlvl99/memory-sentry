@@ -12,7 +12,7 @@ Memory Sentry is an open-source utility for managing the resident working set of
 
 **Current release:** `1.0.0-rc.2` — experimental release candidate, not a stable release.
 
-The current release requires Spotify Desktop and Spicetify CLI for the same Windows user. The Spicetify Custom App communicates with the Memory Sentry server, which runs as a **separate per-user process** and performs the Windows memory operations. Memory Sentry is an independent community project, not an official Spotify or Spicetify product.
+The current release requires Spotify Desktop and Spicetify CLI for the same Windows user. The Spicetify Custom App communicates with the Memory Sentry server, which runs as a **separate per-user process**, is currently implemented in Rust, and performs the Windows memory operations. Memory Sentry is an independent community project, not an official Spotify or Spicetify product.
 
 ## Features
 
@@ -46,7 +46,7 @@ No unsigned release can guarantee zero SmartScreen warnings. This release is uns
 
 ## Testing and project status
 
-CI validates package metadata and JavaScript syntax, runs platform-independent Rust policy tests on Linux and Windows, and builds the Windows x64 companion and setup package. These checks do not constitute an end-to-end test of Spotify playback, foreground restoration, or compatibility across desktop systems.
+CI validates package metadata and JavaScript syntax, runs platform-independent Rust policy tests on Linux and Windows, and builds the Windows x64 server and setup package. These checks do not constitute an end-to-end test of Spotify playback, foreground restoration, or compatibility across desktop systems.
 
 The broader Windows 10/11 desktop test matrix remains incomplete. Results may vary by hardware, Spotify workload, and Windows configuration, so the project remains experimental.
 
@@ -57,11 +57,11 @@ Install Node.js 22+ and a stable Rust toolchain to run package checks and policy
     node tests/validate-package.js
     cargo test --manifest-path server/Cargo.toml --locked
 
-For Windows companion builds and packaging, see the [Development Guide](docs/DEVELOPMENT.md). For repeatable performance measurements, see [Benchmarking](docs/BENCHMARKING.md).
+For Windows server builds and packaging, see the [Development Guide](docs/DEVELOPMENT.md). For repeatable performance measurements, see [Benchmarking](docs/BENCHMARKING.md).
 
 ## Security and privacy
 
-The companion API binds to `127.0.0.1` and requires an internal per-install token. Settings, recovery data, and diagnostic logs are stored locally. Upgrade and uninstall procedures include recovery checks and may stop rather than remove files when restoration cannot be confirmed.
+The server API binds to `127.0.0.1` and requires an internal per-install token. Settings, recovery data, and diagnostic logs are stored locally. Upgrade and uninstall procedures include recovery checks and may stop rather than remove files when restoration cannot be confirmed.
 
 See [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md) for details and limitations.
 

@@ -1,5 +1,5 @@
-//! Native Rust runtime: adaptive working-set management, recovery, and a loopback-only API.
-//! The UI contract intentionally mirrors the former Node companion so the Custom App stays usable.
+//! Windows server runtime in Rust: adaptive working-set management, recovery, and a loopback-only API.
+//! The UI contract intentionally mirrors the legacy Node.js server so the Custom App stays usable.
 
 use crate::platform;
 use memory_sentry_core::{
@@ -716,7 +716,7 @@ fn apply_spicetify(cli: &Path) -> Result<(), String> {
 
 fn stop_monitor_after_setup_failure(context: &str) -> String {
     match prepare_upgrade() {
-        Ok(()) => format!("{context}; the companion was stopped and working-set recovery was checked."),
+        Ok(()) => format!("{context}; the server was stopped and working-set recovery was checked."),
         Err(cleanup_error) => format!("{context}; automatic cleanup could not be fully confirmed: {cleanup_error}. Keep the recovery files and retry Setup."),
     }
 }
@@ -738,7 +738,7 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
         );
     }
 
-    // Legacy Node installations must restore before the Rust companion takes over.
+    // Legacy Node installations must restore before this server takes over.
     let legacy_backup = base.join("working-set-backup.json");
     let legacy_helper = base.join("helper.js");
     if legacy_backup.exists() {
@@ -784,11 +784,11 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
     };
     write_settings(&settings_path, &settings)?;
     // Start the local API before "spicetify apply" restarts Spotify, so the
-    // Custom App does not race native helper startup during its first render.
+    // Custom App does not race server startup during its first render.
     let cli = configure_spicetify(APP_NAME)?;
     if let Err(error) = launch_monitor() {
         return Err(stop_monitor_after_setup_failure(&format!(
-            "Could not start the companion before applying Spicetify: {error}"
+            "Could not start the server before applying Spicetify: {error}"
         )));
     }
     if let Err(error) = apply_spicetify(&cli) {
@@ -801,7 +801,7 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
     }
     cleanup_legacy_startup();
     println!("{APP_NAME} configured for {os_name} build {build}.");
-    println!("Companion: {}", base.display());
+    println!("Server: {}", base.display());
     println!("Dashboard: {}", app_dir.display());
     println!("Current-user startup is registered and the local API passed its health check. No telemetry is uploaded.");
     Ok(())
@@ -931,7 +931,7 @@ pub fn prepare_upgrade() -> Result<(), String> {
         cleanup_legacy_node_files(&base)?;
     }
 
-    // Ask a running Rust companion to restore limits and exit. A live process that
+    // Ask a running instance of the server to restore limits and exit. A live process that
     // does not acknowledge shutdown blocks replacement of the executable.
     if settings_path.exists() {
         let settings = load_settings(&settings_path)?;
@@ -1082,7 +1082,7 @@ pub fn pre_uninstall() -> Result<(), String> {
 fn request_shutdown(port: u16, token: &str) -> Result<(), String> {
     use std::io::{Read, Write};
     let mut stream = TcpStream::connect(("127.0.0.1", port))
-        .map_err(|e| format!("Could not reach the running companion: {e}"))?;
+        .map_err(|e| format!("Could not reach the running server: {e}"))?;
     stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
     stream.set_write_timeout(Some(Duration::from_secs(2))).ok();
     let body = r#"{"action":"shutdown"}"#;
@@ -1099,7 +1099,7 @@ fn request_shutdown(port: u16, token: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     if !response.starts_with("HTTP/1.1 200") {
         return Err(format!(
-            "Companion did not confirm restoration: {}",
+            "Server did not confirm restoration: {}",
             response.lines().next().unwrap_or("no response")
         ));
     }
@@ -1384,7 +1384,7 @@ pub fn run_monitor() -> Result<(), String> {
     }
 
     let mut s = shared.lock().map_err(|_| "State lock poisoned")?;
-    let result = restore_all(&mut s, "companion shutdown");
+    let result = restore_all(&mut s, "server shutdown");
     log_event(
         &mut s,
         format!(
@@ -1685,7 +1685,7 @@ fn apply_initial_cap(
     let baseline = role.baseline_cap_mb().unwrap_or(24);
     let record = BackupRecord::capture_original(process.pid, process.creation, role, limits, false);
     state.active_caps.insert(process.pid, record);
-    // Recovery must be durable before the native limit is changed.
+    // Recovery must be durable before the working-set limit is changed.
     if !persist_or_log(state) {
         state.active_caps.remove(&process.pid);
         return Err("Recovery record could not be saved; no memory limit was changed.".to_string());
@@ -3186,7 +3186,7 @@ fn start_background_copy() -> Result<(), String> {
         .stderr(Stdio::from(stderr_log))
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("Could not start the companion: {e}"))
+        .map_err(|e| format!("Could not start the server: {e}"))
 }
 
 fn request_status(port: u16, token: &str) -> Result<(), String> {
@@ -3256,7 +3256,7 @@ pub fn launch_monitor() -> Result<(), String> {
         Ok(settings) => settings,
         Err(error) => {
             let detail = format!(
-                "Could not load companion settings at {}: {error}",
+                "Could not load server settings at {}: {error}",
                 settings_path.display()
             );
             let _ = append_startup_log(&startup_path, &detail);
@@ -3271,7 +3271,7 @@ pub fn launch_monitor() -> Result<(), String> {
     if request_status(settings.port, &settings.token).is_ok() {
         let _ = append_startup_log(
             &startup_path,
-            "An existing companion passed the local API health check.",
+            "An existing server instance passed the local API health check.",
         );
         return Ok(());
     }
@@ -3289,7 +3289,7 @@ pub fn launch_monitor() -> Result<(), String> {
         "Detached monitor process spawned; waiting for the local API.",
     );
 
-    let mut last_error = String::from("The companion did not respond before the timeout.");
+    let mut last_error = String::from("The server did not respond before the timeout.");
     for _ in 0..50 {
         match request_status(settings.port, &settings.token) {
             Ok(()) => {

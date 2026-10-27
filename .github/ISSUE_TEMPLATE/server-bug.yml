@@ -1,5 +1,5 @@
 name: Server bug
-description: Report a problem with the Memory Sentry server helper (memory trimming, restore, local API, startup, upgrade, or uninstall).
+description: Report a problem with the Memory Sentry server (memory trimming, restore, local API, startup, upgrade, or uninstall).
 title: "[Server] "
 labels: ["bug", "server"]
 body:
@@ -47,7 +47,7 @@ body:
     id: memory-sentry-version
     attributes:
       label: Memory Sentry version
-      description: Shown in the dashboard, Setup filename, or `memory-sentry-native.exe --version`.
+      description: Shown in the dashboard, Setup filename, or `MemorySentry.exe --version`.
       placeholder: e.g. 1.0.0-rc.2
     validations:
       required: true

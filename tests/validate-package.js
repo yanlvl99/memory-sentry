@@ -89,7 +89,7 @@ check('dashboard explains local-only diagnostics', /No telemetry is uploaded/i.t
 check('Custom App replaces per-install token placeholder', app.includes('__MSS_TOKEN__'));
 check('Custom App calls local status/config endpoints', app.includes('/api/status') && app.includes('/api/config'));
 
-check('official Setup uses native preflight and recovery-aware commands', /MemorySentry\.exe/.test(setupScript) && /--check-install/.test(setupScript) && /--check-spicetify/.test(setupScript) && /--prepare-upgrade/.test(setupScript) && /--pre-uninstall/.test(setupScript));
+check('official Setup uses server preflight and recovery-aware commands', /MemorySentry\.exe/.test(setupScript) && /--check-install/.test(setupScript) && /--check-spicetify/.test(setupScript) && /--prepare-upgrade/.test(setupScript) && /--pre-uninstall/.test(setupScript));
 check('Inno Setup packages the app and guards install/upgrade/uninstall', /PrivilegesRequired=lowest/.test(setupScript) && /--check-os/.test(setupScript) && /--prepare-upgrade/.test(setupScript) && /InitializeUninstall/.test(setupScript) && /--pre-uninstall/.test(setupScript));
 check('build script compiles Inno setup and writes checksums', /ISCC\.exe/.test(buildScript) && /SHA256/.test(buildScript) && /\.sha256"/.test(buildScript) && /MemorySentrySetup-/.test(buildScript));
 check('dashboard preserves detailed local API failures', app.includes('err && err.message') && app.includes("setError(tx('statusError') + ' [' + detail + ']')"));
@@ -99,19 +99,19 @@ check('single-instance mutex clears stale Win32 last-error state', rustPlatform.
 check('Rust launcher records early startup failures and verifies API readiness', rustRuntime.includes('startup.log') && rustRuntime.includes('request_status(settings.port, &settings.token)') && rustRuntime.includes('failed to become ready after 5 seconds'));
 check('Rust configure failures are logged for the installer dialog', rustMain.includes('log_setup_failure(&error)') && rustMain.includes('setup.log') && setupScript.includes('SetupFailureDetails()'));
 check('Inno Setup reads its ANSI diagnostic buffer with the required type', /LogText:\s*AnsiString/.test(setupScript) && /LoadStringFromFile\(LogFile, LogText\)/.test(setupScript));
-check('installer shows a dedicated missing-Spicetify prerequisite message', rustMain.includes('"--check-spicetify"') && setupScript.includes("RunBundledCompanion('--check-spicetify', Code)") && setupScript.includes('SpicetifyMissing'));
+check('installer shows a dedicated missing-Spicetify prerequisite message', rustMain.includes('"--check-spicetify"') && setupScript.includes("RunBundledServer('--check-spicetify', Code)") && setupScript.includes('SpicetifyMissing'));
 check('single Setup flow does not require Spotify to be manually closed', !/ensure_spotify_closed/.test(rustRuntime) && !/Get-Process -Name Spotify/.test(rustRuntime) && /CloseApplications=no/.test(setupScript));
 const configureBody = rustRuntime.slice(rustRuntime.indexOf('pub fn configure_install('), rustRuntime.indexOf('fn find_node()'));
 check('local API starts and passes readiness before Spicetify apply', configureBody.indexOf('launch_monitor()') >= 0 && configureBody.indexOf('launch_monitor()') < configureBody.indexOf('apply_spicetify(&cli)'));
 check('PID waits verify the actual Memory Sentry executable path', rustRuntime.includes('process_matches_executable(pid, &installed_exe)') && rustPlatform.includes('QueryFullProcessImageNameW'));
 check('failed API bind removes helper.pid', rustRuntime.includes('if let Err(error) = start_api(Arc::clone(&shared))') && rustRuntime.includes('let _ = fs::remove_file(&pid_file);'));
 const launcherBody = rustRuntime.slice(rustRuntime.indexOf('pub fn launch_monitor()'));
-check('Rust launcher creates startup diagnostics before reading settings', launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') >= 0 && launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') < launcherBody.indexOf('load_settings(&settings_path)') && launcherBody.includes('Could not load companion settings'));
-check('installer always launches the companion after setup', setupScript.includes('Flags: runhidden') && !setupScript.includes('Flags: postinstall nowait skipifsilent runhidden'));
+check('Server launcher creates startup diagnostics before reading settings', launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') >= 0 && launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') < launcherBody.indexOf('load_settings(&settings_path)') && launcherBody.includes('Could not load server settings'));
+check('installer always launches the server after setup', setupScript.includes('Flags: runhidden') && !setupScript.includes('Flags: postinstall nowait skipifsilent runhidden'));
 check('redundant batch and PowerShell installer entry points are absent', ['Install.bat','Uninstall.bat','installer/Install.ps1','installer/Uninstall.ps1'].every(file => !fs.existsSync(path.join(root, file))));
 check('official Setup is per-user and does not request elevation', /PrivilegesRequired=lowest/.test(setupScript) && !/RunAs|Verb\s+RunAs/i.test(setupScript));
-check('Inno uninstaller invokes recovery-aware native pre-uninstall', /InitializeUninstall/.test(setupScript) && /RunInstalledCompanion\('--pre-uninstall', Code\)/.test(setupScript) && /Recovery data exists but the companion executable is missing/.test(setupScript));
-check('source Inno installer preserves app recovery guard', /Recovery data exists but the companion executable is missing/.test(setupScript) && /No program files were removed/.test(setupScript));
+check('Inno uninstaller invokes recovery-aware server pre-uninstall', /InitializeUninstall/.test(setupScript) && /RunInstalledServer\('--pre-uninstall', Code\)/.test(setupScript) && /Recovery data exists but the server executable is missing/.test(setupScript));
+check('source Inno installer preserves app recovery guard', /Recovery data exists but the server executable is missing/.test(setupScript) && /No program files were removed/.test(setupScript));
 
 check('CI runs package validation', validation.includes('node tests/validate-package.js'));
 check('release versions are aligned on 1.0.0-rc.2', rustCargo.includes('version = "1.0.0-rc.2"') && read('server/Cargo.lock').includes('version = "1.0.0-rc.2"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.2";') && setupScript.includes('#define AppVersion "1.0.0-rc.2"') && setupScript.includes('VersionInfoVersion=1.0.0.2') && read('README.md').includes('1.0.0-rc.2') && app.includes('v1.0.0-rc.2'));
@@ -131,7 +131,7 @@ check('manual mode applies persistent per-role overrides across changing process
 check('automatic and manual limits are restricted to background window states', rustRuntime.includes('should_manage_limits_in_background') && rustRuntime.includes('"background-visible"'));
 check('manual caps persist process creation identity and are recorded in recovery backups', rustRuntime.includes('manualCaps') && rustRuntime.includes('manual: fields') && rustRuntime.includes('if r.manual { \"manual\" }'));
 check('policy transitions restore active limits before switching modes', rustRuntime.includes('next.auto_optimize != state.settings.auto_optimize') && rustRuntime.includes('policy mode changed') && rustRuntime.includes('failed > 0'));
-check('Rust native layer protects process identity before each working-set mutation', rustPlatform.includes('set_working_set_limits') && rustPlatform.includes('creation != expected_creation') && rustPlatform.includes('restore_working_set_limits'));
+check('server Windows layer protects process identity before each working-set mutation', rustPlatform.includes('set_working_set_limits') && rustPlatform.includes('creation != expected_creation') && rustPlatform.includes('restore_working_set_limits'));
 check('Rust startup and instance locking are per-user and single-instance', rustPlatform.includes('acquire_single_instance') && rustRuntime.includes('register_startup') && rustRuntime.includes('127.0.0.1'));
 check('Rust migration stops the legacy monitor before invoking its one-shot restore command', (rustRuntime.match(/stop_legacy_node_helper\(&base\)\?;/g) || []).length === 2);
 check('Rust dashboard port remains consistent with the Custom App endpoint', /const MSS_API = 'http:\/\/127\.0\.0\.1:38472'/.test(app) && /port: DEFAULT_PORT/.test(rustRuntime));
@@ -150,4 +150,4 @@ for (const [name, source] of [['app/index.js', app]]) {
   catch (error) { check(`JavaScript syntax: ${name} (${error.message})`, false); }
 }
 if (failures) process.exitCode = 1;
-else console.log('\nAll static package checks passed. Native Win32 behavior still requires a Windows runtime test.');
+else console.log('\nAll static package checks passed. Win32 behavior still requires a Windows runtime test.');

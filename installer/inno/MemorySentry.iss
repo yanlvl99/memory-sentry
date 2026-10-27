@@ -48,16 +48,16 @@ english.InstallCheckFailed=Setup could not verify all prerequisites. Read the di
 brazilianportuguese.InstallCheckFailed=O instalador não conseguiu confirmar todos os requisitos. Leia o diagnóstico exibido pelo instalador e tente novamente. Nenhum arquivo do programa foi substituído.
 english.SpicetifyMissing=Spicetify CLI was not found for this Windows user. Install Spicetify, reopen Setup, and try again. No program files have been replaced.
 brazilianportuguese.SpicetifyMissing=O Spicetify CLI não foi encontrado para este usuário do Windows. Instale o Spicetify, abra o instalador novamente e tente de novo. Nenhum arquivo do programa foi substituído.
-english.UpgradeCheckFailed=The previous companion did not confirm that its recovery state was safe. Setup has stopped; the existing files and recovery data were preserved.
-brazilianportuguese.UpgradeCheckFailed=O auxiliar anterior não confirmou que a recuperação estava segura. A instalação foi interrompida; os arquivos existentes e os dados de recuperação foram preservados.
+english.UpgradeCheckFailed=The previous server did not confirm that its recovery state was safe. Setup has stopped; the existing files and recovery data were preserved.
+brazilianportuguese.UpgradeCheckFailed=O servidor anterior não confirmou que a recuperação estava segura. A instalação foi interrompida; os arquivos existentes e os dados de recuperação foram preservados.
 english.ConfigureFailed=Files were copied, but Memory Sentry could not register its Custom App. Setup tried to roll back the Custom App if recovery completed. Review the setup output and rerun Setup to repair the installation.
 brazilianportuguese.ConfigureFailed=Os arquivos foram copiados, mas o Memory Sentry não conseguiu registrar seu Custom App. O instalador tentou reverter o Custom App se a recuperação foi concluída. Verifique a saída e execute o instalador novamente para reparar a instalação.
-english.CompanionMissing=The native companion is missing from this setup package. Download the complete official release package.
-brazilianportuguese.CompanionMissing=O auxiliar nativo não está neste pacote de instalação. Baixe o pacote oficial completo.
+english.ServerMissing=The server executable is missing from this setup package. Download the complete official release package.
+brazilianportuguese.ServerMissing=O executável do servidor não está neste pacote de instalação. Baixe o pacote oficial completo.
 english.UninstallStopped=Uninstall stopped because recovery or unregistering did not complete. Review the error and retry. No program files were removed.
 brazilianportuguese.UninstallStopped=A desinstalação foi interrompida porque a recuperação ou a remoção do registro não foi concluída. Confira o erro e tente novamente. Nenhum arquivo do programa foi removido.
-english.RecoveryDataExists=Recovery data exists but the companion executable is missing. Uninstall stopped to avoid losing recovery records. Reinstall the matching package first.
-brazilianportuguese.RecoveryDataExists=Há dados de recuperação, mas o executável auxiliar está ausente. A desinstalação foi interrompida para evitar perder os registros. Reinstale primeiro o pacote correspondente.
+english.RecoveryDataExists=Recovery data exists but the server executable is missing. Uninstall stopped to avoid losing recovery records. Reinstall the matching package first.
+brazilianportuguese.RecoveryDataExists=Há dados de recuperação, mas o executável do servidor está ausente. A desinstalação foi interrompida para evitar perder os registros. Reinstale primeiro o pacote correspondente.
 english.StartMemorySentry=Start Memory Sentry now
 brazilianportuguese.StartMemorySentry=Iniciar o Memory Sentry agora
 english.InstallationGuide=Installation guide
@@ -94,12 +94,12 @@ Type: files; Name: "{app}\helper.js"
 Type: filesandordirs; Name: "{app}\node_modules"
 
 [Code]
-function RunBundledCompanion(const Params: String; var Code: Integer): Boolean;
+function RunBundledServer(const Params: String; var Code: Integer): Boolean;
 begin
   Result := Exec(ExpandConstant('{tmp}\MemorySentry.exe'), Params, '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
-function RunInstalledCompanion(const Params: String; var Code: Integer): Boolean;
+function RunInstalledServer(const Params: String; var Code: Integer): Boolean;
 begin
   Result := Exec(ExpandConstant('{app}\MemorySentry.exe'), Params, '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
@@ -126,10 +126,10 @@ begin
   try
     ExtractTemporaryFile('MemorySentry.exe');
   except
-    MsgBox(CustomMessage('CompanionMissing'), mbError, MB_OK);
+    MsgBox(CustomMessage('ServerMissing'), mbError, MB_OK);
     Exit;
   end;
-  if (not RunBundledCompanion('--check-os', Code)) or (Code <> 0) then begin
+  if (not RunBundledServer('--check-os', Code)) or (Code <> 0) then begin
     MsgBox(CustomMessage('OSCheckFailed'), mbError, MB_OK);
     Exit;
   end;
@@ -141,7 +141,7 @@ var
   Code: Integer;
 begin
   Result := '';
-  if not RunBundledCompanion('--check-spicetify', Code) then begin
+  if not RunBundledServer('--check-spicetify', Code) then begin
     Result := CustomMessage('InstallCheckFailed');
     Exit;
   end;
@@ -149,11 +149,11 @@ begin
     Result := CustomMessage('SpicetifyMissing');
     Exit;
   end;
-  if (not RunBundledCompanion('--check-install', Code)) or (Code <> 0) then begin
+  if (not RunBundledServer('--check-install', Code)) or (Code <> 0) then begin
     Result := CustomMessage('InstallCheckFailed');
     Exit;
   end;
-  if (not RunBundledCompanion('--prepare-upgrade', Code)) or (Code <> 0) then begin
+  if (not RunBundledServer('--prepare-upgrade', Code)) or (Code <> 0) then begin
     Result := CustomMessage('UpgradeCheckFailed');
     Exit;
   end;
@@ -169,8 +169,8 @@ begin
   if CurStep = ssPostInstall then begin
     AppTarget := ExpandConstant('{userappdata}\spicetify\CustomApps\SpicetifyMemorySentry');
     if (not Exec(ExpandConstant('{app}\MemorySentry.exe'), '--configure "' + AppTarget + '"', '', SW_HIDE, ewWaitUntilTerminated, Code)) or (Code <> 0) then begin
-      // Only roll back the external Custom App if the helper confirms recovery/unregistration.
-      if RunInstalledCompanion('--pre-uninstall', CleanupCode) and (CleanupCode = 0) then
+      // Only roll back the external Custom App if the server confirms recovery/unregistration.
+      if RunInstalledServer('--pre-uninstall', CleanupCode) and (CleanupCode = 0) then
         DelTree(AppTarget, True, True, True);
       Diagnostic := SetupFailureDetails();
       if Diagnostic <> '' then begin
@@ -194,7 +194,7 @@ begin
   RecoveryTsv := ExpandConstant('{app}\working-set-backup.tsv');
   RecoveryJson := ExpandConstant('{app}\working-set-backup.json');
   if FileExists(ExpandConstant('{app}\MemorySentry.exe')) then begin
-    if (not RunInstalledCompanion('--pre-uninstall', Code)) or (Code <> 0) then begin
+    if (not RunInstalledServer('--pre-uninstall', Code)) or (Code <> 0) then begin
       MsgBox(CustomMessage('UninstallStopped'), mbError, MB_OK);
       Exit;
     end;

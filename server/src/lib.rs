@@ -1,7 +1,7 @@
-//! Platform-independent adaptive policy for the experimental Rust companion.
+//! Platform-independent adaptive policy for the Memory Sentry server.
 //!
 //! This module intentionally contains no Win32 side effects. The policy can be
-//! unit-tested on any CI runner before native process manipulation is enabled.
+//! unit-tested on any CI runner before Windows process manipulation is enabled.
 
 pub const MIN_CAP_MB: u32 = 12;
 pub const MAX_CAP_MB: u32 = 64;

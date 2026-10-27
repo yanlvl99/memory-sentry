@@ -40,6 +40,8 @@ The release mode selector in the dashboard controls whether trimming releases me
 
 ## Architecture
 
+The server is implemented in Rust; the Custom App is JavaScript served to Spotify.
+
 - app/index.js: Spicetify plugin installed by the official per-user Setup EXE; automatic English/Brazilian Portuguese localization and missing-server help.
 - server/src/lib.rs: platform-independent adaptive policy and unit tests.
 - server/src/platform/windows.rs: Win32 process/memory/window primitives, process identity checks, Windows version gate and per-user single-instance lock.
