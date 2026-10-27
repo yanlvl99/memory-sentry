@@ -441,7 +441,12 @@ function MSSApp() {
             : tx('manualCurrent', { value: defaultMB });
         const memoryMB = Number(displayedMemoryMB || 0);
         const ceilingMB = process.capped ? Number(process.limitMB ?? process.manualCapMB ?? defaultMB) : null;
-        const ceilingText = ceilingMB != null ? `${tx('capLabel')} ${ceilingMB} MB` : tx('noCapLabel');
+        const originalCeilingMB = process.originalMaximumMB == null ? null : Number(process.originalMaximumMB);
+        const ceilingText = ceilingMB != null
+          ? `${tx('capLabel')} ${ceilingMB} MB`
+          : (process.originalCeilingUnlimited
+            ? tx('originalCeilingNone')
+            : (originalCeilingMB != null ? `${tx('originalCeilingLabel')} ${MSSFormatMB(originalCeilingMB)} MB` : tx('noCapLabel')));
         const over = ceilingMB != null && memoryMB > ceilingMB;
         const pct = Math.min(100, Math.max(3, (memoryMB / maxMemoryMB) * 100));
         const peekText = displayedMemoryMB == null ? '—' : `${MSSFormatMB(displayedMemoryMB)} MB · ${ceilingText}`;
