@@ -2510,8 +2510,17 @@ fn status_payload(state: &AppState) -> String {
         let default_cap = role.manual_default_cap_mb();
         let manual_cap = configured_manual_cap(&state.settings, p, *role);
         let adaptive_status = profile.map(|p| p.last_reason.as_str()).unwrap_or("baseline");
+        let original_limits = platform::read_original_limits(p.pid, p.creation).ok();
+        let original_unlimited = original_limits
+            .as_ref()
+            .map(|limits| limits.maximum >= usize::MAX / 2)
+            .unwrap_or(false);
+        let original_maximum_mb = original_limits
+            .as_ref()
+            .filter(|_| !original_unlimited)
+            .map(|limits| (limits.maximum as f64 / (1024.0 * 1024.0)).round());
         format!(
-            "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"protectedAudio\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{}}}",
+            "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"protectedAudio\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{},\"originalMaximumMB\":{},\"originalCeilingUnlimited\":{}}}",
             p.pid, json_quote(&p.creation.to_string()), json_quote(role_name(*role)),
             json_optional_number(p.working_set_mb),
             json_optional_number(p.private_working_set_mb),
@@ -2527,7 +2536,9 @@ fn status_payload(state: &AppState) -> String {
             current_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
             manual_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
             default_cap,
-            json_quote(adaptive_status)
+            json_quote(adaptive_status),
+            json_optional_number(original_maximum_mb),
+            original_unlimited
         )
     }).collect();
 
