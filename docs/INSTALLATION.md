@@ -2,7 +2,7 @@
 
 **Supported systems: Windows 10 and Windows 11 desktop editions, x64.**
 
-**Spicetify is required by the current release.** Spotify Desktop and Spicetify CLI must be installed for the same Windows user. The plugin is a Spicetify Custom App; the separate Memory Sentry server performs Windows process-memory management.
+**Spicetify is required by the current release.** [Spotify Desktop](https://open.spotify.com/download) and [Spicetify CLI](https://spicetify.app/) must be installed for the same Windows user. The plugin is a Spicetify Custom App; the separate Memory Sentry server performs Windows process-memory management.
 
 ## The only supported installation method
 
