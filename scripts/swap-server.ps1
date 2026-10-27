@@ -8,10 +8,10 @@ param([switch]$SkipBuild)
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
-$Target = Join-Path $Root 'native\rust\target\x86_64-pc-windows-msvc\release\memory-sentry-native.exe'
+$Target = Join-Path $Root 'server\target\x86_64-pc-windows-msvc\release\memory-sentry-server.exe'
 
 if (-not $SkipBuild) {
-    cargo build --release --manifest-path (Join-Path $Root 'native\rust\Cargo.toml') --target x86_64-pc-windows-msvc --locked
+    cargo build --release --manifest-path (Join-Path $Root 'server\Cargo.toml') --target x86_64-pc-windows-msvc --locked
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit code $LASTEXITCODE." }
 }
 

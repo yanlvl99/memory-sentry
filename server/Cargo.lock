@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "memory-sentry-native"
+name = "memory-sentry-server"
 version = "1.0.0-rc.2"

@@ -4,7 +4,7 @@ Do not call the release stable until all required real-desktop tests are complet
 
 ## Build and package
 
-- [ ] cargo test for native/rust/Cargo.toml passes.
+- [ ] cargo test for server/Cargo.toml passes.
 - [ ] Windows x64 build succeeds for x86_64-pc-windows-msvc.
 - [ ] Inno Setup compiles the per-user setup executable in CI.
 - [ ] Only the official Setup EXE and its SHA-256 checksum are uploaded and independently verified.

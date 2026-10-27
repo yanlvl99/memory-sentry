@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Rename the `native/rust` source tree to `server/` (Cargo package `memory-sentry-server`) and use "server" as the product term throughout the code, installer and documentation, describing Rust only as the current implementation language.
+
+## 1.0.0-rc.2 — Adaptive limits and dashboard controls
+
 - Apply role-specific manual defaults after the configured background delay in minimized, hidden, and background-visible states: Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB and Crashpad 16 MB. Saved role-wide overrides survive Spotify restarts and PID changes; original limits remain captured per process instance and restored in the foreground.
 - Require a five-second warning countdown and explicit confirmation before applying a manual limit below that process's default; validate manual values on both the dashboard and server.
 - Preserve original-limit recovery for manual changes and restore active limits before policy transitions or when Memory Sentry is disabled.
@@ -16,9 +20,9 @@
 - Show distinct dashboard summary metrics for Spotify working-set memory and process-tree count; remove duplicate memory totals and foreground-only active-limit counts.
 - Add a master Memory Sentry switch that stops new limits and retries pending restoration while disabled; use the selected background delay in both automatic and manual modes.
 - Report the local service as `Server` instead of `Rust` in the status payload so the dashboard shows `Server 1.0.0-rc.2`.
-
 - Streamline the README around project scope, requirements, policy thresholds, recovery controls, and validation limits; keep detailed workflows in dedicated guides.
 - Correct documentation of Audio-role behavior, memory metrics, Marketplace topic status, and native companion command formatting.
+
 ## 1.0.0-rc.1 — Release candidate and installation consolidation
 
 - Replace the former COM/SEM screenshot artwork with the square Marketplace cover, rectangular README preview, and README banner in `assets/`.

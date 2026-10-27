@@ -55,7 +55,7 @@ The broader Windows 10/11 desktop test matrix remains incomplete. Results may va
 Install Node.js 22+ and a stable Rust toolchain to run package checks and policy tests:
 
     node tests/validate-package.js
-    cargo test --manifest-path native/rust/Cargo.toml --locked
+    cargo test --manifest-path server/Cargo.toml --locked
 
 For Windows companion builds and packaging, see the [Development Guide](docs/DEVELOPMENT.md). For repeatable performance measurements, see [Benchmarking](docs/BENCHMARKING.md).
 
@@ -71,7 +71,7 @@ See [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md) for details and limi
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Development Guide](docs/DEVELOPMENT.md)
 - [Release checklist](docs/RELEASE_CHECKLIST.md)
-- [Server migration and release gate](docs/RUST-MIGRATION.md)
+- [Server migration and release gate](docs/SERVER-MIGRATION.md)
 - [Changelog](CHANGELOG.md)
 
 ## License

@@ -14,7 +14,7 @@ function read(relative) { return fs.readFileSync(path.join(root, relative), 'utf
 const requiredFiles = [
   'app/index.js', 'app/manifest.json',
   '.gitignore', 'manifest.json', 'README.md', 'LICENSE', 'PRIVACY.md', 'SECURITY.md',
-  'CHANGELOG.md', 'docs/BENCHMARKING.md', 'docs/MARKETPLACE.md', 'docs/INSTALLATION.md', 'docs/RUST-MIGRATION.md', 'docs/RELEASE_CHECKLIST.md', 'docs/DEVELOPMENT.md', 'docs/TROUBLESHOOTING.md', 'installer/inno/MemorySentry.iss',   'scripts/build-package.ps1', 'scripts/swap-server.ps1', 'native/rust/src/main.rs', 'native/rust/src/lib.rs', 'native/rust/src/runtime.rs', 'native/rust/src/platform/windows.rs', 'assets/marketplace-cover.svg', 'assets/readme-preview.svg', 'assets/readme-banner.svg',
+  'CHANGELOG.md', 'docs/BENCHMARKING.md', 'docs/MARKETPLACE.md', 'docs/INSTALLATION.md', 'docs/SERVER-MIGRATION.md', 'docs/RELEASE_CHECKLIST.md', 'docs/DEVELOPMENT.md', 'docs/TROUBLESHOOTING.md', 'installer/inno/MemorySentry.iss',   'scripts/build-package.ps1', 'scripts/swap-server.ps1', 'server/src/main.rs', 'server/src/lib.rs', 'server/src/runtime.rs', 'server/src/platform/windows.rs', 'assets/marketplace-cover.svg', 'assets/readme-preview.svg', 'assets/readme-banner.svg',
   '.github/ISSUE_TEMPLATE/config.yml', '.github/ISSUE_TEMPLATE/feature-request.yml', '.github/ISSUE_TEMPLATE/plugin-bug.yml', '.github/ISSUE_TEMPLATE/question.yml', '.github/ISSUE_TEMPLATE/server-bug.yml',
   '.github/workflows/validate.yml', '.github/workflows/release.yml'
 ];
@@ -32,14 +32,14 @@ check('artwork uses standalone SVGs with vector elements and no external PNG lin
 check('PNG sources, archive and obsolete screenshot assets were removed', !fs.readdirSync(path.join(root, 'assets')).some(file => /\.png$/i.test(file) || /\.zip$/i.test(file)) && ['COM.png', 'SEM.png', 'assets/COM-sharp.svg', 'assets/SEM-sharp.svg', 'assets/marketplace-banner.svg', 'assets/marketplace-preview-sharp.svg', 'preview.png', 'assets/marketplace-preview.svg'].every(file => !fs.existsSync(path.join(root, file))));
 check('README keeps the banner and omits the obsolete comparison preview', /assets\/readme-banner\.svg/.test(read('README.md')) && !/assets\/readme-preview\.svg/.test(read('README.md')) && !/not a controlled benchmark/i.test(read('README.md')));
 check('Marketplace description explains minimized RAM savings and the restore-time trade-off', /Reduce Spotify's RAM usage while minimized/i.test(marketplaceManifest.description) && /slower interface loading when restored/i.test(marketplaceManifest.description) && marketplaceManifest.description.length <= 120);
-check('official Setup declares supported Windows 10/11 desktop only', /Windows 10/.test(read('installer/inno/MemorySentry.iss')) && /Windows 11/.test(read('installer/inno/MemorySentry.iss')) && /detect_supported_client_os/.test(read('native/rust/src/runtime.rs')));
+check('official Setup declares supported Windows 10/11 desktop only', /Windows 10/.test(read('installer/inno/MemorySentry.iss')) && /Windows 11/.test(read('installer/inno/MemorySentry.iss')) && /detect_supported_client_os/.test(read('server/src/runtime.rs')));
 check('local publishing helper and generated archives are ignored', /\/PUSH-TO-GITHUB\.bat/.test(read('.gitignore')) && /\*\.bundle/.test(read('.gitignore')) && /\*\.zip/.test(read('.gitignore')));
 check('development guide documents Rust build and package validation without local publishing scripts', /cargo test/.test(read('docs/DEVELOPMENT.md')) && /scripts\/build-package\.ps1/.test(read('docs/DEVELOPMENT.md')) && !/PUSH-TO-GITHUB\.bat/i.test(read('docs/DEVELOPMENT.md')));
 check('README explains server requirement', /Memory Sentry server/i.test(read('README.md')) && /separate per-user process/i.test(read('README.md')));
 check('README documents adaptive CPU and headroom rules', /six consecutive seconds/i.test(read('README.md')) && /ten seconds/i.test(read('README.md')) && /full current working-set ceiling/i.test(read('README.md')));
 check('README documents the master switch, shared delay and five-second warning', /dashboard power switch is the master on\/off control/i.test(read('README.md')) && /same configured background delay applies in both modes/i.test(read('README.md')) && /five-second warning countdown/i.test(read('README.md')));
 check('changelog uses the current five-second manual warning', /five-second warning countdown/i.test(read('CHANGELOG.md')) && !/15-second warning countdown/i.test(read('CHANGELOG.md')));
-check('docs distinguish the fixed automatic Audio ceiling from its manual default', /fixed 36 MB automatic ceiling/i.test(read('docs/RELEASE_CHECKLIST.md')) && /manual mode.*36 MB is the Audio default and can be overridden per process role/i.test(read('docs/RUST-MIGRATION.md')) && /manual mode uses 36 MB as the default and supports persistent role-wide overrides/i.test(read('docs/MARKETPLACE.md')));
+check('docs distinguish the fixed automatic Audio ceiling from its manual default', /fixed 36 MB automatic ceiling/i.test(read('docs/RELEASE_CHECKLIST.md')) && /manual mode.*36 MB is the Audio default and can be overridden per process role/i.test(read('docs/SERVER-MIGRATION.md')) && /manual mode uses 36 MB as the default and supports persistent role-wide overrides/i.test(read('docs/MARKETPLACE.md')));
 check('troubleshooting uses the master switch to stop all background limits', /turn \*\*Memory Sentry off\*\* with the dashboard power switch/i.test(read('docs/TROUBLESHOOTING.md')) && /Turning off only \*\*Automatic policy\*\* selects manual mode/i.test(read('docs/TROUBLESHOOTING.md')));
 check('issue templates request current policy state and use the correct log files', /visible in background.*automatic\/manual mode.*selected background delay/.test(read('.github/ISSUE_TEMPLATE/server-bug.yml')) && ['setup.log', 'startup.log', 'helper.log'].every(name => read('.github/ISSUE_TEMPLATE/server-bug.yml').includes(`\`${name}\``)) && /dashboard power state, automatic\/manual mode, selected background delay/.test(read('.github/ISSUE_TEMPLATE/plugin-bug.yml')) && /Windows 11 24H2/.test(read('.github/ISSUE_TEMPLATE/plugin-bug.yml')));
 check('dashboard distinguishes master power from automatic/manual policy', /dashboard power switch turns memory management on or off/i.test(read('app/index.js')) && /botão liga\/desliga do painel ativa ou desativa o gerenciamento/i.test(read('app/index.js')));
@@ -56,11 +56,11 @@ const setupScript = read('installer/inno/MemorySentry.iss');
 const buildScript = read('scripts/build-package.ps1');
 const buildScriptSwap = read('scripts/swap-server.ps1');
 const validation = read('.github/workflows/validate.yml');
-const rustCargo = read('native/rust/Cargo.toml');
-const rustLib = read('native/rust/src/lib.rs');
-const rustMain = read('native/rust/src/main.rs');
-const rustRuntime = read('native/rust/src/runtime.rs');
-const rustPlatform = read('native/rust/src/platform/windows.rs');
+const rustCargo = read('server/Cargo.toml');
+const rustLib = read('server/src/lib.rs');
+const rustMain = read('server/src/main.rs');
+const rustRuntime = read('server/src/runtime.rs');
+const rustPlatform = read('server/src/platform/windows.rs');
 check('dashboard supports automatic Portuguese and English', /navigator\.language/i.test(app) && /pt-BR/i.test(app) && /Auto language: English/i.test(app));
 check('dashboard has a GitHub release button when helper is absent', /MSSOpenGitHub/i.test(app) && /github\.com\/yanlvl99\/spicetify-memory-sentry/i.test(app));
 check('dashboard offers setup/help links without a Node.js button', /MSSOpenGitHub/.test(app) && /MSSOpenInstallGuide/.test(app) && !/MSSOpenNode|nodeButton|nodejs\.org/.test(app));
@@ -114,9 +114,9 @@ check('Inno uninstaller invokes recovery-aware native pre-uninstall', /Initializ
 check('source Inno installer preserves app recovery guard', /Recovery data exists but the companion executable is missing/.test(setupScript) && /No program files were removed/.test(setupScript));
 
 check('CI runs package validation', validation.includes('node tests/validate-package.js'));
-check('release versions are aligned on 1.0.0-rc.2', rustCargo.includes('version = "1.0.0-rc.2"') && read('native/rust/Cargo.lock').includes('version = "1.0.0-rc.2"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.2";') && setupScript.includes('#define AppVersion "1.0.0-rc.2"') && setupScript.includes('VersionInfoVersion=1.0.0.2') && read('README.md').includes('1.0.0-rc.2') && app.includes('v1.0.0-rc.2'));
+check('release versions are aligned on 1.0.0-rc.2', rustCargo.includes('version = "1.0.0-rc.2"') && read('server/Cargo.lock').includes('version = "1.0.0-rc.2"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.2";') && setupScript.includes('#define AppVersion "1.0.0-rc.2"') && setupScript.includes('VersionInfoVersion=1.0.0.2') && read('README.md').includes('1.0.0-rc.2') && app.includes('v1.0.0-rc.2'));
 check('semantic prereleases are never marked as latest stable', read('.github/workflows/release.yml').includes("contains(steps.version.outputs.version, '-')") && read('.github/workflows/release.yml').includes("!contains(steps.version.outputs.version, '-')"));
-check('Rust scaffold uses a minimal standard-library dependency policy', rustCargo.includes('name = "memory-sentry-native"') && !rustCargo.includes('[dependencies]'));
+check('Rust scaffold uses a minimal standard-library dependency policy', rustCargo.includes('name = "memory-sentry-server"') && !rustCargo.includes('[dependencies]'));
 check('Rust policy has pure, testable adaptive logic', rustLib.includes('decide_adjustment') && rustLib.includes('working_set_at_ceiling') && rustLib.includes('#[cfg(test)]'));
 check('Rust binary exposes OS, install-preflight, upgrade, configure, monitor, and uninstall commands', ['--check-os', '--check-install', '--check-spicetify', '--prepare-upgrade', '--configure', '--monitor', '--pre-uninstall', '--restore-limits'].every(command => rustMain.includes(command)));
 check('server can be swapped in place while Spotify keeps running', rustMain.includes('"--swap"') && rustRuntime.includes('pub fn swap_server') && buildScriptSwap.includes('--swap'));
