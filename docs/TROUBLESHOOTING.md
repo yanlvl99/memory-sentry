@@ -27,7 +27,7 @@ Setup does not require Spotify to be manually closed. It prepares or shuts down 
 
 ## Setup says Spicetify was not found
 
-Install Spicetify CLI for the same Windows user account that runs Spotify. Reopen Setup after installation. The installer reports this prerequisite before changing installed files and does not silently download or execute Spicetify on the user's behalf.
+Install [Spicetify CLI](https://spicetify.app/) for the same Windows user account that runs Spotify. Reopen Setup after installation. The installer reports this prerequisite before changing installed files and does not silently download or execute Spicetify on the user's behalf.
 
 ## Setup refuses a legacy migration
 
