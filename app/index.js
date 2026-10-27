@@ -18,16 +18,14 @@ function MSSPositionPeek(event) {
 }
 
 function MSSDebugToggle(value, onChange) {
-  const Toggle = Spicetify.ReactComponent && Spicetify.ReactComponent.Toggle;
-  if (typeof Toggle !== 'function') {
-    return h('button', { className: 'mss-debug-fallback', type: 'button', role: 'switch', 'aria-checked': Boolean(value), 'aria-label': tx('debugMode'), onClick: () => onChange(!value) }, h('span', { className: 'mss-debug-fallback-thumb', 'aria-hidden': 'true' }));
-  }
-  return h(Toggle, {
-    value: Boolean(value),
-    onSelected: next => onChange(typeof next === 'boolean' ? next : !value),
-    id: 'mss-debug-mode',
-    'aria-label': tx('debugMode')
-  });
+  return h('button', {
+    type: 'button',
+    className: 'mss-switch',
+    role: 'switch',
+    'aria-checked': Boolean(value),
+    'aria-label': tx('debugMode'),
+    onClick: () => onChange(!value)
+  }, h('span', { className: 'mss-switch-knob', 'aria-hidden': 'true' }));
 }
 
 function MSSApp() {
