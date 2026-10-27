@@ -110,7 +110,7 @@ function MSSApp() {
       }
     }
     refresh();
-    const timer = window.setInterval(refresh, 2500);
+    const timer = window.setInterval(refresh, 1500);
     return () => { alive = false; window.clearInterval(timer); };
   }, [settingsLoaded]);
 

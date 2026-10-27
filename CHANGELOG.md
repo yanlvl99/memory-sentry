@@ -7,6 +7,7 @@
 - Let the user choose which window states trigger optimization (window behind another app, minimized, hidden) with independent checkboxes; the server keeps at least one state enabled and falls back to the previous all-background behavior for existing settings files.
 - Detect the Spotify window state by enumerating real top-level windows in the server (`EnumWindows`, with `IsWindowVisible`, `IsIconic` and DWM cloaking) instead of the PowerShell `MainWindowHandle` probe, which cannot see a window hidden in the tray. Minimized-to-tray is now reported as `hidden` reliably on every pass, a leftover window of the same process can no longer keep the state stuck on `foreground`, and each transition logs the window counts behind the decision.
 - Keep the background wait and any active limits while the window state cannot be read, so a momentary `window-not-found` during a tray hide no longer restarts the configured delay.
+- Poll the local status every 1.5 seconds instead of 2.5 so the dashboard reflects applied limits sooner.
 - Rename the process state badge from "Free" to "No ceiling" and move all state labels into the translated strings.
 - Report each process's original Windows working-set ceiling in the status payload.
 - Show the original ceiling in a process's memory tooltip when no Memory Sentry limit is active.
