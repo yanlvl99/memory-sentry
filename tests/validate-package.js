@@ -26,6 +26,9 @@ let marketplaceManifest = {};
 try { appManifest = JSON.parse(read('app/manifest.json')); } catch (_) { check('Custom App manifest JSON', false); }
 try { marketplaceManifest = JSON.parse(read('manifest.json')); } catch (_) { check('Marketplace manifest JSON', false); }
 check('Spicetify Custom App manifest is valid', Boolean(appManifest.name && appManifest.icon && appManifest['active-icon']));
+const appSubfiles = Array.isArray(appManifest.subfiles) ? appManifest.subfiles : [];
+for (const file of appSubfiles) check(`exists: app/${file} (subfile)`, fs.existsSync(path.join(root, 'app', file)));
+check('Custom App manifest does not list index.js as a subfile', !appSubfiles.includes('index.js'));
 check('root manifest is Marketplace metadata', marketplaceManifest.name === 'Memory Sentry' && marketplaceManifest.preview === 'assets/marketplace-cover.svg' && marketplaceManifest.readme === 'README.md' && !marketplaceManifest.main);
 check('Marketplace metadata uses the selected discovery tags and author attribution', JSON.stringify(marketplaceManifest.tags) === JSON.stringify(['memory', 'windows', 'experimental']) && marketplaceManifest.authors?.some(author => author.url === 'https://github.com/yanlvl99'));
 check('artwork uses standalone SVGs with vector elements and no external PNG links', [['marketplace-cover.svg', '1600', '1600'], ['readme-preview.svg', '1600', '1000'], ['readme-banner.svg', '1800', '700']].every(([file, width, height]) => { const svg = read(`assets/${file}`); return /^<svg\b/.test(svg) && new RegExp(`width="${width}"`).test(svg) && new RegExp(`height="${height}"`).test(svg) && /<path\b/.test(svg) && !/href=["'](?!data:)[^"']*\.png/i.test(svg); }));
@@ -51,7 +54,9 @@ check('Marketplace preview exists', fs.existsSync(path.join(root, marketplaceMan
 check('release publishes only the official Setup EXE and SHA-256', /MemorySentrySetup-\*\.exe/.test(read('.github/workflows/release.yml')) && /MemorySentrySetup-\*\.exe\.sha256/.test(read('.github/workflows/release.yml')) && !/MemorySentry-\*windows-x64\.zip/.test(read('.github/workflows/release.yml')) && /action-gh-release/i.test(read('.github/workflows/release.yml')));
 check('build output has one supported installer and no custom portable ZIP', /MemorySentrySetup-/.test(read('scripts/build-package.ps1')) && !/Compress-Archive/.test(read('scripts/build-package.ps1')) && !/MemorySentry-.*windows-x64\.zip/.test(read('scripts/build-package.ps1')));
 
-const app = read('app/index.js');
+const appIndex = read('app/index.js');
+const app = [...appSubfiles.map(file => read(`app/${file}`)), appIndex].join('\n;\n');
+check('Custom App source avoids ES module syntax because subfiles are concatenated', !/^\s*(?:import|export)\b/m.test(app));
 const setupScript = read('installer/inno/MemorySentry.iss');
 const buildScript = read('scripts/build-package.ps1');
 const buildScriptSwap = read('scripts/swap-server.ps1');
@@ -145,9 +150,32 @@ if (warningSecondsSource) {
     vm.runInNewContext(`${warningSecondsSource}; MSSManualWarningSeconds(5000, 5000)`) === 0);
 } else check('below-default warning countdown function exists', false);
 
-for (const [name, source] of [['app/index.js', app]]) {
+for (const [name, source] of [['app/index.js + subfiles', app]]) {
   try { new vm.Script(source, { filename: name }); check(`JavaScript syntax: ${name}`, true); }
   catch (error) { check(`JavaScript syntax: ${name} (${error.message})`, false); }
+}
+const appSandbox = {
+  Spicetify: {
+    React: { createElement: () => null, useState: value => [value, () => {}], useEffect: () => {}, useRef: value => ({ current: value }), useCallback: fn => fn },
+    ReactComponent: {}, PopupModal: {}, Platform: {}, SVGIcons: {}, Config: {},
+    LocalStorage: { get: () => null, set: () => {} },
+    showNotification: () => {}
+  },
+  document: {
+    getElementById: () => null, querySelector: () => null, head: { appendChild: () => {} }, body: { appendChild: () => {} },
+    createElement: () => ({ style: {}, setAttribute: () => {}, appendChild: () => {}, append: () => {}, addEventListener: () => {}, remove: () => {} })
+  },
+  window: { open: () => {}, addEventListener: () => {}, localStorage: { getItem: () => null, setItem: () => {} }, setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} },
+  navigator: { language: 'en-US' },
+  fetch: () => Promise.reject(new Error('no network during validation')),
+  setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
+  console
+};
+try {
+  vm.runInNewContext(app, appSandbox, { filename: 'app-bundle.js' });
+  check('Custom App registers render() with a stubbed Spicetify and no DOM access at load', typeof appSandbox.render === 'function');
+} catch (error) {
+  check(`Custom App loads with a stubbed Spicetify (${error.message})`, false);
 }
 if (failures) process.exitCode = 1;
 else console.log('\nAll static package checks passed. Win32 behavior still requires a Windows runtime test.');
