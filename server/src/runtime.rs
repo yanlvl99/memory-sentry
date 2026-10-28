@@ -4,9 +4,7 @@
 use crate::platform;
 use memory_sentry_core::{
     decide_adjustment, estimate_cpu_percent, working_set_at_ceiling, AdjustmentDirection,
-    ProcessRole, ADJUSTMENT_COOLDOWN_MS, DECREASE_STEP_MB, HIGH_CPU_DURATION_MS, HIGH_CPU_PERCENT,
-    INCREASE_STEP_MB, LOW_CPU_DURATION_MS, LOW_CPU_PERCENT, LOW_WORKING_SET_MARGIN_MB, MAX_CAP_MB,
-    MIN_CAP_MB,
+    ProcessRole, HIGH_CPU_PERCENT, LOW_CPU_PERCENT, MAX_CAP_MB, MIN_CAP_MB,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
@@ -150,7 +148,6 @@ impl Default for Telemetry {
 }
 
 struct AppState {
-    install_dir: PathBuf,
     settings_path: PathBuf,
     backup_path: PathBuf,
     log_path: PathBuf,
@@ -1272,7 +1269,6 @@ fn build_state(base: PathBuf, settings: Settings) -> AppState {
         settings_path: base.join("settings.json"),
         backup_path: base.join("working-set-backup.tsv"),
         log_path: base.join("logs").join("helper.log"),
-        install_dir: base,
         settings,
         started_at: iso_now(),
         snapshot: platform::Snapshot::default(),
