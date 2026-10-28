@@ -2,10 +2,8 @@
 //! All operations validate the process creation timestamp immediately before mutation.
 
 use std::ffi::c_void;
-use std::io;
 use std::path::Path;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
 pub const PROCESS_SET_QUOTA: u32 = 0x0100;
@@ -91,7 +89,6 @@ extern "system" {
     fn GetCurrentProcessId() -> u32;
     fn CreateMutexW(attributes: *mut c_void, initial_owner: i32, name: *const u16) -> Handle;
     fn ReleaseMutex(handle: Handle) -> i32;
-    fn GetExitCodeProcess(process: Handle, exit_code: *mut u32) -> i32;
     fn QueryFullProcessImageNameW(process: Handle, flags: u32, exe_name: *mut u16, size: *mut u32) -> i32;
 }
 
@@ -677,14 +674,6 @@ fn decode_base64(input: &str) -> Vec<u8> {
     output
 }
 
-pub fn process_exists(pid: u32) -> bool {
-    let Ok(handle) = open_process(pid, 0x1000) else { return false; };
-    let mut code = 0u32;
-    let alive = unsafe { GetExitCodeProcess(handle, &mut code) } != 0 && code == 259;
-    unsafe { CloseHandle(handle); }
-    alive
-}
-
 pub fn process_matches_executable(pid: u32, expected_path: &Path) -> bool {
     let Ok(handle) = open_process(pid, 0x1000) else { return false; };
     let mut buffer = vec![0u16; 32_768];
@@ -732,14 +721,6 @@ pub fn acquire_single_instance() -> Result<SingleInstanceGuard, String> {
 
 pub fn current_process_id() -> u32 {
     unsafe { GetCurrentProcessId() }
-}
-
-pub fn epoch_millis() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
-}
-
-pub fn io_error(error: io::Error) -> String {
-    error.to_string()
 }
 
 const COINIT_MULTITHREADED: u32 = 0x0000_0000;
