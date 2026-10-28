@@ -371,7 +371,6 @@ function MSSApp() {
   const serverLabel = status?.helper ? `${status.helper.runtime || 'Server'} ${status.helper.version || ''}` : (MSS_PT ? 'Servidor' : 'Server');
 
   const cappedCount = targets.filter(target => target.capped).length;
-  const maxMemoryMB = targets.reduce((max, target) => Math.max(max, memory.privateWorkingSet ? Number(target.privateWorkingSetMB || 0) : Number(target.workingSetMB || 0)), 0) || 1;
 
   return h('main', { className: 'mss-page' },
     h('header', { className: 'mss-topbar' },
@@ -448,7 +447,8 @@ function MSSApp() {
             ? tx('originalCeilingNone')
             : (originalCeilingMB != null ? `${tx('originalCeilingLabel')} ${MSSFormatMB(originalCeilingMB)} MB` : tx('noCapLabel')));
         const over = ceilingMB != null && memoryMB > ceilingMB;
-        const pct = Math.min(100, Math.max(3, (memoryMB / maxMemoryMB) * 100));
+        const barScaleMB = ceilingMB ?? MSS_UNCAPPED_SCALE_MB;
+        const pct = Math.min(100, Math.max(3, (memoryMB / barScaleMB) * 100));
         const peekText = displayedMemoryMB == null ? '—' : `${MSSFormatMB(displayedMemoryMB)} MB · ${ceilingText}`;
         const tagText = over
           ? tx('tagOver')
