@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Show the background-delay selector's one-second option as "1 second" / "1 segundo" instead of the plural "1 seconds" / "1 segundos".
+- Show the low-limit warning's countdown as "1 second" / "1 segundo" when one second remains, instead of the plural "1 seconds" / "1 segundos".
 
 ## 1.0.0-rc.3 — Settings-panel dashboard, configurable triggers and tray-aware detection
 

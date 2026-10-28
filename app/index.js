@@ -190,7 +190,7 @@ function MSSApp() {
       warningCopy.textContent = tx('lowLimitWarning', {
         capMB: warning.capMB,
         defaultMB: warning.defaultMB,
-        seconds
+        countdown: tx(seconds === 1 ? 'second' : 'seconds', { value: seconds })
       });
       if (countdownComplete) return;
       if (seconds > 0) {
