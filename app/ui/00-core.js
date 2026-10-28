@@ -8,5 +8,6 @@ const MSS_RELEASES_URL = `${MSS_GITHUB_URL}/releases`;
 const MSS_INSTALL_GUIDE_URL = `${MSS_GITHUB_URL}/blob/main/docs/INSTALLATION.md`;
 const MSS_LOCALE = (typeof navigator !== 'undefined' && /^pt(?:-|$)/i.test(navigator.language || '')) ? 'pt-BR' : 'en-US';
 const MSS_PT = MSS_LOCALE === 'pt-BR';
+const MSS_UNCAPPED_SCALE_MB = 512;
 
 window.MSS = window.MSS || { version: '1.0.0', adapters: {} };
