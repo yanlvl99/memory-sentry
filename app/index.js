@@ -157,7 +157,16 @@ function MSSApp() {
     cancelButton.className = 'mss-btn mss-btn-secondary';
     cancelButton.textContent = tx('cancel');
     actions.append(confirmButton, cancelButton);
-    panel.append(warningCopy, actions);
+    const ackRow = document.createElement('label');
+    ackRow.className = 'mss-ack';
+    ackRow.setAttribute('style', 'display:flex;gap:8px;align-items:center;margin:8px 0');
+    const ackBox = document.createElement('input');
+    ackBox.type = 'checkbox';
+    ackBox.className = 'mss-ack-box';
+    const ackText = document.createElement('span');
+    ackText.textContent = tx('ackLowLimitRisk');
+    ackRow.append(ackBox, ackText);
+    panel.append(warningCopy, ackRow, actions);
 
     let fallbackOverlay = null;
     let modalOpen = true;
@@ -213,7 +222,10 @@ function MSSApp() {
       setManualInputs(previous => ({ ...previous, [warning.key]: String(warning.previousValue ?? warning.defaultMB) }));
       setManualWarning(null);
     };
-    const onConfirm = () => confirmManualLimit(warning, countdownComplete);
+    const onConfirm = () => {
+      if (ackBox.checked) { try { window.localStorage.setItem('mss.skipLowLimit', '1'); } catch (_) { } }
+      confirmManualLimit(warning, countdownComplete);
+    };
     const onCancel = () => closeWarning(false);
     const onBackdropClick = event => {
       if (event.target === fallbackOverlay) closeWarning(false);
@@ -221,6 +233,10 @@ function MSSApp() {
     confirmButton.addEventListener('click', onConfirm);
     cancelButton.addEventListener('click', onCancel);
     fallbackOverlay?.addEventListener('click', onBackdropClick);
+    const onDocumentClick = event => { if (!panel.contains(event.target)) closeWarning(false); };
+    const onDocumentKeydown = event => { if (event.key === 'Escape') closeWarning(false); };
+    document.addEventListener('click', onDocumentClick, true);
+    document.addEventListener('keydown', onDocumentKeydown);
 
     if (usePopupModal && typeof MutationObserver === 'function') {
       modalObserver = new MutationObserver(() => {
@@ -238,6 +254,8 @@ function MSSApp() {
       confirmButton.removeEventListener('click', onConfirm);
       cancelButton.removeEventListener('click', onCancel);
       fallbackOverlay?.removeEventListener('click', onBackdropClick);
+      document.removeEventListener('click', onDocumentClick, true);
+      document.removeEventListener('keydown', onDocumentKeydown);
       const wasConfirmed = confirmedManualWarning.current === warning.readyAt;
       if (wasConfirmed) confirmedManualWarning.current = null;
       else if (!dismissed) {
@@ -330,7 +348,7 @@ function MSSApp() {
       if (process.manualCapMB != null) await clearManualLimit(process, key);
       return;
     }
-    if (capMB < defaultMB) {
+    if (capMB < defaultMB && window.localStorage.getItem('mss.skipLowLimit') !== '1') {
       const readyAt = Date.now() + 5000;
       setManualWarning({ key, pid: process.pid, creation: process.creation, role: process.role, capMB, defaultMB, previousValue: String(previousValue ?? process.manualCapMB ?? defaultMB), readyAt });
       return;

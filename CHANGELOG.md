@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make the low-limit warning apply only through the "Apply lower limit" button: closing it by clicking outside or pressing Escape now restores the previous value instead of applying, and the warning no longer reappears on its own.
+- Add an "I understand this can cause problems; do not show this warning again" checkbox to the low-limit warning that, once accepted, remembers the choice locally and applies below-default limits directly without the modal.
 - Show the background-delay selector's one-second option as "1 second" / "1 segundo" instead of the plural "1 seconds" / "1 segundos".
 - Show the low-limit warning's countdown as "1 second" / "1 segundo" when one second remains (was the plural "1 seconds" / "1 segundos"), and replace the tail with "You can apply the limit now." / "Você já pode aplicar o limite." once the countdown reaches zero.
 
