@@ -77,8 +77,8 @@ const MSS_TEXT = {
 };
 const T = MSS_PT ? MSS_TEXT.pt : MSS_TEXT.en;
 const MSS_ROLE_NAMES = MSS_PT
-  ? { main: 'principal', gpu: 'gráfico', audio: 'áudio', utility: 'utilitário', renderer: 'interface', crashpad: 'crashpad' }
-  : { main: 'primary', gpu: 'graphics', audio: 'audio', utility: 'utility', renderer: 'ui', crashpad: 'crashpad' };
+  ? { Main: 'principal', GPU: 'gráfico', Audio: 'áudio', Utility: 'utilitário', Renderer: 'interface', Crashpad: 'crashpad', Helper: 'auxiliar' }
+  : { Main: 'primary', GPU: 'graphics', Audio: 'audio', Utility: 'utility', Renderer: 'ui', Crashpad: 'crashpad', Helper: 'helper' };
 function tx(key, vars = {}) {
   let value = T[key] || MSS_TEXT.en[key] || key;
   for (const [name, replace] of Object.entries(vars)) value = value.replaceAll(`{${name}}`, String(replace));
