@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show the background-delay selector's one-second option as "1 second" / "1 segundo" instead of the plural "1 seconds" / "1 segundos".
+
 ## 1.0.0-rc.3 — Settings-panel dashboard, configurable triggers and tray-aware detection
 
 - Rename the `native/rust` source tree to `server/` (Cargo package `memory-sentry-server`) and use "server" as the product term throughout the code, installer and documentation, describing Rust only as the current implementation language.

@@ -411,7 +411,7 @@ function MSSApp() {
       ),
       h('div', { className: 'mss-toolbar-row' },
         h('label', { className: 'mss-tool' }, h('span', null, tx('delayShort')),
-          h('select', { className: 'mss-select', disabled: saving || !helperRunning || !config.enabled, value: String(config.hiddenDelaySeconds), onChange: event => setField('hiddenDelaySeconds', Number(event.target.value)) }, [1, 2, 3, 5, 8, 10, 15, 20, 30].map(n => h('option', { key: n, value: String(n) }, tx('seconds', { value: n }))))),
+          h('select', { className: 'mss-select', disabled: saving || !helperRunning || !config.enabled, value: String(config.hiddenDelaySeconds), onChange: event => setField('hiddenDelaySeconds', Number(event.target.value)) }, [1, 2, 3, 5, 8, 10, 15, 20, 30].map(n => h('option', { key: n, value: String(n) }, tx(n === 1 ? 'second' : 'seconds', { value: n }))))),
         h('label', { className: 'mss-tool' }, h('span', null, tx('releaseShort')),
           h('select', { className: 'mss-select', disabled: saving || !helperRunning || !config.enabled, value: config.trimToCap !== false ? 'ceiling' : 'aggressive', onChange: event => setField('trimToCap', event.target.value === 'ceiling') }, h('option', { value: 'ceiling' }, tx('releaseCeiling')), h('option', { value: 'aggressive' }, tx('releaseAggressive')))),
         h('span', { className: 'mss-tool-note' }, tx(saving ? 'saving' : 'autoSavedShort'))
