@@ -189,9 +189,10 @@ function MSSApp() {
       const seconds = MSSManualWarningSeconds(warning.readyAt, Date.now());
       warningCopy.textContent = tx('lowLimitWarning', {
         capMB: warning.capMB,
-        defaultMB: warning.defaultMB,
-        countdown: tx(seconds === 1 ? 'second' : 'seconds', { value: seconds })
-      });
+        defaultMB: warning.defaultMB
+      }) + (seconds > 0
+        ? ' ' + tx('lowLimitWait', { countdown: tx(seconds === 1 ? 'second' : 'seconds', { value: seconds }) })
+        : ' ' + tx('lowLimitReady'));
       if (countdownComplete) return;
       if (seconds > 0) {
         confirmButton.textContent = tx('waitBeforeApply', { seconds });
