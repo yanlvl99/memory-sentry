@@ -15,7 +15,7 @@ If the log is missing, open PowerShell and run:
 Get-Content "$env:LOCALAPPDATA\MemorySentryForSpicetify\logs\startup.log" -Tail 40
 ```
 
-The first command prints a direct error if the launcher cannot initialize; the second shows local startup diagnostics if the file was created. If the executable itself is missing, repair the installation using the official setup executable. For runtime events after the local API starts, inspect `helper.log` in the same `logs` folder. These logs stay on the PC and are not uploaded. A "port already in use" error means another process is listening on port 38472. An "Invalid local token" error means the plugin and server were configured with different internal tokens; rerun the official installer to configure both together.
+The first command prints a direct error if the launcher cannot initialize; the second shows local startup diagnostics if the file was created. If the executable itself is missing, repair the installation using the official MSI installer (run it and choose Repair). For runtime events after the local API starts, inspect `helper.log` in the same `logs` folder. These logs stay on the PC and are not uploaded. A "port already in use" error means another process is listening on port 38472. An "Invalid local token" error means the plugin and server were configured with different internal tokens; rerun the official installer to configure both together.
 
 ## Uninstall while Spotify is open
 
@@ -57,8 +57,8 @@ A new unsigned executable can show a warning even when its source is open. Verif
 
 ## Logs
 
-After uninstall, diagnostic logs that existed are copied to:
+Diagnostic logs are written under the data folder and remain there after uninstall:
 
-%LOCALAPPDATA%\MemorySentry\logs
+%LOCALAPPDATA%\MemorySentryForSpicetify\logs
 
 The server does not upload logs or metrics. Review the logs for personal file paths before attaching them to a public issue.
