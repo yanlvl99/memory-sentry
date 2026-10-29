@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show the correct state badge for protected audio: an Audio process with no limit applied now reads "No ceiling" instead of falsely claiming a fixed ceiling, and an applied Audio limit reads "Fixed" instead of "Adaptive".
 - Make the low-limit warning apply only through the "Apply lower limit" button: closing it by clicking outside or pressing Escape now restores the previous value instead of applying, and the warning no longer reappears on its own.
 - Add an "I understand this can cause problems; do not show this warning again" checkbox to the low-limit warning that, once accepted, remembers the choice locally and applies below-default limits directly without the modal.
 - Show the background-delay selector's one-second option as "1 second" / "1 segundo" instead of the plural "1 seconds" / "1 segundos".

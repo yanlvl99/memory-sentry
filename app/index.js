@@ -469,8 +469,9 @@ function MSSApp() {
         const tagText = over
           ? tx('tagOver')
           : (process.manual ? tx('tagManual')
-            : (process.capped ? tx('tagAdaptive')
-              : (process.protectedAudio ? tx('tagFixed') : tx('tagNoCeiling'))));
+            : (process.capped
+              ? (process.protectedAudio ? tx('tagFixed') : tx('tagAdaptive'))
+              : tx('tagNoCeiling')));
         return h('div', { className: 'mss-process', key },
           h('div', { className: 'mss-process-main' },
             h('div', { className: 'mss-process-name' }, MSSRoleLabel(process.role), h('span', { className: 'mss-role' }, MSS_ROLE_NAMES[process.role] || process.role)),
