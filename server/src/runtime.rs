@@ -16,7 +16,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const VERSION: &str = "1.0.0-rc.3";
+const VERSION: &str = "1.0.0-rc.4";
 const DEFAULT_PORT: u16 = 38472;
 const DEFAULT_HIDDEN_DELAY_SECONDS: u64 = 2;
 const MIN_MANUAL_CAP_MB: u32 = 8;
@@ -826,6 +826,20 @@ fn cleanup_legacy_custom_app(cli: &Path) {
 
 pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
     let (os_name, build) = platform::detect_supported_client_os()?;
+    // Reject a mismatched-architecture installer (e.g. the x64 package chosen on an ARM64 PC that
+    // cannot emulate it) before touching any file. The MSI ConfigureApp custom action runs with
+    // Return="check", so returning Err rolls the whole install back with this message.
+    let built_arch = match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" => "arm64",
+        other => other,
+    };
+    let native_arch = platform::native_arch()?;
+    if built_arch != native_arch {
+        return Err(format!(
+            "This Memory Sentry installer is built for {built_arch} PCs, but this machine is {native_arch}. Download and run the matching {native_arch} installer instead; nothing was changed."
+        ));
+    }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let base = exe
         .parent()
