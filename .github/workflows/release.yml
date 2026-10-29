@@ -53,10 +53,10 @@ jobs:
       - name: Install WiX v5 and build the official MSI
         shell: pwsh
         run: |
-          dotnet tool install --global wix
+          dotnet tool install --global wix --version 5.0.2
           $env:Path += ";$env:USERPROFILE\.dotnet\tools"
-          wix extension add -g WixToolset.UI.wixext
-          wix extension add -g WixToolset.Util.wixext
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+          wix extension add -g WixToolset.Util.wixext/5.0.2
           .\scripts\build-package.ps1 -Version "${{ steps.version.outputs.version }}"
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2

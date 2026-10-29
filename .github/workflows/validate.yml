@@ -51,10 +51,10 @@ jobs:
       - name: Install WiX v5 and build the per-user MSI
         shell: pwsh
         run: |
-          dotnet tool install --global wix
+          dotnet tool install --global wix --version 5.0.2
           $env:Path += ";$env:USERPROFILE\.dotnet\tools"
-          wix extension add -g WixToolset.UI.wixext
-          wix extension add -g WixToolset.Util.wixext
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+          wix extension add -g WixToolset.Util.wixext/5.0.2
           $cargo = Get-Content server/Cargo.toml -Raw
           if ($cargo -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw "Could not read Cargo version." }
           .\scripts\build-package.ps1 -Version $Matches[1]
