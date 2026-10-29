@@ -3,7 +3,7 @@
 ## Toolchain
 
 - Stable Rust toolchain.
-- Windows 10/11 x64 desktop for full runtime verification.
+- Windows 10/11 x64 or ARM64 desktop for full runtime verification.
 - Node.js 22+ for package validation (`node tests/validate-package.js`) and, if needed, recovery of an earlier Node-based installation.
 - WiX v5 (`wix` .NET global tool plus the `WixToolset.UI.wixext` and `WixToolset.Util.wixext` extensions) to build the per-user MSI.
 
@@ -52,4 +52,4 @@ The server is implemented in Rust; the Custom App is JavaScript served to Spotif
 
 ## Publishing
 
-Use English Conventional Commit messages and review the exact staged diff. The PR must pass JavaScript validation, policy tests, Windows x64 compilation and setup packaging. Do not merge or publish a stable release until a clean Windows 10/11 desktop test confirms audio continuity, restore, upgrade, crash recovery and uninstall behavior.
+Use English Conventional Commit messages and review the exact staged diff. The PR must pass JavaScript validation, policy tests, Windows x64 and ARM64 compilation and setup packaging. Do not merge or publish a stable release until a clean Windows 10/11 desktop test confirms audio continuity, restore, upgrade, crash recovery and uninstall behavior.

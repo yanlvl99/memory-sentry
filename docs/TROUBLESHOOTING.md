@@ -31,7 +31,7 @@ Install [Spicetify CLI](https://spicetify.app/) for the same Windows user accoun
 
 ## Spotify takes a moment to accept input after being restored
 
-Memory Sentry is designed to substantially reduce Spotify's resident working set while minimized, hidden, or in the background on supported Windows 10/11 x64 desktop PCs. Actual savings vary by PC and workload.
+Memory Sentry is designed to substantially reduce Spotify's resident working set while minimized, hidden, or in the background on supported Windows 10/11 x64 or ARM64 desktop PCs. Actual savings vary by PC and workload.
 
 On very low-end PCs, the window can briefly appear black while Spotify's interface becomes visible again. **That alone does not prove a reload or loss of state.** Check whether the previous page and UI state return as they were. Input may also take a few seconds to respond after the window is restored. A persistent black screen, lost state, crash, interrupted playback, or unusably long delay is not something to dismiss as normal.
 
