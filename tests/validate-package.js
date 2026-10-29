@@ -14,7 +14,7 @@ function read(relative) { return fs.readFileSync(path.join(root, relative), 'utf
 const requiredFiles = [
   'app/index.js', 'app/manifest.json',
   '.gitignore', 'manifest.json', 'README.md', 'LICENSE', 'PRIVACY.md', 'SECURITY.md',
-  'CHANGELOG.md', 'docs/BENCHMARKING.md', 'docs/MARKETPLACE.md', 'docs/INSTALLATION.md', 'docs/SERVER-MIGRATION.md', 'docs/RELEASE_CHECKLIST.md', 'docs/DEVELOPMENT.md', 'docs/TROUBLESHOOTING.md', 'installer/inno/MemorySentry.iss',   'installer/wix/Product.wxs', 'scripts/build-package.ps1', 'scripts/swap-server.ps1', 'server/src/main.rs', 'server/src/lib.rs', 'server/src/runtime.rs', 'server/src/platform/windows.rs', 'assets/marketplace-cover.svg', 'assets/readme-preview.svg', 'assets/readme-banner.svg',
+  'CHANGELOG.md', 'docs/BENCHMARKING.md', 'docs/MARKETPLACE.md', 'docs/INSTALLATION.md', 'docs/SERVER-MIGRATION.md', 'docs/RELEASE_CHECKLIST.md', 'docs/DEVELOPMENT.md', 'docs/TROUBLESHOOTING.md',   'installer/wix/Product.wxs', 'scripts/build-package.ps1', 'scripts/swap-server.ps1', 'server/src/main.rs', 'server/src/lib.rs', 'server/src/runtime.rs', 'server/src/platform/windows.rs', 'assets/marketplace-cover.svg', 'assets/readme-preview.svg', 'assets/readme-banner.svg',
   '.github/ISSUE_TEMPLATE/config.yml', '.github/ISSUE_TEMPLATE/feature-request.yml', '.github/ISSUE_TEMPLATE/plugin-bug.yml', '.github/ISSUE_TEMPLATE/question.yml', '.github/ISSUE_TEMPLATE/server-bug.yml',
   '.github/workflows/validate.yml', '.github/workflows/release.yml'
 ];
@@ -40,7 +40,7 @@ check('artwork uses standalone SVGs with vector elements and no external PNG lin
 check('PNG sources, archive and obsolete screenshot assets were removed', !fs.readdirSync(path.join(root, 'assets')).some(file => /\.png$/i.test(file) || /\.zip$/i.test(file)) && ['COM.png', 'SEM.png', 'assets/COM-sharp.svg', 'assets/SEM-sharp.svg', 'assets/marketplace-banner.svg', 'assets/marketplace-preview-sharp.svg', 'preview.png', 'assets/marketplace-preview.svg'].every(file => !fs.existsSync(path.join(root, file))));
 check('README keeps the banner and omits the obsolete comparison preview', /assets\/readme-banner\.svg/.test(read('README.md')) && !/assets\/readme-preview\.svg/.test(read('README.md')) && !/not a controlled benchmark/i.test(read('README.md')));
 check('Marketplace description explains minimized RAM savings and the restore-time trade-off', /Reduce Spotify's RAM usage while minimized/i.test(marketplaceManifest.description) && /slower interface loading when restored/i.test(marketplaceManifest.description) && marketplaceManifest.description.length <= 120);
-check('official Setup declares supported Windows 10/11 desktop only', /Windows 10/.test(read('installer/inno/MemorySentry.iss')) && /Windows 11/.test(read('installer/inno/MemorySentry.iss')) && /detect_supported_client_os/.test(read('server/src/runtime.rs')));
+check('the supported OS is gated by the server and stated in the dashboard footer', /Windows 10/.test(app) && /Windows 11/.test(app) && /detect_supported_client_os/.test(read('server/src/runtime.rs')));
 check('local publishing helper and generated archives are ignored', /\/PUSH-TO-GITHUB\.bat/.test(read('.gitignore')) && /\*\.bundle/.test(read('.gitignore')) && /\*\.zip/.test(read('.gitignore')));
 check('development guide documents Rust build and package validation without local publishing scripts', /cargo test/.test(read('docs/DEVELOPMENT.md')) && /scripts\/build-package\.ps1/.test(read('docs/DEVELOPMENT.md')) && !/PUSH-TO-GITHUB\.bat/i.test(read('docs/DEVELOPMENT.md')));
 check('README explains server requirement', /Memory Sentry server/i.test(read('README.md')) && /separate per-user process/i.test(read('README.md')));
@@ -56,10 +56,9 @@ check('GPL-3.0 license is present', /GNU GENERAL PUBLIC LICENSE/i.test(read('LIC
 check('privacy explicitly states no uploads', /No information is uploaded/i.test(read('PRIVACY.md')));
 check('security notes never disable antivirus', /does not disable antivirus/i.test(read('SECURITY.md')));
 check('Marketplace preview exists', fs.existsSync(path.join(root, marketplaceManifest.preview)));
-check('release publishes only the official Setup EXE and SHA-256', /MemorySentrySetup-\*\.exe/.test(read('.github/workflows/release.yml')) && /MemorySentrySetup-\*\.exe\.sha256/.test(read('.github/workflows/release.yml')) && !/MemorySentry-\*windows-x64\.zip/.test(read('.github/workflows/release.yml')) && /action-gh-release/i.test(read('.github/workflows/release.yml')));
-check('build output has one supported installer and no custom portable ZIP', /MemorySentrySetup-/.test(read('scripts/build-package.ps1')) && !/Compress-Archive/.test(read('scripts/build-package.ps1')) && !/MemorySentry-.*windows-x64\.zip/.test(read('scripts/build-package.ps1')));
+check('release publishes only the official per-user MSI and its SHA-256', /MemorySentryForSpicetify-\*\.msi/.test(read('.github/workflows/release.yml')) && /MemorySentryForSpicetify-\*\.msi\.sha256/.test(read('.github/workflows/release.yml')) && !/MemorySentry-\*windows-x64\.zip/.test(read('.github/workflows/release.yml')) && /action-gh-release/i.test(read('.github/workflows/release.yml')));
+check('build output has one supported installer and no custom portable ZIP', /MemorySentryForSpicetify-.*\.msi/.test(read('scripts/build-package.ps1')) && !/MemorySentrySetup-/.test(read('scripts/build-package.ps1')) && !/Compress-Archive/.test(read('scripts/build-package.ps1')) && !/MemorySentry-.*windows-x64\.zip/.test(read('scripts/build-package.ps1')));
 
-const setupScript = read('installer/inno/MemorySentry.iss');
 const wixScript = read('installer/wix/Product.wxs');
 const buildScript = read('scripts/build-package.ps1');
 const buildScriptSwap = read('scripts/swap-server.ps1');
@@ -109,30 +108,20 @@ check('dashboard explains local-only diagnostics', /No telemetry is uploaded/i.t
 check('Custom App replaces per-install token placeholder', app.includes('__MSS_TOKEN__'));
 check('Custom App calls local status/config endpoints', app.includes('/api/status') && app.includes('/api/config'));
 
-check('official Setup uses server preflight and recovery-aware commands', /MemorySentry\.exe/.test(setupScript) && /--check-install/.test(setupScript) && /--check-spicetify/.test(setupScript) && /--prepare-upgrade/.test(setupScript) && /--pre-uninstall/.test(setupScript));
-check('Inno Setup packages the app and guards install/upgrade/uninstall', /PrivilegesRequired=lowest/.test(setupScript) && /--check-os/.test(setupScript) && /--prepare-upgrade/.test(setupScript) && /InitializeUninstall/.test(setupScript) && /--pre-uninstall/.test(setupScript));
-check('build script compiles Inno setup and writes checksums', /ISCC\.exe/.test(buildScript) && /SHA256/.test(buildScript) && /\.sha256"/.test(buildScript) && /MemorySentrySetup-/.test(buildScript));
 check('dashboard preserves detailed local API failures', app.includes('err && err.message') && app.includes("setError(tx('statusError') + ' [' + detail + ']')"));
 check('dashboard renders actual connection diagnostics', app.includes("`${tx('helperMissingBody')} ${error}`"));
 check('Rust uninstall allows Spotify to remain open and restores first', !/pub fn pre_uninstall\(\) -> Result<(), String> \{\s*ensure_spotify_closed/.test(rustRuntime) && rustRuntime.indexOf('pub fn pre_uninstall()') < rustRuntime.indexOf('unregister_startup()?;') && rustRuntime.indexOf('unregister_startup()?;') < rustRuntime.indexOf('unregister_spicetify()?;'));
 check('single-instance mutex clears stale Win32 last-error state', rustPlatform.includes('SetLastError(0)'));
 check('Rust launcher records early startup failures and verifies API readiness', rustRuntime.includes('startup.log') && rustRuntime.includes('request_status(settings.port, &settings.token)') && rustRuntime.includes('failed to become ready after 5 seconds'));
-check('Rust configure failures are logged for the installer dialog', rustMain.includes('log_setup_failure(&error)') && rustMain.includes('setup.log') && setupScript.includes('SetupFailureDetails()'));
-check('Inno Setup reads its ANSI diagnostic buffer with the required type', /LogText:\s*AnsiString/.test(setupScript) && /LoadStringFromFile\(LogFile, LogText\)/.test(setupScript));
-check('installer shows a dedicated missing-Spicetify prerequisite message', rustMain.includes('"--check-spicetify"') && setupScript.includes("RunBundledServer('--check-spicetify', Code)") && setupScript.includes('SpicetifyMissing'));
-check('single Setup flow does not require Spotify to be manually closed', !/ensure_spotify_closed/.test(rustRuntime) && !/Get-Process -Name Spotify/.test(rustRuntime) && /CloseApplications=no/.test(setupScript));
+check('Rust configure failures are logged for setup diagnostics', rustMain.includes('log_setup_failure(&error)') && rustMain.includes('setup.log'));
+check('setup never requires Spotify to be closed manually', !/ensure_spotify_closed/.test(rustRuntime) && !/Get-Process -Name Spotify/.test(rustRuntime) && !/<util:CloseApplication/.test(wixScript));
 const configureBody = rustRuntime.slice(rustRuntime.indexOf('pub fn configure_install('), rustRuntime.indexOf('fn find_node()'));
 check('local API starts and passes readiness before Spicetify apply', configureBody.indexOf('launch_monitor()') >= 0 && configureBody.indexOf('launch_monitor()') < configureBody.indexOf('apply_spicetify(&cli)'));
 check('PID waits verify the actual Memory Sentry executable path', rustRuntime.includes('process_matches_executable(pid, &installed_exe)') && rustPlatform.includes('QueryFullProcessImageNameW'));
 check('failed API bind removes helper.pid', rustRuntime.includes('if let Err(error) = start_api(Arc::clone(&shared))') && rustRuntime.includes('let _ = fs::remove_file(&pid_file);'));
 const launcherBody = rustRuntime.slice(rustRuntime.indexOf('pub fn launch_monitor()'));
 check('Server launcher creates startup diagnostics before reading settings', launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') >= 0 && launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') < launcherBody.indexOf('load_settings(&settings_path)') && launcherBody.includes('bootstrap_default_settings'));
-check('installer always launches the server after setup', setupScript.includes('Flags: runhidden') && !setupScript.includes('Flags: postinstall nowait skipifsilent runhidden'));
-check('redundant batch and PowerShell installer entry points are absent', ['Install.bat','Uninstall.bat','installer/Install.ps1','installer/Uninstall.ps1'].every(file => !fs.existsSync(path.join(root, file))));
-check('official Setup is per-user and does not request elevation', /PrivilegesRequired=lowest/.test(setupScript) && !/RunAs|Verb\s+RunAs/i.test(setupScript));
-check('Inno uninstaller invokes recovery-aware server pre-uninstall', /InitializeUninstall/.test(setupScript) && /RunInstalledServer\('--pre-uninstall', Code\)/.test(setupScript) && /Recovery data exists but the server executable is missing/.test(setupScript));
-check('source Inno installer preserves app recovery guard', /Recovery data exists but the server executable is missing/.test(setupScript) && /No program files were removed/.test(setupScript));
-
+check('redundant batch, PowerShell and Inno installer entry points are absent', ['Install.bat','Uninstall.bat','installer/Install.ps1','installer/Uninstall.ps1','installer/inno'].every(file => !fs.existsSync(path.join(root, file))));
 // --- WiX MSI installer guards (per-user MSI is the primary shipped installer) ---
 check('MSI is per-user and uses MajorUpgrade', /Scope="perUser"/.test(wixScript) && /<MajorUpgrade/.test(wixScript));
 check('MSI shows a folder-selection wizard (WixUI_InstallDir)', /WixUI_InstallDir/.test(wixScript) && !/WixUI_Minimal/.test(wixScript));
@@ -151,7 +140,7 @@ check('configure migrates legacy layout before reading saved settings', configur
 check('build script compiles WiX MSI', /\$WixCommand.*build/.test(buildScript) && /WixToolset\.UI\.wixext/.test(buildScript) && /\.msi/.test(buildScript));
 
 check('CI runs package validation', validation.includes('node tests/validate-package.js'));
-check('release versions are aligned on 1.0.0-rc.3', rustCargo.includes('version = "1.0.0-rc.3"') && read('server/Cargo.lock').includes('version = "1.0.0-rc.3"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.3";') && setupScript.includes('#define AppVersion "1.0.0-rc.3"') && setupScript.includes('VersionInfoVersion=1.0.0.3') && read('README.md').includes('1.0.0-rc.3') && app.includes('v1.0.0-rc.3'));
+check('release versions are aligned on 1.0.0-rc.3', rustCargo.includes('version = "1.0.0-rc.3"') && read('server/Cargo.lock').includes('version = "1.0.0-rc.3"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.3";') && read('README.md').includes('1.0.0-rc.3') && app.includes('v1.0.0-rc.3'));
 check('semantic prereleases are never marked as latest stable', read('.github/workflows/release.yml').includes("contains(steps.version.outputs.version, '-')") && read('.github/workflows/release.yml').includes("!contains(steps.version.outputs.version, '-')"));
 check('Rust scaffold uses a minimal standard-library dependency policy', rustCargo.includes('name = "memory-sentry-server"') && !rustCargo.includes('[dependencies]'));
 check('Rust policy has pure, testable adaptive logic', rustLib.includes('decide_adjustment') && rustLib.includes('working_set_at_ceiling') && rustLib.includes('#[cfg(test)]'));
@@ -169,7 +158,7 @@ check('server resolves split program and data folders, migrates the old layout a
 const prepareUpgradeBody = rustRuntime.slice(rustRuntime.indexOf('pub fn prepare_upgrade()'), rustRuntime.indexOf('pub fn swap_server('));
 check('upgrade stops the running server before migrating data', prepareUpgradeBody.indexOf('force_terminate_installed_process') >= 0 && prepareUpgradeBody.indexOf('force_terminate_installed_process') < prepareUpgradeBody.indexOf('migrate_legacy_layout'));
 check('migration copies data without deleting the old folder', prepareUpgradeBody.includes('migrate_legacy_layout()') && !rustRuntime.slice(rustRuntime.indexOf('fn migrate_legacy_layout()'), rustRuntime.indexOf('fn parse_json_string')).includes('remove_dir_all'));
-check('installer upgrades in place without relocating the program folder', /DefaultDirName=\{localappdata\}\\SpicetifyMemorySentry/.test(setupScript) && !/UsePreviousAppDir=no/.test(setupScript) && !/UninstallPreviousVersion/.test(setupScript) && /CustomApps\\MemorySentryForSpicetify/.test(setupScript));
+check('the MSI lays the program under Programs and the Custom App under spicetify\\CustomApps', /Directory Id="ProgramsFolder" Name="Programs"/.test(wixScript) && /Id="INSTALLFOLDER" Name="MemorySentryForSpicetify"/.test(wixScript) && /Id="CUSTOMAPPFOLDER" Name="MemorySentryForSpicetify"/.test(wixScript));
 check('automatic and manual limits are restricted to background window states', rustRuntime.includes('fn should_manage_limits(settings: &Settings, window_state: &str)') && rustRuntime.includes('"background-visible"') && rustRuntime.includes('should_manage_limits(&state.settings, &state.window_state)'));
 check('manual caps persist process creation identity and are recorded in recovery backups', rustRuntime.includes('manualCaps') && rustRuntime.includes('manual: fields') && rustRuntime.includes('if r.manual { \"manual\" }'));
 check('policy transitions restore active limits before switching modes', rustRuntime.includes('next.auto_optimize != state.settings.auto_optimize') && rustRuntime.includes('policy mode changed') && rustRuntime.includes('failed > 0'));
