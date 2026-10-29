@@ -1720,52 +1720,6 @@ fn apply_initial_cap(
     Ok(true)
 }
 
-fn enforce_fixed_audio_cap(
-    state: &mut AppState,
-    process: &platform::ProcessRow,
-) -> Result<bool, String> {
-    let Some(record) = state
-        .active_caps
-        .get(&process.pid)
-        .filter(|record| record.creation == process.creation && !record.manual)
-        .cloned()
-    else {
-        return Ok(false);
-    };
-    if record.applied_maximum_mb == Some(36) {
-        return Ok(false);
-    }
-
-    let cap_bytes = 36usize * 1024 * 1024;
-    let minimum = platform::MIN_WORKING_SET_BYTES.min(cap_bytes);
-    platform::set_working_set_limits(
-        process.pid,
-        process.creation,
-        minimum,
-        cap_bytes,
-        platform::HARD_CAP_FLAGS,
-    )?;
-    if let Some(record) = state.active_caps.get_mut(&process.pid) {
-        record.record_applied_cap(ProcessRole::Audio, 36, false);
-    }
-    if let Some(profile) = state.profiles.get_mut(&process.pid) {
-        profile.current_cap_mb = 36;
-        profile.last_reason = "fixed-audio-ceiling".to_string();
-    }
-    if !persist_or_log(state) {
-        return Err("Audio cap was applied, but the recovery backup update failed.".to_string());
-    }
-    log_event(
-        state,
-        format!(
-            "Applied fixed 36 MB automatic Audio ceiling to PID {}.",
-            process.pid
-        ),
-        "info",
-    );
-    Ok(true)
-}
-
 fn apply_manual_cap(
     state: &mut AppState,
     process: &platform::ProcessRow,
@@ -1979,9 +1933,6 @@ fn update_caps(state: &mut AppState, now: u64) {
     }
     let targets = descendants(state);
     for (process, role) in targets {
-        if role == ProcessRole::Audio {
-            continue;
-        }
         let record = state.active_caps.get(&process.pid).cloned();
         let Some(record) = record else {
             continue;
@@ -2393,13 +2344,7 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
     let mut failures = Vec::new();
     for (process, role) in targets {
         if state.active_caps.get(&process.pid).map(|r| r.creation) == Some(process.creation) {
-            if role == ProcessRole::Audio {
-                if let Err(error) = enforce_fixed_audio_cap(state, &process) {
-                    failures.push(format!("Audio PID {}: {error}", process.pid));
-                }
-            } else {
-                ensure_profile(state, process.pid, process.creation, role, now);
-            }
+            ensure_profile(state, process.pid, process.creation, role, now);
             continue;
         }
         let retry_key = target_key(process.pid, process.creation);
