@@ -26,6 +26,11 @@
 
     <MediaTemplate EmbedCab="yes" />
 
+    <!-- Show the real GPL-3.0 license (generated from LICENSE) in the setup End-User License
+         Agreement dialog. Without WixUILicenseRtf the WiX UI falls back to a placeholder
+         "Lorem ipsum" text, which is not our license. -->
+    <WixVariable Id="WixUILicenseRtf" Value="license-gpl3.rtf" />
+
     <!-- Program files: %LOCALAPPDATA%\Programs\MemorySentryForSpicetify -->
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="ProgramsFolder" Name="Programs">
