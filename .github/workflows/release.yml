@@ -50,13 +50,14 @@ jobs:
         run: cargo build --release --manifest-path server/Cargo.toml --target x86_64-pc-windows-msvc --locked
       - name: Validate JavaScript and package metadata
         run: node tests/validate-package.js
-      - name: Install WiX v5 and build the official MSI
+      - name: Install WiX v5 and build the official MSIs (x64 + arm64)
         shell: pwsh
         run: |
           dotnet tool install --global wix --version 5.0.2
           $env:Path += ";$env:USERPROFILE\.dotnet\tools"
           wix extension add -g WixToolset.UI.wixext/5.0.2
           wix extension add -g WixToolset.Util.wixext/5.0.2
+          rustup target add aarch64-pc-windows-msvc
           .\scripts\build-package.ps1 -Version "${{ steps.version.outputs.version }}"
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
