@@ -1,7 +1,7 @@
 // Localization: English source strings, automatic Brazilian Portuguese, and log translation.
 const MSS_TEXT = {
   en: {
-    kicker: 'SPICETIFY · WINDOWS MEMORY TOOL · RELEASE CANDIDATE v1.0.0-rc.3', title: 'Memory Sentry', brandSubtitle: 'Spotify RAM tool for Windows', ramCard: 'Spotify RAM', processesCard: 'Processes',
+    kicker: 'SPICETIFY · WINDOWS MEMORY TOOL · RELEASE CANDIDATE v1.0.0-rc.4', title: 'Memory Sentry', brandSubtitle: 'Spotify RAM tool for Windows', ramCard: 'Spotify RAM', processesCard: 'Processes',
     intro: 'Choose automatic or per-process manual limits for Spotify while it is outside the foreground, and pick which window states start optimization. The Disabled mode turns memory management off; original Windows limits are saved before changes and restored when management is disabled or Spotify returns to the foreground.',
     connected: 'Server connected', unavailable: 'Connection unavailable', waiting: 'Waiting for server',
     pluginDisabledNote: 'Memory Sentry is off. Original limits are restored and no automatic or manual caps will be applied.', pluginActivatedFlash: 'MEMORY SENTRY ACTIVATED', pluginDisabledFlash: 'MEMORY SENTRY DEACTIVATED', pluginDisabledRestoring: 'Memory Sentry is off. It is retrying restoration of the original limits for {count} process(es); no new limits will be applied.',
@@ -35,7 +35,7 @@ const MSS_TEXT = {
     window: { foreground: 'Spotify in foreground', 'background-visible': 'Spotify visible in background', minimized: 'Spotify minimized', hidden: 'Spotify window hidden', 'not-running': 'Spotify is not running', 'window-not-found': 'Spotify found; window not located', 'window-check-error': 'Window state unavailable', 'not-detected': 'Waiting for detection' }
   },
   pt: {
-    kicker: 'SPICETIFY · FERRAMENTA DE RAM PARA WINDOWS · RELEASE CANDIDATE v1.0.0-rc.3', title: 'Memory Sentry', brandSubtitle: 'Ferramenta de RAM para o Spotify', ramCard: 'RAM do Spotify', processesCard: 'Processos',
+    kicker: 'SPICETIFY · FERRAMENTA DE RAM PARA WINDOWS · RELEASE CANDIDATE v1.0.0-rc.4', title: 'Memory Sentry', brandSubtitle: 'Ferramenta de RAM para o Spotify', ramCard: 'RAM do Spotify', processesCard: 'Processos',
     intro: 'Escolha limites automáticos ou manuais por processo para o Spotify enquanto ele está fora do primeiro plano e defina quais estados de janela iniciam a otimização. O modo Desativado desliga o gerenciamento; os limites originais do Windows são salvos antes das alterações e restaurados ao desativar o gerenciamento ou quando o Spotify volta ao primeiro plano.',
     connected: 'Servidor conectado', unavailable: 'Conexão indisponível', waiting: 'Aguardando servidor',
     pluginDisabledNote: 'O Memory Sentry está desativado. Os limites originais foram restaurados e nenhum limite será aplicado.', pluginActivatedFlash: 'MEMORY SENTRY ATIVADO', pluginDisabledFlash: 'MEMORY SENTRY DESATIVADO', pluginDisabledRestoring: 'O Memory Sentry está desativado. Tentando restaurar os limites originais de {count} processo(s); nenhum novo limite será aplicado.',

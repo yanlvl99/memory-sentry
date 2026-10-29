@@ -69,6 +69,27 @@ struct RtlOsVersionInfoExW {
     reserved: u8,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct SystemInfo {
+    processor_architecture: u16,
+    reserved0: u16,
+    page_size: u32,
+    minimum_application_address: usize,
+    maximum_application_address: usize,
+    active_processor_mask: usize,
+    number_of_processors: u32,
+    processor_type: u32,
+    allocation_granularity: u32,
+    processor_level: u16,
+    processor_revision: u16,
+}
+
+// GetNativeSystemInfo fills wProcessorArchitecture with the PROCESSOR_ARCHITECTURE_* values
+// (not the IMAGE_FILE_MACHINE_* PE-header constants): AMD64 is 9 and ARM64 is 12.
+const PROCESSOR_ARCHITECTURE_AMD64: u16 = 9;
+const PROCESSOR_ARCHITECTURE_ARM64: u16 = 12;
+
 #[link(name = "kernel32")]
 extern "system" {
     fn OpenProcess(access: u32, inherit: i32, process_id: u32) -> Handle;
@@ -100,6 +121,7 @@ extern "system" {
     fn WaitForSingleObject(handle: Handle, milliseconds: u32) -> u32;
     fn GetStdHandle(which: i32) -> Handle;
     fn SetHandleInformation(handle: Handle, mask: u32, flags: u32) -> i32;
+    fn GetNativeSystemInfo(info: *mut SystemInfo);
 }
 
 #[link(name = "psapi")]
@@ -580,6 +602,19 @@ pub fn random_token() -> Result<String, String> {
         return Err(format!("BCryptGenRandom failed with NTSTATUS 0x{:08X}", status as u32));
     }
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// Returns the machine's native CPU architecture as "x64" or "arm64" (or a labeled unsupported
+/// value). GetNativeSystemInfo reports the real hardware architecture even for an emulated process,
+/// so this is the correct basis for rejecting a mismatched installer.
+pub fn native_arch() -> Result<String, String> {
+    let mut info = SystemInfo::default();
+    unsafe { GetNativeSystemInfo(&mut info) };
+    Ok(match info.processor_architecture {
+        PROCESSOR_ARCHITECTURE_AMD64 => "x64".to_string(),
+        PROCESSOR_ARCHITECTURE_ARM64 => "arm64".to_string(),
+        other => format!("unsupported (0x{other:04X})"),
+    })
 }
 
 pub fn detect_supported_client_os() -> Result<(&'static str, u32), String> {
@@ -1196,6 +1231,18 @@ mod tests {
         if let Ok(pids) = result {
             assert!(pids.windows(2).all(|pair| pair[0] <= pair[1]));
         }
+    }
+
+    #[test]
+    fn native_arch_resolves_to_a_supported_64_bit_family() {
+        // Guards the GetNativeSystemInfo mapping: comparing wProcessorArchitecture against the
+        // wrong constant family (IMAGE_FILE_MACHINE_* instead of PROCESSOR_ARCHITECTURE_*) would
+        // make every real machine look "unsupported" and wrongly block valid installs.
+        let arch = native_arch().expect("native architecture is readable");
+        assert!(
+            arch == "x64" || arch == "arm64",
+            "unexpected native architecture: {arch}"
+        );
     }
 
     #[test]

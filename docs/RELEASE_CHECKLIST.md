@@ -28,12 +28,12 @@ Do not call the release stable until all required real-desktop tests are complet
 - [ ] Verify the five-second confirmation countdown for manual limits below the role default.
 - [ ] Verify English/Portuguese UI language selection.
 - [ ] Verify no network telemetry is emitted by the server.
-- [ ] Verify uninstall removes only the Memory Sentry plugin and install directory while preserving logs outside the app folder.
+- [ ] Verify uninstall removes only the Memory Sentry program files and Custom App, leaving the data folder (settings and logs under `%LOCALAPPDATA%\MemorySentryForSpicetify`) intact.
 
 ## Public release
 
 - [ ] CI passes on the exact release commit.
 - [ ] MSI and SHA-256 files are attached to the correct release.
-- [ ] Mark v1.0.0-rc.3 as a prerelease; create stable v1.0.0 only after every required Windows 10/11 real-desktop test passes.
+- [ ] Mark v1.0.0-rc.4 as a prerelease; create stable v1.0.0 only after every required Windows 10/11 real-desktop test passes.
 - [ ] Never state the release has no antivirus warnings; the current executable is unsigned.
 - [ ] Verify the exact GitHub repository topic `spicetify-apps`, then submit the discovery listing. The listing only links to the repository and cannot install Memory Sentry.

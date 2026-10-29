@@ -3,14 +3,14 @@
 [![Release](https://img.shields.io/github/v/release/yanlvl99/memory-sentry?include_prereleases&sort=semver&label=release)](https://github.com/yanlvl99/memory-sentry/releases)
 [![Validation](https://github.com/yanlvl99/memory-sentry/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/yanlvl99/memory-sentry/actions/workflows/validate.yml)
 [![License](https://img.shields.io/github/license/yanlvl99/memory-sentry?label=license)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64%20%7C%20ARM64-blue)
 ![Status](https://img.shields.io/badge/status-experimental-orange)
 
 ![Memory Sentry](assets/readme-banner.svg)
 
 Memory Sentry is an open-source utility for managing the resident working set of Spotify Desktop processes while Spotify runs in the background.
 
-**Current release:** `1.0.0-rc.3` — experimental release candidate, not a stable release.
+**Current release:** `1.0.0-rc.4` — experimental release candidate, not a stable release.
 
 The current release requires Spotify Desktop and Spicetify CLI for the same Windows user. The Spicetify Custom App communicates with the Memory Sentry server, which runs as a **separate per-user process**, is currently implemented in Rust, and performs the Windows memory operations. Memory Sentry is an independent community project, not an official Spotify or Spicetify product.
 
@@ -26,7 +26,7 @@ The current release requires Spotify Desktop and Spicetify CLI for the same Wind
 
 Memory Sentry limits the **resident working set**—the amount of process memory currently resident in physical RAM. It does not decommit memory or directly reduce committed memory, and the observed reduction varies by PC and workload.
 
-In automatic mode, a ceiling can increase by 8 MB only when CPU usage is at least 10% of one logical processor for **six consecutive seconds** while the process uses its **full current working-set ceiling**. A ceiling can decrease by 4 MB after CPU remains at or below 3% and the process has at least 6 MB of working-set headroom for **ten seconds**. Adjustments have an eight-second cooldown and role-specific limits. Main's automatic ceiling is capped at 36 MB; Audio uses a fixed 36 MB ceiling and is not adaptively adjusted.
+In automatic mode, a ceiling can increase by 8 MB only when CPU usage is at least 10% of one logical processor for **six consecutive seconds** while the process uses its **full current working-set ceiling**. A ceiling can decrease by 4 MB after CPU remains at or below 3% and the process has at least 6 MB of working-set headroom for **ten seconds**. Adjustments have an eight-second cooldown and role-specific limits. Main's automatic ceiling is capped at 36 MB; Audio starts at 36 MB and adapts upward to 60 MB under sustained load, like the other roles.
 
 In manual mode, role defaults are Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB, and Crashpad 16 MB. A manual limit below the process role's default requires a **five-second warning countdown** and explicit confirmation.
 
@@ -47,7 +47,7 @@ No unsigned release can guarantee zero SmartScreen warnings. This release is uns
 
 ## Testing and project status
 
-CI validates package metadata and JavaScript syntax, runs platform-independent Rust policy tests on Linux and Windows, and builds the Windows x64 server and setup package. These checks do not constitute an end-to-end test of Spotify playback, foreground restoration, or compatibility across desktop systems.
+CI validates package metadata and JavaScript syntax, runs platform-independent Rust policy tests on Linux and Windows, and builds the Windows x64 and ARM64 servers and the per-user MSI installers. These checks do not constitute an end-to-end test of Spotify playback, foreground restoration, or compatibility across desktop systems.
 
 The broader Windows 10/11 desktop test matrix remains incomplete. Results may vary by hardware, Spotify workload, and Windows configuration, so the project remains experimental.
 
