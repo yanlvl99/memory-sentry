@@ -10,7 +10,7 @@ on:
       - 'server/Cargo.toml'
       - 'server/Cargo.lock'
       - 'server/src/runtime.rs'
-      - 'installer/inno/MemorySentry.iss'
+      - 'installer/wix/Product.wxs'
       - 'CHANGELOG.md'
       - 'scripts/build-package.ps1'
       - 'tests/validate-package.js'
@@ -50,12 +50,14 @@ jobs:
         run: cargo build --release --manifest-path server/Cargo.toml --target x86_64-pc-windows-msvc --locked
       - name: Validate JavaScript and package metadata
         run: node tests/validate-package.js
-      - name: Install Inno Setup 6
+      - name: Install WiX v5 and build the official MSI
         shell: pwsh
-        run: choco install innosetup --yes --no-progress
-      - name: Build official Setup EXE and SHA-256
-        shell: pwsh
-        run: .\scripts\build-package.ps1 -Version "${{ steps.version.outputs.version }}"
+        run: |
+          dotnet tool install --global wix
+          $env:Path += ";$env:USERPROFILE\.dotnet\tools"
+          wix extension add -g WixToolset.UI.wixext
+          wix extension add -g WixToolset.Util.wixext
+          .\scripts\build-package.ps1 -Version "${{ steps.version.outputs.version }}"
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -63,9 +65,9 @@ jobs:
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           body: |
-            **Release candidate.** Do not treat this build as stable until the complete real-desktop Windows 10/11 audio, recovery, upgrade/uninstall, and restore-latency test matrix has passed. Marketplace is discovery only; the official per-user Setup EXE is the sole supported installation method.
+            **Release candidate.** Do not treat this build as stable until the complete real-desktop Windows 10/11 audio, recovery, upgrade/uninstall, and restore-latency test matrix has passed. Marketplace is discovery only; the official per-user MSI is the sole supported installation method.
           prerelease: ${{ contains(steps.version.outputs.version, '-') || startsWith(steps.version.outputs.version, '0.') }}
           make_latest: ${{ !contains(steps.version.outputs.version, '-') && !startsWith(steps.version.outputs.version, '0.') }}
           files: |
-            dist/MemorySentrySetup-*.exe
-            dist/MemorySentrySetup-*.exe.sha256
+            dist/MemorySentryForSpicetify-*.msi
+            dist/MemorySentryForSpicetify-*.msi.sha256
