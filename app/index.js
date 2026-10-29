@@ -447,9 +447,9 @@ function MSSApp() {
       targets.length ? h('div', { className: 'mss-list' }, targets.map(process => {
         const key = `${process.pid}:${process.creation}`;
         const displayedMemoryMB = memory.privateWorkingSet ? process.privateWorkingSetMB : process.workingSetMB;
-        const statusText = process.protectedAudio
-          ? (config.autoOptimize ? tx('audioProtected') : (process.capped ? tx('manualActive', { value: process.limitMB }) : tx('manualCurrent', { value: process.defaultLimitMB })))
-          : (process.capped ? tx(process.adaptiveStatus === 'sustained-high-cpu' ? 'reasonHigh' : (process.adaptiveStatus === 'low-cpu-and-memory-headroom' ? 'reasonLow' : (process.adaptiveStatus === 'baseline' ? 'reasonBaseline' : 'reasonHolding'))) : (process.included ? tx('willOptimize') : tx('notIncluded')));
+        const statusText = process.capped
+          ? tx(process.adaptiveStatus === 'sustained-high-cpu' ? 'reasonHigh' : (process.adaptiveStatus === 'low-cpu-and-memory-headroom' ? 'reasonLow' : (process.adaptiveStatus === 'baseline' ? 'reasonBaseline' : 'reasonHolding')))
+          : (process.included ? tx('willOptimize') : tx('notIncluded'));
         const meta = [debug && Number.isFinite(process.cpuPercent) ? tx('cpu', { value: Number(process.cpuPercent).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 }) }) : null, debug && process.privateMB != null ? tx('privateMemory', { value: MSSFormatMB(process.privateMB) }) : null, debug ? statusText : null].filter(Boolean).join(' · ');
         const defaultMB = Number(process.defaultLimitMB || 36);
         const capText = process.capped && process.manual
@@ -469,9 +469,7 @@ function MSSApp() {
         const tagText = over
           ? tx('tagOver')
           : (process.manual ? tx('tagManual')
-            : (process.capped
-              ? (process.protectedAudio ? tx('tagFixed') : tx('tagAdaptive'))
-              : tx('tagNoCeiling')));
+            : (process.capped ? tx('tagAdaptive') : tx('tagNoCeiling')));
         return h('div', { className: 'mss-process', key },
           h('div', { className: 'mss-process-main' },
             h('div', { className: 'mss-process-name' }, MSSRoleLabel(process.role), h('span', { className: 'mss-role' }, MSS_ROLE_NAMES[process.role] || process.role)),

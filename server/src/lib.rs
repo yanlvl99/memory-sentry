@@ -36,7 +36,7 @@ impl ProcessRole {
         }
     }
 
-    /// Starting automatic ceiling. Audio is fixed at its baseline and is not adaptive.
+    /// Starting automatic ceiling. Audio begins here and may adapt upward like the other roles.
     pub fn baseline_cap_mb(self) -> Option<u32> {
         match self {
             Self::Main | Self::Audio => Some(36),
@@ -48,7 +48,7 @@ impl ProcessRole {
 
     pub fn minimum_cap_mb(self) -> Option<u32> {
         match self {
-            Self::Audio => None,
+            Self::Audio => Some(36),
             Self::Main => Some(24),
             Self::Gpu | Self::Helper => Some(16),
             Self::Renderer | Self::Utility | Self::Crashpad => Some(12),
@@ -58,7 +58,6 @@ impl ProcessRole {
     pub fn maximum_cap_mb(self) -> Option<u32> {
         match self {
             Self::Main => Some(36),
-            Self::Audio => None,
             _ => self
                 .baseline_cap_mb()
                 .map(|base| MAX_CAP_MB.min(base.saturating_add(24))),
@@ -228,14 +227,17 @@ mod tests {
     }
 
     #[test]
-    fn audio_has_a_fixed_automatic_ceiling_and_is_not_adaptive() {
+    fn audio_adapts_upward_from_36_to_60_megabytes() {
         let mut s = sample(ProcessRole::Audio);
+        s.working_set_mb = 36.0;
         s.cpu_percent = 50.0;
         s.high_cpu_ms = 20_000;
         assert_eq!(ProcessRole::Audio.baseline_cap_mb(), Some(36));
-        assert_eq!(ProcessRole::Audio.minimum_cap_mb(), None);
-        assert_eq!(ProcessRole::Audio.maximum_cap_mb(), None);
-        assert_eq!(decide_adjustment(s), None);
+        assert_eq!(ProcessRole::Audio.minimum_cap_mb(), Some(36));
+        assert_eq!(ProcessRole::Audio.maximum_cap_mb(), Some(60));
+        let decision = decide_adjustment(s).expect("audio should adapt upward under load");
+        assert_eq!(decision.next_cap_mb, 44);
+        assert_eq!(decision.direction, AdjustmentDirection::Increase);
         assert_eq!(ProcessRole::Audio.manual_default_cap_mb(), 36);
     }
 

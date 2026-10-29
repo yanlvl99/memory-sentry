@@ -1720,52 +1720,6 @@ fn apply_initial_cap(
     Ok(true)
 }
 
-fn enforce_fixed_audio_cap(
-    state: &mut AppState,
-    process: &platform::ProcessRow,
-) -> Result<bool, String> {
-    let Some(record) = state
-        .active_caps
-        .get(&process.pid)
-        .filter(|record| record.creation == process.creation && !record.manual)
-        .cloned()
-    else {
-        return Ok(false);
-    };
-    if record.applied_maximum_mb == Some(36) {
-        return Ok(false);
-    }
-
-    let cap_bytes = 36usize * 1024 * 1024;
-    let minimum = platform::MIN_WORKING_SET_BYTES.min(cap_bytes);
-    platform::set_working_set_limits(
-        process.pid,
-        process.creation,
-        minimum,
-        cap_bytes,
-        platform::HARD_CAP_FLAGS,
-    )?;
-    if let Some(record) = state.active_caps.get_mut(&process.pid) {
-        record.record_applied_cap(ProcessRole::Audio, 36, false);
-    }
-    if let Some(profile) = state.profiles.get_mut(&process.pid) {
-        profile.current_cap_mb = 36;
-        profile.last_reason = "fixed-audio-ceiling".to_string();
-    }
-    if !persist_or_log(state) {
-        return Err("Audio cap was applied, but the recovery backup update failed.".to_string());
-    }
-    log_event(
-        state,
-        format!(
-            "Applied fixed 36 MB automatic Audio ceiling to PID {}.",
-            process.pid
-        ),
-        "info",
-    );
-    Ok(true)
-}
-
 fn apply_manual_cap(
     state: &mut AppState,
     process: &platform::ProcessRow,
@@ -1979,9 +1933,6 @@ fn update_caps(state: &mut AppState, now: u64) {
     }
     let targets = descendants(state);
     for (process, role) in targets {
-        if role == ProcessRole::Audio {
-            continue;
-        }
         let record = state.active_caps.get(&process.pid).cloned();
         let Some(record) = record else {
             continue;
@@ -2393,13 +2344,7 @@ fn maybe_auto_optimize(state: &mut AppState, now: u64) {
     let mut failures = Vec::new();
     for (process, role) in targets {
         if state.active_caps.get(&process.pid).map(|r| r.creation) == Some(process.creation) {
-            if role == ProcessRole::Audio {
-                if let Err(error) = enforce_fixed_audio_cap(state, &process) {
-                    failures.push(format!("Audio PID {}: {error}", process.pid));
-                }
-            } else {
-                ensure_profile(state, process.pid, process.creation, role, now);
-            }
+            ensure_profile(state, process.pid, process.creation, role, now);
             continue;
         }
         let retry_key = target_key(process.pid, process.creation);
@@ -2540,15 +2485,14 @@ fn status_payload(state: &AppState) -> String {
         let record = state.active_caps.get(&p.pid).filter(|r| r.creation == p.creation);
         let profile = state.profiles.get(&p.pid).filter(|profile| profile.creation == p.creation);
         let capped = record.is_some();
-        let protected_audio = *role == ProcessRole::Audio;
-        let current_cap = record.and_then(|r| r.applied_maximum_mb)
-            .or_else(|| profile.map(|p| p.current_cap_mb))
-            .or_else(|| (state.settings.auto_optimize && protected_audio).then_some(36));
+        let current_cap = record
+            .and_then(|r| r.applied_maximum_mb)
+            .or_else(|| profile.map(|p| p.current_cap_mb));
         let default_cap = role.manual_default_cap_mb();
         let manual_cap = configured_manual_cap(&state.settings, p, *role);
         let adaptive_status = profile.map(|p| p.last_reason.as_str()).unwrap_or("baseline");
         format!(
-            "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"protectedAudio\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{}}}",
+            "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{}}}",
             p.pid, json_quote(&p.creation.to_string()), json_quote(role_name(*role)),
             json_optional_number(p.working_set_mb),
             json_optional_number(p.private_working_set_mb),
@@ -2560,7 +2504,6 @@ fn status_payload(state: &AppState) -> String {
             capped,
             record.map(|r| r.manual).unwrap_or(false),
             true,
-            protected_audio,
             current_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
             manual_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
             default_cap,
@@ -2621,7 +2564,7 @@ fn status_payload(state: &AppState) -> String {
     );
 
     format!(
-        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"windowStateReason\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{},\"audioProtected\":true,\"audioFixedCapMB\":36}}}}",
+        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"windowStateReason\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{}}}}}",
         json_quote(VERSION),
         json_quote(&state.started_at),
         state.root_pid.is_some(),
