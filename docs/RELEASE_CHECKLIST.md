@@ -18,7 +18,7 @@ Do not call the release stable until all required real-desktop tests are complet
 - [ ] Verify setup rejects unsupported OS editions before modifying files.
 - [ ] Confirm setup is per-user, does not ask for admin and does not alter antivirus/SmartScreen/firewall settings.
 - [ ] Confirm original process limits are durably saved before each initial cap.
-- [ ] Confirm audio-role processes receive a fixed 36 MB automatic ceiling and are excluded from adaptive adjustments.
+- [ ] Confirm audio-role processes start at a 36 MB automatic ceiling and adapt upward to 60 MB under sustained load like the other roles.
 - [ ] Confirm high CPU alone does not raise a ceiling while the working set is below it; sustained high CPU at the full current ceiling does raise it, and idle/headroom lowers it without oscillation.
 - [ ] Confirm the selected background delay applies in both automatic and manual modes.
 - [ ] Confirm limits are restored on foreground return, master-switch disable, shutdown, restart recovery and uninstall; pending restores remain recorded and are retried.

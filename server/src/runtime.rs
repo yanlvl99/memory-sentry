@@ -2485,15 +2485,14 @@ fn status_payload(state: &AppState) -> String {
         let record = state.active_caps.get(&p.pid).filter(|r| r.creation == p.creation);
         let profile = state.profiles.get(&p.pid).filter(|profile| profile.creation == p.creation);
         let capped = record.is_some();
-        let protected_audio = *role == ProcessRole::Audio;
-        let current_cap = record.and_then(|r| r.applied_maximum_mb)
-            .or_else(|| profile.map(|p| p.current_cap_mb))
-            .or_else(|| (state.settings.auto_optimize && protected_audio).then_some(36));
+        let current_cap = record
+            .and_then(|r| r.applied_maximum_mb)
+            .or_else(|| profile.map(|p| p.current_cap_mb));
         let default_cap = role.manual_default_cap_mb();
         let manual_cap = configured_manual_cap(&state.settings, p, *role);
         let adaptive_status = profile.map(|p| p.last_reason.as_str()).unwrap_or("baseline");
         format!(
-            "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"protectedAudio\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{}}}",
+            "{{\"pid\":{},\"creation\":{},\"role\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":{},\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{}}}",
             p.pid, json_quote(&p.creation.to_string()), json_quote(role_name(*role)),
             json_optional_number(p.working_set_mb),
             json_optional_number(p.private_working_set_mb),
@@ -2505,7 +2504,6 @@ fn status_payload(state: &AppState) -> String {
             capped,
             record.map(|r| r.manual).unwrap_or(false),
             true,
-            protected_audio,
             current_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
             manual_cap.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
             default_cap,
@@ -2566,7 +2564,7 @@ fn status_payload(state: &AppState) -> String {
     );
 
     format!(
-        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"windowStateReason\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{},\"audioProtected\":true,\"audioFixedCapMB\":36}}}}",
+        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"windowStateReason\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{}}}}}",
         json_quote(VERSION),
         json_quote(&state.started_at),
         state.root_pid.is_some(),
