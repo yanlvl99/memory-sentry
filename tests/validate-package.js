@@ -131,6 +131,7 @@ check('MSI silently stops MemorySentry before file ops (taskkill, no CloseApplic
 check('MSI uses hidden WixQuietExec for all deferred actions (no console flash)', /WixQuietExec/.test(wixScript) && !/ExeCommand/.test(wixScript));
 check('MSI passes CustomAppsFolder+name (avoids trailing-backslash CA bug)', wixScript.includes('[CustomAppsFolder]MemorySentryForSpicetify'));
 check('MSI runs --configure and --pre-uninstall via custom actions', /--configure/.test(wixScript) && /--pre-uninstall/.test(wixScript));
+check('MSI shows the real GPL-3.0 license, not the WiX placeholder', /WixUILicenseRtf/.test(wixScript) && fs.existsSync(path.join(root, 'installer/wix/license-gpl3.rtf')) && read('installer/wix/license-gpl3.rtf').includes('GNU GENERAL PUBLIC LICENSE') && !/Lorem ipsum/i.test(read('installer/wix/license-gpl3.rtf')));
 check('MSI uninstall cleanup CAs guard against MajorUpgrade collision', (wixScript.match(/NOT UPGRADINGPRODUCTCODE/g) || []).length >= 3);
 check('MSI removes legacy Inno folder and registry key on install', /RemoveLegacyFolder/.test(wixScript) && /RemoveLegacyRegistry/.test(wixScript));
 check('server detaches stdio before spawning the monitor (prevents QuietExec hang)', rustRuntime.includes('detach_stdio_from_children'));
