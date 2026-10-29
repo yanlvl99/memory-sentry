@@ -142,7 +142,9 @@ check('packaging script builds native x64 and arm64 servers and MSIs', /x86_64-p
 check('CI installs the aarch64 Windows target in both workflows', /rustup target add aarch64-pc-windows-msvc/.test(validation) && /rustup target add aarch64-pc-windows-msvc/.test(read('.github/workflows/release.yml')));
 
 check('CI runs package validation', validation.includes('node tests/validate-package.js'));
-check('release versions are aligned on 1.0.0-rc.3', rustCargo.includes('version = "1.0.0-rc.3"') && read('server/Cargo.lock').includes('version = "1.0.0-rc.3"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.3";') && read('README.md').includes('1.0.0-rc.3') && app.includes('v1.0.0-rc.3'));
+check('release versions are aligned on 1.0.0-rc.4', rustCargo.includes('version = "1.0.0-rc.4"') && read('server/Cargo.lock').includes('version = "1.0.0-rc.4"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.4";') && read('README.md').includes('1.0.0-rc.4') && app.includes('v1.0.0-rc.4'));
+check('no doc still claims the Audio ceiling is fixed in automatic mode', ['README.md','SECURITY.md','docs/TROUBLESHOOTING.md','docs/SERVER-MIGRATION.md','docs/MARKETPLACE.md'].every(f => !/not adaptively adjusted|excluded from adaptive adjustments|without adaptive adjustments|excludes them from adaptive cap adjustments/i.test(read(f))));
+check('server rejects a mismatched CPU architecture at configure time', read('server/src/platform/windows.rs').includes('GetNativeSystemInfo') && read('server/src/runtime.rs').includes('platform::native_arch()'));
 check('semantic prereleases are never marked as latest stable', read('.github/workflows/release.yml').includes("contains(steps.version.outputs.version, '-')") && read('.github/workflows/release.yml').includes("!contains(steps.version.outputs.version, '-')"));
 check('Rust scaffold uses a minimal standard-library dependency policy', rustCargo.includes('name = "memory-sentry-server"') && !rustCargo.includes('[dependencies]'));
 check('Rust policy has pure, testable adaptive logic', rustLib.includes('decide_adjustment') && rustLib.includes('working_set_at_ceiling') && rustLib.includes('#[cfg(test)]'));
