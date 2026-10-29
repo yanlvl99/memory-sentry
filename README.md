@@ -6,7 +6,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64%20%7C%20ARM64-blue)
 ![Status](https://img.shields.io/badge/status-experimental-orange)
 
-![Memory Sentry](assets/readme-banner.svg)
+![Memory Sentry](assets/readme-banner.png)
 
 Memory Sentry is an open-source utility for managing the resident working set of Spotify Desktop processes while Spotify runs in the background.
 
