@@ -30,7 +30,9 @@ const FOCUS_POLL_INTERVAL_MS: u64 = 100;
 const TARGET_RETRY_DELAY_MS: u64 = 2500;
 const TRIM_COOLDOWN_MS: u64 = 15_000;
 const MINIMUM_BACKUP_HEADER: &str = "# Memory Sentry recovery records v1";
-const APP_NAME: &str = "SpicetifyMemorySentry";
+const APP_NAME: &str = "MemorySentryForSpicetify";
+const LEGACY_APP_NAME: &str = "SpicetifyMemorySentry";
+const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Debug)]
 struct Settings {
@@ -45,6 +47,7 @@ struct Settings {
     optimize_when_hidden: bool,
     manual_caps: BTreeMap<(u32, u64), u32>,
     manual_role_caps: BTreeMap<String, u32>,
+    schema_version: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -222,6 +225,53 @@ fn appdata_root() -> Result<PathBuf, String> {
 
 fn install_dir() -> Result<PathBuf, String> {
     Ok(appdata_root()?.join("SpicetifyMemorySentry"))
+}
+
+/// Data directory (settings, backup, pid, logs), separate from the program directory.
+fn data_dir() -> Result<PathBuf, String> {
+    Ok(appdata_root()?.join("MemorySentryForSpicetify"))
+}
+
+/// Program directory (the executable and its bundled docs) used by the MSI install. The MSI
+/// removes the previous product on upgrade, so the program lives in its own stable folder under
+/// Programs, separate from the user data directory.
+fn program_dir() -> Result<PathBuf, String> {
+    Ok(appdata_root()?.join("Programs").join("MemorySentryForSpicetify"))
+}
+
+/// Copy the current rc single-directory data into the split data directory. Removal of the old
+/// folder is owned by the MSI's RemoveLegacyFolder custom action (which also clears the stale
+/// Inno uninstall registry entry), so this only moves data and never deletes. Already-migrated
+/// installs and unsupported 0.* Node recovery are skipped.
+fn migrate_legacy_layout() -> Result<(), String> {
+    let old = install_dir()?;
+    let data = data_dir()?;
+    if old == data || !old.is_dir() || data.join("settings.json").is_file() {
+        return Ok(());
+    }
+    fs::create_dir_all(&data).map_err(|e| format!("Could not create the data directory: {e}"))?;
+    for name in ["settings.json", "working-set-backup.tsv", "helper.pid"] {
+        let from = old.join(name);
+        if from.is_file() {
+            fs::copy(&from, data.join(name)).map_err(|e| format!("Could not migrate {name}: {e}"))?;
+        }
+    }
+    let old_logs = old.join("logs");
+    if old_logs.is_dir() {
+        let new_logs = data.join("logs");
+        fs::create_dir_all(&new_logs).map_err(|e| e.to_string())?;
+        if let Ok(entries) = fs::read_dir(&old_logs) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(name) = path.file_name() {
+                        let _ = fs::copy(&path, new_logs.join(name));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn parse_json_string(text: &str, key: &str) -> Option<String> {
@@ -428,6 +478,7 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
         optimize_when_hidden,
         manual_caps,
         manual_role_caps,
+        schema_version: CURRENT_SCHEMA_VERSION,
     })
 }
 
@@ -449,8 +500,8 @@ fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
         .collect::<Vec<_>>()
         .join(", ");
     let contents = format!(
-        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"optimizeWhenBackground\": {},\n  \"optimizeWhenMinimized\": {},\n  \"optimizeWhenHidden\": {},\n  \"manualCaps\": [{}],\n  \"manualRoleCaps\": [{}],\n  \"version\": \"{}\"\n}}\n",
-        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, manual_caps, manual_role_caps, VERSION
+        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"optimizeWhenBackground\": {},\n  \"optimizeWhenMinimized\": {},\n  \"optimizeWhenHidden\": {},\n  \"manualCaps\": [{}],\n  \"manualRoleCaps\": [{}],\n  \"schemaVersion\": {},\n  \"version\": \"{}\"\n}}\n",
+        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, manual_caps, manual_role_caps, settings.schema_version, VERSION
     );
     let mut file = File::create(&temp).map_err(|e| format!("Could not stage settings: {e}"))?;
     file.write_all(contents.as_bytes())
@@ -458,6 +509,32 @@ fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
     file.sync_all().map_err(|e| e.to_string())?;
     replace_file(&temp, path)?;
     Ok(())
+}
+
+/// Replace an unusable settings file with fresh defaults so boot can continue. The bad
+/// file is preserved as `settings.json.bad`; the only fatal failure is the OS RNG itself.
+fn bootstrap_default_settings(path: &Path) -> Result<Settings, String> {
+    if path.exists() {
+        let bad = path.with_extension("json.bad");
+        let _ = fs::remove_file(&bad);
+        let _ = fs::rename(path, &bad);
+    }
+    let settings = Settings {
+        port: DEFAULT_PORT,
+        token: platform::random_token()?,
+        enabled: true,
+        auto_optimize: true,
+        hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+        trim_to_cap: true,
+        optimize_when_background: true,
+        optimize_when_minimized: true,
+        optimize_when_hidden: true,
+        manual_caps: BTreeMap::new(),
+        manual_role_caps: BTreeMap::new(),
+        schema_version: CURRENT_SCHEMA_VERSION,
+    };
+    write_settings(path, &settings)?;
+    Ok(settings)
 }
 
 fn replace_file(temp: &Path, target: &Path) -> Result<(), String> {
@@ -728,6 +805,25 @@ fn stop_monitor_after_setup_failure(context: &str) -> String {
     }
 }
 
+/// Best-effort removal of the pre-split Custom App so an upgrade does not leave a duplicate
+/// sidebar icon. It drops the old `custom_apps` entry and deletes the old folder; the pending
+/// `spicetify apply` refreshes the client. Missing entries are ignored.
+fn cleanup_legacy_custom_app(cli: &Path) {
+    let removal = format!("{LEGACY_APP_NAME}-");
+    let _ = Command::new(cli)
+        .args(["config", "custom_apps", removal.as_str()])
+        .output();
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let legacy_dir = PathBuf::from(appdata)
+            .join("spicetify")
+            .join("CustomApps")
+            .join(LEGACY_APP_NAME);
+        if legacy_dir.exists() {
+            let _ = fs::remove_dir_all(&legacy_dir);
+        }
+    }
+}
+
 pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
     let (os_name, build) = platform::detect_supported_client_os()?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -735,8 +831,12 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
         .parent()
         .ok_or("Could not determine installation directory")?
         .to_path_buf();
-    let settings_path = base.join("settings.json");
-    let app_dir = PathBuf::from(app_dir_arg);
+    let data = data_dir()?;
+    let legacy = install_dir()?;
+    let settings_path = data.join("settings.json");
+    // Tolerate a stray wrapping quote or trailing backslash from the caller's command line so a
+    // well-intentioned path never looks like a missing package.
+    let app_dir = PathBuf::from(app_dir_arg.trim().trim_matches('"').trim_end_matches('\\'));
     let index_path = app_dir.join("index.js");
     if !index_path.is_file() || !app_dir.join("manifest.json").is_file() {
         return Err(
@@ -746,13 +846,13 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
     }
 
     // Legacy Node installations must restore before this server takes over.
-    let legacy_backup = base.join("working-set-backup.json");
-    let legacy_helper = base.join("helper.js");
+    let legacy_backup = legacy.join("working-set-backup.json");
+    let legacy_helper = legacy.join("helper.js");
     if legacy_backup.exists() {
         if !legacy_helper.is_file() {
             return Err("A legacy Node recovery backup exists but helper.js is missing. Restore the old limits before migrating; recovery data was preserved.".to_string());
         }
-        stop_legacy_node_helper(&base)?;
+        stop_legacy_node_helper(&legacy)?;
         let node = find_node().ok_or("A legacy Node recovery backup exists. Install Node.js 22+ temporarily so the old helper can restore limits, then rerun setup.")?;
         let result = Command::new(node)
             .arg(&legacy_helper)
@@ -762,12 +862,17 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
         if !result.status.success() {
             return Err("The previous helper could not restore every working-set limit. Installation stopped and the recovery backup was preserved.".to_string());
         }
-        cleanup_legacy_node_files(&base)?;
+        cleanup_legacy_node_files(&legacy)?;
     } else if legacy_helper.exists() {
         // No legacy backup means the previous helper is idle; stop only this project's
         // matching Node process and remove its now-obsolete runtime files.
-        cleanup_legacy_node_files(&base)?;
+        cleanup_legacy_node_files(&legacy)?;
     }
+
+    // Carry the previous single-directory settings/logs into the data folder before reading them,
+    // so an upgrade keeps the user's configuration. Copy-only and idempotent; the installer removes
+    // the legacy folder afterwards.
+    migrate_legacy_layout()?;
 
     let existing_raw = fs::read_to_string(&settings_path).unwrap_or_default();
     let existing_token = parse_json_string(&existing_raw, "token");
@@ -793,11 +898,13 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
         optimize_when_hidden: parse_json_bool(&existing_raw, "optimizeWhenHidden").unwrap_or(true),
         manual_caps: parse_manual_caps(&existing_raw),
         manual_role_caps: parse_manual_role_caps(&existing_raw),
+        schema_version: CURRENT_SCHEMA_VERSION,
     };
     write_settings(&settings_path, &settings)?;
     // Start the local API before "spicetify apply" restarts Spotify, so the
     // Custom App does not race server startup during its first render.
     let cli = configure_spicetify(APP_NAME)?;
+    cleanup_legacy_custom_app(&cli);
     if let Err(error) = launch_monitor() {
         return Err(stop_monitor_after_setup_failure(&format!(
             "Could not start the server before applying Spicetify: {error}"
@@ -919,16 +1026,23 @@ fn read_legacy_node_backup() -> bool {
 }
 
 pub fn prepare_upgrade() -> Result<(), String> {
-    let base = install_dir()?;
-    let settings_path = base.join("settings.json");
+    let program = program_dir()?;
+    let data = data_dir()?;
+    let legacy = install_dir()?;
+    // Settings may still live in the old single directory until this upgrade migrates them.
+    let settings_path = if data.join("settings.json").is_file() {
+        data.join("settings.json")
+    } else {
+        legacy.join("settings.json")
+    };
 
     // Migrate the previous Node helper only after its own recovery command succeeds.
     if read_legacy_node_backup() {
-        let legacy_helper = base.join("helper.js");
+        let legacy_helper = legacy.join("helper.js");
         if !legacy_helper.is_file() {
             return Err("A legacy Node recovery backup exists but helper.js is missing. Recovery data was preserved.".to_string());
         }
-        stop_legacy_node_helper(&base)?;
+        stop_legacy_node_helper(&legacy)?;
         let node = find_node().ok_or("A legacy Node recovery backup exists. Install Node.js 22+ temporarily so the old helper can restore limits.".to_string())?;
         let output = Command::new(node)
             .arg(&legacy_helper)
@@ -940,43 +1054,31 @@ pub fn prepare_upgrade() -> Result<(), String> {
                 "Legacy recovery failed. Upgrade stopped and the backup was preserved.".to_string(),
             );
         }
-        cleanup_legacy_node_files(&base)?;
+        cleanup_legacy_node_files(&legacy)?;
     }
 
-    // Ask a running instance of the server to restore limits and exit. A live process that
-    // does not acknowledge shutdown blocks replacement of the executable.
-    if settings_path.exists() {
-        let settings = load_settings(&settings_path)?;
-        let _ = request_shutdown(settings.port, &settings.token);
+    // Ask a running instance of the server to restore limits and exit. This is best-effort: an
+    // unreadable settings file must not block the forced stop that follows.
+    if settings_path.is_file() {
+        if let Ok(settings) = load_settings(&settings_path) {
+            let _ = request_shutdown(settings.port, &settings.token);
+        }
         thread::sleep(Duration::from_millis(400));
     }
 
-    let pid_file = base.join("helper.pid");
-    let installed_exe = base.join("MemorySentry.exe");
-    for _ in 0..50 {
-        let active_pid = fs::read_to_string(&pid_file)
-            .ok()
-            .and_then(|s| s.trim().parse::<u32>().ok());
-        if active_pid
-            .map(|pid| platform::process_matches_executable(pid, &installed_exe))
-            .unwrap_or(false)
-        {
-            thread::sleep(Duration::from_millis(100));
-        } else {
-            break;
-        }
-    }
-    if let Some(pid) = fs::read_to_string(&pid_file)
-        .ok()
-        .and_then(|s| s.trim().parse::<u32>().ok())
-    {
-        if platform::process_matches_executable(pid, &installed_exe) {
-            return Err(format!("Memory Sentry is still active (PID {pid}) after the shutdown request. The recovery data was preserved."));
-        }
-    }
+    // Stop any running server before migrating data or replacing files, matching either the old
+    // single-directory executable or the new program-directory executable so a lingering
+    // pre-split process releases its file lock and the single-instance mutex.
+    let old_exe = legacy.join("MemorySentry.exe");
+    let installed_exe = program.join("MemorySentry.exe");
+    platform::force_terminate_installed_process(&old_exe)?;
+    platform::force_terminate_installed_process(&installed_exe)?;
+
+    // With the previous instance stopped, the old directory is unlocked and data can move.
+    migrate_legacy_layout()?;
 
     // Recover any durable records left behind by a crash or an unresponsive helper.
-    let backup_path = base.join("working-set-backup.tsv");
+    let backup_path = data.join("working-set-backup.tsv");
     let records = load_backup_file(&backup_path);
     let mut failures = Vec::new();
     for record in &records {
@@ -1011,10 +1113,11 @@ pub fn swap_server(new_exe_arg: &str) -> Result<(), String> {
             source.display()
         ));
     }
-    let base = install_dir()?;
-    let settings_path = base.join("settings.json");
-    let installed_exe = base.join("MemorySentry.exe");
-    let pid_file = base.join("helper.pid");
+    let program = program_dir()?;
+    let data = data_dir()?;
+    let settings_path = data.join("settings.json");
+    let installed_exe = program.join("MemorySentry.exe");
+    let pid_file = data.join("helper.pid");
 
     // Stop the running instance first; it restores limits before exiting.
     if settings_path.exists() {
@@ -1035,14 +1138,8 @@ pub fn swap_server(new_exe_arg: &str) -> Result<(), String> {
             break;
         }
     }
-    if let Some(pid) = fs::read_to_string(&pid_file)
-        .ok()
-        .and_then(|s| s.trim().parse::<u32>().ok())
-    {
-        if platform::process_matches_executable(pid, &installed_exe) {
-            return Err(format!("Memory Sentry is still active (PID {pid}) after the shutdown request. Nothing was replaced."));
-        }
-    }
+    // A process that ignored the shutdown request is force-terminated before replacement.
+    platform::force_terminate_installed_process(&installed_exe)?;
 
     // In-place swap is only possible after the old process released the executable.
     let same_file = source
@@ -1051,7 +1148,7 @@ pub fn swap_server(new_exe_arg: &str) -> Result<(), String> {
         .map(|value| installed_exe.canonicalize().ok() == Some(value))
         .unwrap_or(false);
     if !same_file {
-        fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+        fs::create_dir_all(&program).map_err(|e| e.to_string())?;
         fs::copy(&source, &installed_exe)
             .map_err(|e| format!("Could not replace {}: {e}", installed_exe.display()))?;
     }
@@ -1077,17 +1174,105 @@ pub fn swap_server(new_exe_arg: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Remove the previous (Inno Setup) install before the MSI lays down the new product. It always
+/// targets the legacy program folder directly (never the registry, which can point at a folder that
+/// is not the legacy one). It force-stops the legacy server (matched by its folder path, so the new
+/// install is never touched), deletes the entire legacy folder, and clears the stale uninstall
+/// registry key. It deliberately does NOT run the old uninstaller (which can fail or reload
+/// Spicetify) and does NOT call spicetify apply — configure_install owns that. If the folder cannot
+/// be removed it shows the exact reason, guides the user through Task Manager, and errors so the
+/// installer stops instead of leaving a duplicate behind.
+pub fn remove_previous_version() -> Result<(), String> {
+    let new_program = program_dir()?;
+    let old_program = install_dir()?;
+    if old_program == new_program {
+        return Ok(());
+    }
+    if old_program.exists() {
+        terminate_program_in(&old_program);
+        remove_dir_with_retries(&old_program).map_err(|e| guided_removal_failure(&old_program, e))?;
+    }
+    cleanup_legacy_uninstall_key();
+    Ok(())
+}
+
+/// Force-stop the legacy server by its full folder path. Path matching leaves the freshly installed
+/// executable (same file name, different folder) running.
+fn terminate_program_in(dir: &PathBuf) {
+    let _ = platform::force_terminate_installed_process(&dir.join("MemorySentry.exe"));
+}
+
+/// Delete the legacy folder, retrying briefly because a just-killed process can hold a handle for a
+/// moment. A folder that vanished (NotFound) counts as success.
+fn remove_dir_with_retries(dir: &PathBuf) -> std::io::Result<()> {
+    let mut last_error =
+        std::io::Error::new(std::io::ErrorKind::Other, "the legacy folder could not be removed");
+    for _ in 0..5 {
+        match fs::remove_dir_all(dir) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    return Ok(());
+                }
+                last_error = error;
+                std::thread::sleep(std::time::Duration::from_millis(400));
+            }
+        }
+    }
+    Err(last_error)
+}
+
+/// Drop the stale Inno uninstall key once the legacy folder is gone, so Add/Remove Programs does
+/// not keep a dead entry. The key is the Inno AppId, distinct from the MSI product's own key.
+fn cleanup_legacy_uninstall_key() {
+    let key = legacy_uninstall_key();
+    let _ = Command::new("reg.exe")
+        .args(["delete", &key, "/f"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+fn legacy_uninstall_key() -> String {
+    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{C0C9DB49-DBD6-4985-84A1-C4D0C1AA98EC}_is1".to_string()
+}
+
+/// Last-resort message when the legacy folder is locked: name the exact folder and walk the user
+/// through ending the process and deleting it, then return the error so the install stops.
+fn guided_removal_failure(dir: &PathBuf, error: std::io::Error) -> String {
+    let message = format!(
+        "Memory Sentry could not remove the old version at:\n{}\n\nReason: {}\n\nFinish it manually: close Spotify, open Task Manager (Ctrl+Shift+Esc), end any \"Memory Sentry\" process, delete the folder shown above, then run Setup again.",
+        dir.display(),
+        error
+    );
+    platform::fatal_setup_message(&message);
+    message
+}
+
+/// MSI install entry point. Stops the previous server and migrates data (copy-only), removes the
+/// old Inno install (aborting with an exact error dialog if that fails), then registers the new
+/// Custom App and applies Spicetify. Any step returning an error stops the chain so the installer
+/// rolls the whole transaction back instead of leaving a partial or duplicated install.
+pub fn msi_install(custom_app_dir: &str) -> Result<(), String> {
+    let program = program_dir()?;
+    fs::create_dir_all(&program)
+        .map_err(|e| format!("Could not create the program folder {}: {e}", program.display()))?;
+    prepare_upgrade()?;
+    remove_previous_version()?;
+    configure_install(custom_app_dir)
+}
+
 pub fn pre_uninstall() -> Result<(), String> {
     // Do not make the user close Spotify just to uninstall. Restore and stop the helper first,
     // remove its logon launch registration, then let spicetify apply refresh/restart Spotify.
-    let base = install_dir()?;
+    let base = data_dir()?;
     prepare_upgrade()?;
     unregister_startup()?;
     unregister_spicetify()?;
     cleanup_legacy_startup();
-    preserve_logs(&base);
     let _ = fs::remove_file(base.join("helper.pid"));
-    println!("Memory Sentry was stopped, recovery was attempted, startup/app registration was removed, and logs were preserved outside the install folder.");
+    println!("Memory Sentry was stopped, recovery was attempted, and startup/app registration was removed. Logs remain in the data folder.");
     Ok(())
 }
 
@@ -1190,46 +1375,8 @@ fn cleanup_legacy_node_files(base: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn preserve_logs(base: &Path) {
-    let Some(local) = std::env::var_os("LOCALAPPDATA") else {
-        return;
-    };
-    let source = base.join("logs");
-    if !source.is_dir() {
-        return;
-    }
-    let dest = PathBuf::from(local).join("MemorySentry").join("logs");
-    if fs::create_dir_all(&dest).is_err() {
-        return;
-    }
-    let Ok(entries) = fs::read_dir(&source) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let Some(name) = path.file_name() else {
-            continue;
-        };
-        let mut target = dest.join(name);
-        if target.exists() {
-            let renamed = format!(
-                "{}-{}.log",
-                path.file_stem()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("helper"),
-                now_ms()
-            );
-            target = dest.join(renamed);
-        }
-        let _ = fs::copy(path, target);
-    }
-}
-
 pub fn restore_limits_command() -> Result<(), String> {
-    let base = install_dir()?;
+    let base = data_dir()?;
     if read_legacy_node_backup() {
         return Err("This installation still has the legacy Node recovery format. Use its installed Node helper to restore limits before changing versions.".to_string());
     }
@@ -1299,10 +1446,20 @@ fn build_state(base: PathBuf, settings: Settings) -> AppState {
 
 pub fn run_monitor() -> Result<(), String> {
     platform::detect_supported_client_os()?;
-    let base = install_dir()?;
+    migrate_legacy_layout()?;
+    let base = data_dir()?;
     fs::create_dir_all(base.join("logs")).map_err(|e| e.to_string())?;
     let settings_path = base.join("settings.json");
-    let settings = load_settings(&settings_path)?;
+    let settings = match load_settings(&settings_path) {
+        Ok(settings) => settings,
+        Err(error) => {
+            eprintln!(
+                "Recovering unusable settings at {}: {error}",
+                settings_path.display()
+            );
+            bootstrap_default_settings(&settings_path)?
+        }
+    };
     let _instance = platform::acquire_single_instance()?;
     let mut state = build_state(base.clone(), settings);
     for record in load_backup_file(&state.backup_path) {
@@ -3179,10 +3336,10 @@ fn start_background_copy() -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let base = exe
-        .parent()
-        .ok_or("Could not determine installation directory")?;
-    let log_dir = base.join("logs");
+    // Write the monitor's output into the data directory, never the program directory: the
+    // installer owns the program folder and removes it on uninstall, so runtime files there would
+    // leave the folder behind.
+    let log_dir = data_dir()?.join("logs");
     fs::create_dir_all(&log_dir)
         .map_err(|e| format!("Could not create startup log directory: {e}"))?;
     let stdout_log = OpenOptions::new()
@@ -3259,7 +3416,7 @@ fn append_startup_log(path: &Path, message: &str) -> Result<(), String> {
 }
 
 pub fn launch_monitor() -> Result<(), String> {
-    let base = install_dir()?;
+    let base = data_dir()?;
     let startup_path = base.join("logs").join("startup.log");
 
     // Create and write the launch log before reading settings. This records failures
@@ -3271,14 +3428,19 @@ pub fn launch_monitor() -> Result<(), String> {
         Ok(settings) => settings,
         Err(error) => {
             let detail = format!(
-                "Could not load server settings at {}: {error}",
+                "Settings at {} were unusable ({error}); booting with fresh defaults",
                 settings_path.display()
             );
             let _ = append_startup_log(&startup_path, &detail);
-            return Err(format!(
-                "{detail}. Diagnostic log: {}",
-                startup_path.display()
-            ));
+            match bootstrap_default_settings(&settings_path) {
+                Ok(settings) => settings,
+                Err(recovery_error) => {
+                    return Err(format!(
+                        "{detail}, but recovery failed: {recovery_error}. Diagnostic log: {}",
+                        startup_path.display()
+                    ));
+                }
+            }
         }
     };
 
@@ -3291,6 +3453,9 @@ pub fn launch_monitor() -> Result<(), String> {
         return Ok(());
     }
 
+    // Do not let the detached monitor inherit our stdout/stderr: when this runs inside a waiting
+    // installer custom action, an inherited output pipe would keep the action from ever returning.
+    platform::detach_stdio_from_children();
     if let Err(error) = start_background_copy() {
         let detail = format!("Could not start the detached monitor: {error}");
         let _ = append_startup_log(&startup_path, &detail);
@@ -3352,6 +3517,35 @@ mod tests {
     }
 
     #[test]
+    fn settings_write_and_load_round_trip_the_schema_version() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("mss-schema-{}-{}.json", std::process::id(), unique));
+        let settings = Settings {
+            port: DEFAULT_PORT,
+            token: "0".repeat(32),
+            enabled: true,
+            auto_optimize: true,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
+            manual_caps: BTreeMap::new(),
+            manual_role_caps: BTreeMap::new(),
+            schema_version: CURRENT_SCHEMA_VERSION,
+        };
+        write_settings(&path, &settings).expect("write settings");
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"schemaVersion\""));
+        let loaded = load_settings(&path).expect("load settings");
+        assert_eq!(loaded.schema_version, CURRENT_SCHEMA_VERSION);
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
     fn updating_caps_preserves_the_first_captured_original_limits() {
         let originals = platform::OriginalLimits {
             minimum: 1024,
@@ -3404,6 +3598,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
+        schema_version: CURRENT_SCHEMA_VERSION,
         };
         assert!(should_manage_limits(&settings, "minimized"));
         assert!(should_manage_limits(&settings, "hidden"));
@@ -3437,6 +3632,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
+        schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
         state.window_state = "window-not-found".to_string();
@@ -3473,6 +3669,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
+        schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
         update_config(
@@ -3524,6 +3721,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::from([((42, 100), 40)]),
             manual_role_caps: BTreeMap::from([("Renderer".to_string(), 52)]),
+            schema_version: CURRENT_SCHEMA_VERSION,
         };
         let restarted_process = platform::ProcessRow {
             pid: 99,
@@ -3595,6 +3793,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
+        schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
         update_config(&mut state, r#"{"enabled":false}"#)
@@ -3629,6 +3828,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
+        schema_version: CURRENT_SCHEMA_VERSION,
         };
         settings.manual_caps.insert((42, identity), 36);
         settings.manual_role_caps.insert("Renderer".to_string(), 52);

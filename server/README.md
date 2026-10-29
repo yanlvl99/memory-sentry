@@ -15,7 +15,7 @@ cargo build --release --manifest-path server/Cargo.toml --target x86_64-pc-windo
 
 The build produces `memory-sentry-server.exe`; the installer ships the same binary as `MemorySentry.exe`.
 
-The `--version` and `--self-test` commands do not change process memory. The launcher checks the authenticated local status endpoint and records early startup diagnostics under `%LOCALAPPDATA%\SpicetifyMemorySentry\logs\startup.log`.
+The `--version` and `--self-test` commands do not change process memory. The launcher checks the authenticated local status endpoint and records early startup diagnostics under `%LOCALAPPDATA%\MemorySentryForSpicetify\logs\startup.log`.
 
 Uninstall attempts recovery before removing the Custom App. If restoration cannot be confirmed, it preserves recovery data and stops removal.
 

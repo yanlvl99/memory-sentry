@@ -14,7 +14,7 @@ function read(relative) { return fs.readFileSync(path.join(root, relative), 'utf
 const requiredFiles = [
   'app/index.js', 'app/manifest.json',
   '.gitignore', 'manifest.json', 'README.md', 'LICENSE', 'PRIVACY.md', 'SECURITY.md',
-  'CHANGELOG.md', 'docs/BENCHMARKING.md', 'docs/MARKETPLACE.md', 'docs/INSTALLATION.md', 'docs/SERVER-MIGRATION.md', 'docs/RELEASE_CHECKLIST.md', 'docs/DEVELOPMENT.md', 'docs/TROUBLESHOOTING.md', 'installer/inno/MemorySentry.iss',   'scripts/build-package.ps1', 'scripts/swap-server.ps1', 'server/src/main.rs', 'server/src/lib.rs', 'server/src/runtime.rs', 'server/src/platform/windows.rs', 'assets/marketplace-cover.svg', 'assets/readme-preview.svg', 'assets/readme-banner.svg',
+  'CHANGELOG.md', 'docs/BENCHMARKING.md', 'docs/MARKETPLACE.md', 'docs/INSTALLATION.md', 'docs/SERVER-MIGRATION.md', 'docs/RELEASE_CHECKLIST.md', 'docs/DEVELOPMENT.md', 'docs/TROUBLESHOOTING.md', 'installer/inno/MemorySentry.iss',   'installer/wix/Product.wxs', 'scripts/build-package.ps1', 'scripts/swap-server.ps1', 'server/src/main.rs', 'server/src/lib.rs', 'server/src/runtime.rs', 'server/src/platform/windows.rs', 'assets/marketplace-cover.svg', 'assets/readme-preview.svg', 'assets/readme-banner.svg',
   '.github/ISSUE_TEMPLATE/config.yml', '.github/ISSUE_TEMPLATE/feature-request.yml', '.github/ISSUE_TEMPLATE/plugin-bug.yml', '.github/ISSUE_TEMPLATE/question.yml', '.github/ISSUE_TEMPLATE/server-bug.yml',
   '.github/workflows/validate.yml', '.github/workflows/release.yml'
 ];
@@ -60,6 +60,7 @@ check('release publishes only the official Setup EXE and SHA-256', /MemorySentry
 check('build output has one supported installer and no custom portable ZIP', /MemorySentrySetup-/.test(read('scripts/build-package.ps1')) && !/Compress-Archive/.test(read('scripts/build-package.ps1')) && !/MemorySentry-.*windows-x64\.zip/.test(read('scripts/build-package.ps1')));
 
 const setupScript = read('installer/inno/MemorySentry.iss');
+const wixScript = read('installer/wix/Product.wxs');
 const buildScript = read('scripts/build-package.ps1');
 const buildScriptSwap = read('scripts/swap-server.ps1');
 const validation = read('.github/workflows/validate.yml');
@@ -125,12 +126,29 @@ check('local API starts and passes readiness before Spicetify apply', configureB
 check('PID waits verify the actual Memory Sentry executable path', rustRuntime.includes('process_matches_executable(pid, &installed_exe)') && rustPlatform.includes('QueryFullProcessImageNameW'));
 check('failed API bind removes helper.pid', rustRuntime.includes('if let Err(error) = start_api(Arc::clone(&shared))') && rustRuntime.includes('let _ = fs::remove_file(&pid_file);'));
 const launcherBody = rustRuntime.slice(rustRuntime.indexOf('pub fn launch_monitor()'));
-check('Server launcher creates startup diagnostics before reading settings', launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') >= 0 && launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') < launcherBody.indexOf('load_settings(&settings_path)') && launcherBody.includes('Could not load server settings'));
+check('Server launcher creates startup diagnostics before reading settings', launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') >= 0 && launcherBody.indexOf('append_startup_log(&startup_path, "Launcher invoked.")') < launcherBody.indexOf('load_settings(&settings_path)') && launcherBody.includes('bootstrap_default_settings'));
 check('installer always launches the server after setup', setupScript.includes('Flags: runhidden') && !setupScript.includes('Flags: postinstall nowait skipifsilent runhidden'));
 check('redundant batch and PowerShell installer entry points are absent', ['Install.bat','Uninstall.bat','installer/Install.ps1','installer/Uninstall.ps1'].every(file => !fs.existsSync(path.join(root, file))));
 check('official Setup is per-user and does not request elevation', /PrivilegesRequired=lowest/.test(setupScript) && !/RunAs|Verb\s+RunAs/i.test(setupScript));
 check('Inno uninstaller invokes recovery-aware server pre-uninstall', /InitializeUninstall/.test(setupScript) && /RunInstalledServer\('--pre-uninstall', Code\)/.test(setupScript) && /Recovery data exists but the server executable is missing/.test(setupScript));
 check('source Inno installer preserves app recovery guard', /Recovery data exists but the server executable is missing/.test(setupScript) && /No program files were removed/.test(setupScript));
+
+// --- WiX MSI installer guards (per-user MSI is the primary shipped installer) ---
+check('MSI is per-user and uses MajorUpgrade', /Scope="perUser"/.test(wixScript) && /<MajorUpgrade/.test(wixScript));
+check('MSI shows a folder-selection wizard (WixUI_InstallDir)', /WixUI_InstallDir/.test(wixScript) && !/WixUI_Minimal/.test(wixScript));
+check('MSI forces overwrite on install/repair (REINSTALLMODE=amus)', /REINSTALLMODE.*amus/.test(wixScript));
+check('MSI disables RestartManager prompt (no "close applications" dialog)', /MSIRESTARTMANAGERCONTROL.*Disable/.test(wixScript));
+check('MSI silently stops MemorySentry before file ops (taskkill, no CloseApplication element)', /StopMemorySentry/.test(wixScript) && /taskkill/.test(wixScript) && !/<util:CloseApplication/.test(wixScript));
+check('MSI uses hidden WixQuietExec for all deferred actions (no console flash)', /WixQuietExec/.test(wixScript) && !/ExeCommand/.test(wixScript));
+check('MSI passes CustomAppsFolder+name (avoids trailing-backslash CA bug)', wixScript.includes('[CustomAppsFolder]MemorySentryForSpicetify'));
+check('MSI runs --configure and --pre-uninstall via custom actions', /--configure/.test(wixScript) && /--pre-uninstall/.test(wixScript));
+check('MSI uninstall cleanup CAs guard against MajorUpgrade collision', (wixScript.match(/NOT UPGRADINGPRODUCTCODE/g) || []).length >= 3);
+check('MSI removes legacy Inno folder and registry key on install', /RemoveLegacyFolder/.test(wixScript) && /RemoveLegacyRegistry/.test(wixScript));
+check('server detaches stdio before spawning the monitor (prevents QuietExec hang)', rustRuntime.includes('detach_stdio_from_children'));
+const sbbBody = rustRuntime.slice(rustRuntime.indexOf('fn start_background_copy()'), rustRuntime.indexOf('fn start_background_copy') + 1500);
+check('server writes the monitor log to data_dir, not the program folder', sbbBody.includes('data_dir()'));
+check('configure migrates legacy layout before reading saved settings', configureBody.includes('migrate_legacy_layout()') && configureBody.indexOf('migrate_legacy_layout()') < configureBody.indexOf('let existing_raw'));
+check('build script compiles WiX MSI', /\$WixCommand.*build/.test(buildScript) && /WixToolset\.UI\.wixext/.test(buildScript) && /\.msi/.test(buildScript));
 
 check('CI runs package validation', validation.includes('node tests/validate-package.js'));
 check('release versions are aligned on 1.0.0-rc.3', rustCargo.includes('version = "1.0.0-rc.3"') && read('server/Cargo.lock').includes('version = "1.0.0-rc.3"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.3";') && setupScript.includes('#define AppVersion "1.0.0-rc.3"') && setupScript.includes('VersionInfoVersion=1.0.0.3') && read('README.md').includes('1.0.0-rc.3') && app.includes('v1.0.0-rc.3'));
@@ -147,12 +165,17 @@ check('status payload reports the server as Server, not Rust', /"node\\":\\"Serv
 check('Rust runtime implements local API, automatic limits and persistent role profiles', rustRuntime.includes('/api/status') && rustRuntime.includes('/api/config') && rustRuntime.includes('/api/action') && rustRuntime.includes('platform::set_working_set_limits') && rustRuntime.includes('restore_all') && rustRuntime.includes('apply_manual_cap') && rustRuntime.includes('manualCapMB') && rustRuntime.includes('manualRoleCaps'));
 check('Rust policy makes the Audio ceiling adaptive between 36 and 60 MB', rustLib.includes('Self::Main | Self::Audio => Some(36)') && rustLib.includes('Self::Audio => Some(36)') && !rustLib.includes('Self::Audio => None') && !rustRuntime.includes('audioFixedCapMB') && !rustRuntime.includes('enforce_fixed_audio_cap') && !rustRuntime.includes('protectedAudio'));
 check('manual mode applies persistent per-role overrides across changing process IDs', rustRuntime.includes('manual_cap_for') && rustRuntime.includes('manual_default_cap_mb') && rustRuntime.includes('configured_manual_cap') && rustRuntime.includes('manual_role_caps'));
+check('server resolves split program and data folders, migrates the old layout and survives a corrupt settings file', rustRuntime.includes('fn data_dir()') && rustRuntime.includes('fn program_dir()') && rustRuntime.includes('fn migrate_legacy_layout()') && rustRuntime.includes('fn bootstrap_default_settings'));
+const prepareUpgradeBody = rustRuntime.slice(rustRuntime.indexOf('pub fn prepare_upgrade()'), rustRuntime.indexOf('pub fn swap_server('));
+check('upgrade stops the running server before migrating data', prepareUpgradeBody.indexOf('force_terminate_installed_process') >= 0 && prepareUpgradeBody.indexOf('force_terminate_installed_process') < prepareUpgradeBody.indexOf('migrate_legacy_layout'));
+check('migration copies data without deleting the old folder', prepareUpgradeBody.includes('migrate_legacy_layout()') && !rustRuntime.slice(rustRuntime.indexOf('fn migrate_legacy_layout()'), rustRuntime.indexOf('fn parse_json_string')).includes('remove_dir_all'));
+check('installer upgrades in place without relocating the program folder', /DefaultDirName=\{localappdata\}\\SpicetifyMemorySentry/.test(setupScript) && !/UsePreviousAppDir=no/.test(setupScript) && !/UninstallPreviousVersion/.test(setupScript) && /CustomApps\\MemorySentryForSpicetify/.test(setupScript));
 check('automatic and manual limits are restricted to background window states', rustRuntime.includes('fn should_manage_limits(settings: &Settings, window_state: &str)') && rustRuntime.includes('"background-visible"') && rustRuntime.includes('should_manage_limits(&state.settings, &state.window_state)'));
 check('manual caps persist process creation identity and are recorded in recovery backups', rustRuntime.includes('manualCaps') && rustRuntime.includes('manual: fields') && rustRuntime.includes('if r.manual { \"manual\" }'));
 check('policy transitions restore active limits before switching modes', rustRuntime.includes('next.auto_optimize != state.settings.auto_optimize') && rustRuntime.includes('policy mode changed') && rustRuntime.includes('failed > 0'));
 check('server Windows layer protects process identity before each working-set mutation', rustPlatform.includes('set_working_set_limits') && rustPlatform.includes('creation != expected_creation') && rustPlatform.includes('restore_working_set_limits'));
 check('Rust startup and instance locking are per-user and single-instance', rustPlatform.includes('acquire_single_instance') && rustRuntime.includes('register_startup') && rustRuntime.includes('127.0.0.1'));
-check('Rust migration stops the legacy monitor before invoking its one-shot restore command', (rustRuntime.match(/stop_legacy_node_helper\(&base\)\?;/g) || []).length === 2);
+check('Rust migration stops the legacy monitor before invoking its one-shot restore command', (rustRuntime.match(/stop_legacy_node_helper\(&\w+\)\?;/g) || []).length === 2);
 check('Rust dashboard port remains consistent with the Custom App endpoint', /const MSS_API = 'http:\/\/127\.0\.0\.1:38472'/.test(app) && /port: DEFAULT_PORT/.test(rustRuntime));
 
 
