@@ -4,9 +4,9 @@ Memory Sentry is an independent community project for Windows 10/11 x64 desktop 
 
 ## Distribution
 
-The official per-user Setup EXE and its SHA-256 checksum are published on the [GitHub Releases page](https://github.com/yanlvl99/memory-sentry/releases). The Setup package contains the server, Custom App, and installation/removal flows.
+The official per-user MSI and its SHA-256 checksum are published on the [GitHub Releases page](https://github.com/yanlvl99/memory-sentry/releases). The MSI package contains the server, Custom App, and installation/removal flows.
 
-The Marketplace listing is discovery-only: it links to this repository and does not host or install Memory Sentry. Users must download the official Setup EXE from GitHub Releases; this repository does not publish a separate portable ZIP.
+The Marketplace listing is discovery-only: it links to this repository and does not host or install Memory Sentry. Users must download the official per-user MSI from GitHub Releases; this repository does not publish a separate portable ZIP.
 
 Memory Sentry manages the **resident working set**, not committed memory. It does not free or decommit memory, and observed results vary by workload and system. Avoid describing the result as freed, released, or swapped-out memory.
 
@@ -21,7 +21,7 @@ Before submitting or updating the listing:
 1. Verify that the repository topic remains `spicetify-apps`.
 2. Keep the root manifest preview set to `assets/marketplace-cover.svg` and the README banner at `assets/readme-banner.svg`.
 3. State the Windows 10/11 x64 requirement and separate server requirement in the listing description.
-4. Publish only the official Setup EXE and its SHA-256 checksum; do not add a separate Marketplace build or portable installer.
+4. Publish only the official per-user MSI and its SHA-256 checksum; do not add a separate Marketplace build or portable installer.
 5. Validate installation, missing-server behavior, upgrade, recovery, and uninstall on Windows 10 and Windows 11 desktop systems.
 
 The topic makes the repository eligible for Marketplace discovery; it does not mean the Marketplace has indexed or approved the listing.

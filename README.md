@@ -41,7 +41,7 @@ Windows Server, Windows ARM64, macOS, and Linux are not supported by this releas
 
 ## Installation
 
-Download **Memory Sentry Setup** and the matching SHA-256 checksum from the [official GitHub Releases page](https://github.com/yanlvl99/memory-sentry/releases), verify the checksum, and follow the [Installation Guide](docs/INSTALLATION.md). The official per-user Setup EXE is the only supported installation method. The Marketplace entry only links to the project repository; it does not install or distribute the server.
+Download the **Memory Sentry** per-user MSI installer (`MemorySentryForSpicetify-<version>.msi`) and its matching SHA-256 checksum from the [official GitHub Releases page](https://github.com/yanlvl99/memory-sentry/releases), verify the checksum, and follow the [Installation Guide](docs/INSTALLATION.md). The official per-user MSI is the only supported installation method. The Marketplace entry only links to the project repository; it does not install or distribute the server.
 
 No unsigned release can guarantee zero SmartScreen warnings. This release is unsigned, and a checksum verifies file integrity—not publisher identity. Do not disable security tools or blindly bypass warnings.
 

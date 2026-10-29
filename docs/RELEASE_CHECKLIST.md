@@ -6,8 +6,8 @@ Do not call the release stable until all required real-desktop tests are complet
 
 - [ ] cargo test for server/Cargo.toml passes.
 - [ ] Windows x64 build succeeds for x86_64-pc-windows-msvc.
-- [ ] Inno Setup compiles the per-user setup executable in CI.
-- [ ] Only the official Setup EXE and its SHA-256 checksum are uploaded and independently verified.
+- [ ] The WiX toolset builds the per-user MSI in CI.
+- [ ] Only the official MSI and its SHA-256 checksum are uploaded and independently verified.
 - [ ] Setup version and the version stated in README agree; the changelog accurately describes the unreleased changes.
 - [ ] Marketplace manifest and preview exist, root README is valid, and the repository topic spicetify-apps is verified.
 - [ ] No Node.js requirement remains for new server installations. Any remaining Node dependency is clearly documented as legacy recovery only.
@@ -33,7 +33,7 @@ Do not call the release stable until all required real-desktop tests are complet
 ## Public release
 
 - [ ] CI passes on the exact release commit.
-- [ ] Setup EXE and SHA-256 files are attached to the correct release.
+- [ ] MSI and SHA-256 files are attached to the correct release.
 - [ ] Mark v1.0.0-rc.3 as a prerelease; create stable v1.0.0 only after every required Windows 10/11 real-desktop test passes.
 - [ ] Never state the release has no antivirus warnings; the current executable is unsigned.
 - [ ] Verify the exact GitHub repository topic `spicetify-apps`, then submit the discovery listing. The listing only links to the repository and cannot install Memory Sentry.

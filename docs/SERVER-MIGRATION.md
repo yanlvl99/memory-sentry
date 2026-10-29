@@ -27,16 +27,16 @@ The master dashboard power switch stops new limits and retries pending restorati
 - [x] Add the server runtime implementation, in Rust, matching the dashboard API.
 - [x] Add setup/uninstall registration and legacy Node.js recovery.
 - [x] Add CI policy tests and Windows x64 compile/package jobs.
-- [x] Run the safe `--version` and `--self-test` commands on the Windows runner and build the validation Setup EXE.
+- [x] Run the safe `--version` and `--self-test` commands on the Windows runner and build the validation MSI.
 - [ ] Test on a real Windows 10 desktop with Spotify and Spicetify installed.
 - [ ] Test on a real Windows 11 desktop with Spotify and Spicetify installed.
 - [ ] Measure playback continuity, working-set changes, restore-to-interaction latency, failed process operations, restart recovery, and uninstall.
-- [ ] Verify the Marketplace discovery-only/missing-server screen and the official Setup EXE path.
+- [ ] Verify the Marketplace discovery-only/missing-server screen and the official MSI path.
 - [ ] Verify the `spicetify-apps` topic remains set and submit the listing for public discovery.
 
 ## Installer format
 
-The current installer is a per-user Inno Setup EXE. It supports recovery checks without requiring Windows Installer custom actions or administrator privileges. An MSI can be reconsidered after the registration and rollback flow is fully validated.
+The installer is a per-user WiX v5 MSI. MajorUpgrade handles updates, native Repair restores the shipped files, and Windows Installer custom actions stop the previous server, integrate with Spicetify and remove the old Inno install silently, all without administrator privileges.
 
 ## Antivirus and signing
 
