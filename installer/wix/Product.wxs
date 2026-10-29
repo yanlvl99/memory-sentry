@@ -1,0 +1,192 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <!-- Per-user MSI for "Memory Sentry For Spicetify". MajorUpgrade removes any previous MSI
+       product automatically; the first migration from the old Inno install is handled by a
+       custom action (remove-previous verb) added in a later step. -->
+  <Package Name="Memory Sentry For Spicetify"
+           Manufacturer="Memory Sentry Contributors"
+           Version="1.0.0.0"
+           UpgradeCode="7e5a9c22-4f3b-4e7a-9c11-2d6b8a0f4e31"
+           Scope="perUser"
+           Compressed="yes">
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of Memory Sentry For Spicetify is already installed." />
+
+    <!-- Always overwrite our program/Custom App files on install, repair and upgrade, so a newer
+         build replaces modified leftovers and Repair truly restores the shipped files. -->
+    <Property Id="REINSTALLMODE" Value="amus" />
+
+    <!-- Do not show the RestartManager "these applications need to be closed" prompt. The silent
+         StopMemorySentry taskkill custom action already stops the previous server before files are
+         replaced, so the prompt is only noise that worries users. -->
+    <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Program files: %LOCALAPPDATA%\Programs\MemorySentryForSpicetify -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="MemorySentryForSpicetify">
+          <Directory Id="DocsFolder" Name="docs" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Custom App: %APPDATA%\spicetify\CustomApps\MemorySentryForSpicetify -->
+    <StandardDirectory Id="AppDataFolder">
+      <Directory Id="SpicetifyFolder" Name="spicetify">
+        <Directory Id="CustomAppsFolder" Name="CustomApps">
+          <Directory Id="CUSTOMAPPFOLDER" Name="MemorySentryForSpicetify">
+            <Directory Id="CustomAppUiFolder" Name="ui" />
+          </Directory>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MemorySentryFeature" Title="Memory Sentry For Spicetify" Level="1">
+      <ComponentGroupRef Id="ProgramComponents" />
+      <ComponentGroupRef Id="DocsComponents" />
+      <ComponentGroupRef Id="CustomAppComponents" />
+      <ComponentGroupRef Id="CustomAppUiComponents" />
+    </Feature>
+
+    <!-- Wizard with a Next flow and a location page. -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+    <!-- The installer (not the product) stops the previous server before laying down files. A
+         silent force-kill (taskkill /F) is used instead of CloseApplication, which pops a "please
+         close these applications" prompt. QuietExec runs hidden, so no console window flashes. -->
+    <SetProperty Id="StopMemorySentry"
+                 Value="&quot;[SystemFolder]taskkill.exe&quot; /F /IM MemorySentry.exe"
+                 Before="StopMemorySentry"
+                 Sequence="execute" />
+    <CustomAction Id="StopMemorySentry"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+
+    <!-- The installer (not the product) removes the previous Inno install: delete the legacy
+         program folder and clear its stale uninstall registry entry. Best-effort so a leftover
+         never blocks the install; the process was already stopped above. -->
+    <SetProperty Id="RemoveLegacyFolder"
+                 Value="&quot;[SystemFolder]cmd.exe&quot; /c rmdir /s /q &quot;[LocalAppDataFolder]SpicetifyMemorySentry&quot;"
+                 Before="RemoveLegacyFolder"
+                 Sequence="execute" />
+    <CustomAction Id="RemoveLegacyFolder"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+    <SetProperty Id="RemoveLegacyRegistry"
+                 Value="&quot;[SystemFolder]reg.exe&quot; delete &quot;HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{C0C9DB49-DBD6-4985-84A1-C4D0C1AA98EC}_is1&quot; /f"
+                 Before="RemoveLegacyRegistry"
+                 Sequence="execute" />
+    <CustomAction Id="RemoveLegacyRegistry"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+
+    <!-- The product is only asked to integrate with Spicetify (migrate data, register the Custom
+         App, apply). A failure here is a real setup error, so it stops the transaction. QuietExec is
+         used so no console window flashes; the detached server it starts no longer holds the output
+         pipe because the server clears its std-handle inherit flag before spawning (see
+         detach_stdio_from_children), so the action returns instead of hanging. The Custom App path is
+         built without a trailing backslash so the closing quote is not escaped in argv parsing. -->
+    <SetProperty Id="ConfigureApp"
+                 Value="&quot;[INSTALLFOLDER]MemorySentry.exe&quot; --configure &quot;[CustomAppsFolder]MemorySentryForSpicetify&quot;"
+                 Before="ConfigureApp"
+                 Sequence="execute" />
+    <CustomAction Id="ConfigureApp"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="check" />
+    <SetProperty Id="PreUninstall"
+                 Value="&quot;[INSTALLFOLDER]MemorySentry.exe&quot; --pre-uninstall"
+                 Before="PreUninstall"
+                 Sequence="execute" />
+    <CustomAction Id="PreUninstall"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+    <!-- On a true uninstall (never during a MajorUpgrade, where the old product's removal shares
+         the folder with the new install) force-remove the program and Custom App folders so stray
+         runtime files (e.g. an older build's logs) cannot leave the directories behind. -->
+    <SetProperty Id="RemoveProgramFolder"
+                 Value="&quot;[SystemFolder]cmd.exe&quot; /c rmdir /s /q &quot;[ProgramsFolder]MemorySentryForSpicetify&quot;"
+                 Before="RemoveProgramFolder"
+                 Sequence="execute" />
+    <CustomAction Id="RemoveProgramFolder"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+    <SetProperty Id="RemoveCustomAppFolder"
+                 Value="&quot;[SystemFolder]cmd.exe&quot; /c rmdir /s /q &quot;[CustomAppsFolder]MemorySentryForSpicetify&quot;"
+                 Before="RemoveCustomAppFolder"
+                 Sequence="execute" />
+    <CustomAction Id="RemoveCustomAppFolder"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="StopMemorySentry" After="InstallInitialize" Condition="NOT REMOVE" />
+      <Custom Action="ConfigureApp" After="InstallFiles" Condition="NOT REMOVE" />
+      <Custom Action="RemoveLegacyFolder" After="ConfigureApp" Condition="NOT REMOVE" />
+      <Custom Action="RemoveLegacyRegistry" After="RemoveLegacyFolder" Condition="NOT REMOVE" />
+      <Custom Action="PreUninstall" Before="RemoveFiles" Condition='REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE' />
+      <Custom Action="RemoveProgramFolder" After="RemoveFiles" Condition='REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE' />
+      <Custom Action="RemoveCustomAppFolder" After="RemoveProgramFolder" Condition='REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE' />
+    </InstallExecuteSequence>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="ProgramComponents" Directory="INSTALLFOLDER">
+      <Component Id="ServerExe" Guid="*">
+        <File Id="MemorySentryExe" Source="..\..\dist\stage\MemorySentry.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="DocsComponents" Directory="DocsFolder">
+      <Component Id="DocsReadme" Guid="{5D2C1A70-0B31-4A6E-9E1F-0A1B2C3D4E50}">
+        <File Id="DocReadme" Source="..\..\dist\stage\README.md" KeyPath="yes" />
+        <File Id="DocLicense" Source="..\..\dist\stage\LICENSE" />
+        <File Id="DocPrivacy" Source="..\..\dist\stage\PRIVACY.md" />
+        <File Id="DocSecurity" Source="..\..\dist\stage\SECURITY.md" />
+        <File Id="DocInstallation" Source="..\..\dist\stage\docs\INSTALLATION.md" />
+        <File Id="DocTroubleshooting" Source="..\..\dist\stage\docs\TROUBLESHOOTING.md" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="CustomAppComponents" Directory="CUSTOMAPPFOLDER">
+      <Component Id="CustomAppRoot" Guid="{6E3D2B81-1C42-4B7F-8F20-1B2C3D4E5F60}">
+        <File Id="AppIndex" Source="..\..\dist\stage\app\index.js" KeyPath="yes" />
+        <File Id="AppManifest" Source="..\..\dist\stage\app\manifest.json" />
+        <File Id="AppStyle" Source="..\..\dist\stage\app\style.css" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="CustomAppUiComponents" Directory="CustomAppUiFolder">
+      <Component Id="CustomAppUi" Guid="{7F4E3C92-2D53-4C80-9F31-2C3D4E5F6070}">
+        <File Id="UiCore" Source="..\..\dist\stage\app\ui\00-core.js" KeyPath="yes" />
+        <File Id="UiI18n" Source="..\..\dist\stage\app\ui\10-i18n.js" />
+        <File Id="UiApi" Source="..\..\dist\stage\app\ui\20-api.js" />
+        <File Id="UiAdapters" Source="..\..\dist\stage\app\ui\30-adapters.js" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>
