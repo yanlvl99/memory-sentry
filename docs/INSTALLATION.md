@@ -1,13 +1,13 @@
 # Installation guide
 
-**Supported systems: Windows 10 and Windows 11 desktop editions, x64.**
+**Supported systems: Windows 10 and Windows 11 desktop editions, x64 and ARM64.**
 
 **Spicetify is required by the current release.** [Spotify Desktop](https://open.spotify.com/download) and [Spicetify CLI](https://spicetify.app/) must be installed for the same Windows user. The plugin is a Spicetify Custom App; the separate Memory Sentry server performs Windows process-memory management.
 
 ## The only supported installation method
 
 1. Open the official release page: https://github.com/yanlvl99/memory-sentry/releases
-2. Download the **Memory Sentry** MSI installer and its `.sha256` checksum attached to that same release.
+2. Download the **Memory Sentry** MSI installer that matches your CPU (`-x64.msi` or `-arm64.msi`) and its `.sha256` checksum attached to that same release.
 3. Verify the checksum. It confirms file integrity, not publisher identity.
 4. Run the installer as the same Windows user that runs Spotify and Spicetify. Do not run as Administrator.
 5. The installer stops any running Memory Sentry server silently, checks the supported Windows edition and detects Spicetify before replacing installed files. You do not have to close Spotify manually.
@@ -30,4 +30,4 @@ Settings and logs remain at `%LOCALAPPDATA%\MemorySentryForSpicetify` after unin
 
 The installer is per-user and should not request administrator privileges. It does not disable antivirus, SmartScreen, the firewall or Windows security controls. Unsigned setup files may still show reputation warnings; verify the download source and SHA-256 instead of blindly bypassing warnings.
 
-Unsupported: Windows Server, Windows 7/8/8.1, macOS, Linux and ARM64 Windows.
+Unsupported: Windows Server, Windows 7/8/8.1, macOS, and Linux. ARM64 Windows is supported with the `arm64` installer.

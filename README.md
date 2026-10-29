@@ -34,14 +34,14 @@ The **same configured delay applies in both modes**, and it only starts once Spo
 
 ## Requirements
 
-- Windows 10 or Windows 11 desktop edition, x64.
+- Windows 10 or Windows 11 desktop edition, x64 or ARM64.
 - [Spotify Desktop](https://open.spotify.com/download) and [Spicetify CLI](https://spicetify.app/) installed for the same Windows user.
 
-Windows Server, Windows ARM64, macOS, and Linux are not supported by this release.
+Windows Server, macOS, and Linux are not supported by this release. Native installers are published for both Windows x64 and ARM64.
 
 ## Installation
 
-Download the **Memory Sentry** per-user MSI installer (`MemorySentryForSpicetify-<version>.msi`) and its matching SHA-256 checksum from the [official GitHub Releases page](https://github.com/yanlvl99/memory-sentry/releases), verify the checksum, and follow the [Installation Guide](docs/INSTALLATION.md). The official per-user MSI is the only supported installation method. The Marketplace entry only links to the project repository; it does not install or distribute the server.
+Download the **Memory Sentry** per-user MSI that matches your Windows CPU (`MemorySentryForSpicetify-<version>-x64.msi` or `-arm64.msi`) and its matching SHA-256 checksum from the [official GitHub Releases page](https://github.com/yanlvl99/memory-sentry/releases), verify the checksum, and follow the [Installation Guide](docs/INSTALLATION.md). The official per-user MSI is the only supported installation method. The Marketplace entry only links to the project repository; it does not install or distribute the server.
 
 No unsigned release can guarantee zero SmartScreen warnings. This release is unsigned, and a checksum verifies file integrity—not publisher identity. Do not disable security tools or blindly bypass warnings.
 

@@ -1,6 +1,6 @@
 # Marketplace publishing and support model
 
-Memory Sentry is an independent community project for Windows 10/11 x64 desktop editions. The current release requires [Spotify Desktop](https://open.spotify.com/download) and [Spicetify CLI](https://spicetify.app/) for the same Windows user. The Spicetify Custom App uses a separate server for Windows memory operations. The project remains experimental; Marketplace discoverability is not an endorsement or stability guarantee.
+Memory Sentry is an independent community project for Windows 10/11 x64 and ARM64 desktop editions. The current release requires [Spotify Desktop](https://open.spotify.com/download) and [Spicetify CLI](https://spicetify.app/) for the same Windows user. The Spicetify Custom App uses a separate server for Windows memory operations. The project remains experimental; Marketplace discoverability is not an endorsement or stability guarantee.
 
 ## Distribution
 
@@ -20,7 +20,7 @@ Before submitting or updating the listing:
 
 1. Verify that the repository topic remains `spicetify-apps`.
 2. Keep the root manifest preview set to `assets/marketplace-cover.svg` and the README banner at `assets/readme-banner.svg`.
-3. State the Windows 10/11 x64 requirement and separate server requirement in the listing description.
+3. State the Windows 10/11 x64/ARM64 requirement and separate server requirement in the listing description.
 4. Publish only the official per-user MSI and its SHA-256 checksum; do not add a separate Marketplace build or portable installer.
 5. Validate installation, missing-server behavior, upgrade, recovery, and uninstall on Windows 10 and Windows 11 desktop systems.
 
