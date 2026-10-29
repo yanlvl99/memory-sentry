@@ -10,7 +10,7 @@ The server temporarily reads Windows process metadata needed to locate Spotify's
 
 ## Local storage
 
-Settings, an internal per-install access token, a recovery file containing original working-set limits, and diagnostic logs are stored under `%LOCALAPPDATA%\SpicetifyMemorySentry`. Logs are capped/rotated by the server, and the uninstaller preserves logs to aid troubleshooting. No Spotify account credentials, track names, playlist data, or listening history are intentionally read or stored.
+Settings, an internal per-install access token, a recovery file containing original working-set limits, and diagnostic logs are stored under `%LOCALAPPDATA%\MemorySentryForSpicetify`. Logs are capped/rotated by the server, and the uninstaller preserves logs to aid troubleshooting. No Spotify account credentials, track names, playlist data, or listening history are intentionally read or stored.
 
 ## Local API
 

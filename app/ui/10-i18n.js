@@ -29,7 +29,7 @@ const MSS_TEXT = {
     backgroundSettingsHint: 'These options are shared by automatic and manual modes.',
     debugMode: 'Debug mode', debugHint: 'Shows diagnostics: telemetry cards, activity log and per-process details.',
     second: '{value} second', seconds: '{value} seconds', saving: 'Saving…',
-    events: 'Recent activity', noEvents: 'No activity recorded yet.', statusError: 'Could not connect to the local Memory Sentry server. The diagnostic appears in brackets; check startup.log in %LOCALAPPDATA%\\SpicetifyMemorySentry\\logs.',
+    events: 'Recent activity', noEvents: 'No activity recorded yet.', statusError: 'Could not connect to the local Memory Sentry server. The diagnostic appears in brackets; check startup.log in %LOCALAPPDATA%\\MemorySentryForSpicetify\\logs.',
     footer: 'Supported OS: Windows 10 and Windows 11 desktop editions only. The Memory Sentry server is open source under GPL-3.0. No telemetry is uploaded. CPU and memory diagnostics stay on this PC. A separate process is required to call Win32 working-set APIs.',
     saveFailed: 'Could not save settings.', helperApiError: 'The local server returned an error.',
     window: { foreground: 'Spotify in foreground', 'background-visible': 'Spotify visible in background', minimized: 'Spotify minimized', hidden: 'Spotify window hidden', 'not-running': 'Spotify is not running', 'window-not-found': 'Spotify found; window not located', 'window-check-error': 'Window state unavailable', 'not-detected': 'Waiting for detection' }
@@ -63,7 +63,7 @@ const MSS_TEXT = {
     backgroundSettingsHint: 'Estas opções são compartilhadas pelos modos automático e manual.',
     debugMode: 'Modo debug', debugHint: 'Mostra diagnósticos: cartões de telemetria, log de atividade e detalhes por processo.',
     second: '{value} segundo', seconds: '{value} segundos', saving: 'Salvando…',
-    events: 'Atividade recente', noEvents: 'Ainda não há atividade registrada.', statusError: 'Não foi possível conectar ao servidor local do Memory Sentry. O diagnóstico aparece entre colchetes; consulte startup.log em %LOCALAPPDATA%\\SpicetifyMemorySentry\\logs.',
+    events: 'Atividade recente', noEvents: 'Ainda não há atividade registrada.', statusError: 'Não foi possível conectar ao servidor local do Memory Sentry. O diagnóstico aparece entre colchetes; consulte startup.log em %LOCALAPPDATA%\\MemorySentryForSpicetify\\logs.',
     footer: 'Compatível apenas com Windows 10 e Windows 11 (desktop). O servidor do Memory Sentry é código aberto sob GPL-3.0. Nenhuma telemetria é enviada. Os diagnósticos de CPU e memória ficam neste PC. Um processo separado é necessário para chamar as APIs Win32 de working set.',
     saveFailed: 'Não foi possível salvar as configurações.', helperApiError: 'O servidor local retornou um erro.',
     window: { foreground: 'Spotify em primeiro plano', 'background-visible': 'Spotify visível em segundo plano', minimized: 'Spotify minimizado', hidden: 'Janela do Spotify oculta', 'not-running': 'Spotify não está aberto', 'window-not-found': 'Spotify detectado; janela não localizada', 'window-check-error': 'Estado da janela indisponível', 'not-detected': 'Aguardando detecção' }

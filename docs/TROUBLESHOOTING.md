@@ -4,15 +4,15 @@ Memory Sentry supports Windows 10 and Windows 11 desktop editions only. These st
 
 ## Dashboard shows "connection unavailable"
 
-The dashboard shows the detailed connection error. The launcher creates `%LOCALAPPDATA%\SpicetifyMemorySentry\logs\startup.log` before reading settings, so early configuration failures should now be recorded too.
+The dashboard shows the detailed connection error. The launcher creates `%LOCALAPPDATA%\MemorySentryForSpicetify\logs\startup.log` before reading settings, so early configuration failures should now be recorded too.
 
 The Marketplace entry only links to the project repository and cannot install Memory Sentry. The single supported installation method is the official Setup EXE at https://github.com/yanlvl99/memory-sentry/releases; there is no separate Marketplace build or custom portable installer.
 
 If the log is missing, open PowerShell and run:
 
 ```powershell
-& "$env:LOCALAPPDATA\SpicetifyMemorySentry\MemorySentry.exe" --launch
-Get-Content "$env:LOCALAPPDATA\SpicetifyMemorySentry\logs\startup.log" -Tail 40
+& "$env:LOCALAPPDATA\Programs\MemorySentryForSpicetify\MemorySentry.exe" --launch
+Get-Content "$env:LOCALAPPDATA\MemorySentryForSpicetify\logs\startup.log" -Tail 40
 ```
 
 The first command prints a direct error if the launcher cannot initialize; the second shows local startup diagnostics if the file was created. If the executable itself is missing, repair the installation using the official setup executable. For runtime events after the local API starts, inspect `helper.log` in the same `logs` folder. These logs stay on the PC and are not uploaded. A "port already in use" error means another process is listening on port 38472. An "Invalid local token" error means the plugin and server were configured with different internal tokens; rerun the official installer to configure both together.
