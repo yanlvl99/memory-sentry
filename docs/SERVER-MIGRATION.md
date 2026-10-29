@@ -6,7 +6,7 @@ This document tracks the move from the legacy Node.js server to the current serv
 
 The server implements process discovery, Windows working-set operations, the loopback dashboard API, per-install authentication, recovery persistence, per-user startup, and guarded upgrade/uninstall commands. The current implementation is written in Rust and uses no third-party crates in its core. New installations do not require Node.js or Koffi; Node.js 22+ may be needed temporarily to recover limits saved by the legacy Node.js version.
 
-Automatic limits apply to Spotify's process tree after the configured background delay. Audio-role processes receive a fixed 36 MB automatic ceiling and are not adaptively adjusted. In manual mode, 36 MB is the Audio default and can be overridden per process role. Role overrides persist across Spotify restarts and PID changes, while original limits are backed up per process instance. The same configured background delay applies in automatic and manual modes.
+Automatic limits apply to Spotify's process tree after the configured background delay. Audio-role processes start at a 36 MB automatic ceiling and adapt upward to 60 MB under sustained load, like the other roles. In manual mode, 36 MB is the Audio default and can be overridden per process role. Role overrides persist across Spotify restarts and PID changes, while original limits are backed up per process instance. The same configured background delay applies in automatic and manual modes.
 
 ## Important safety model
 
@@ -16,7 +16,7 @@ Automatic limits apply to Spotify's process tree after the configured background
 4. The server API binds only to `127.0.0.1`, requires an internal token, and checks the Host header and Spotify HTTPS Origin.
 5. The plugin does not download or execute the server.
 6. Setup is per-user and does not request elevation or disable Windows security tools.
-7. Logs remain local and are preserved outside the application directory on uninstall.
+7. Logs remain local in the data folder (`%LOCALAPPDATA%\MemorySentryForSpicetify\logs`), which the uninstaller leaves in place.
 
 The master dashboard power switch stops new limits and retries pending restoration while disabled. This recovery design reduces the risk of losing recorded limits, but real Windows desktop testing is still required to validate playback continuity, foreground restoration, startup recovery, and uninstall behavior.
 
