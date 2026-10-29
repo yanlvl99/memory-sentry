@@ -1174,95 +1174,6 @@ pub fn swap_server(new_exe_arg: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Remove the previous (Inno Setup) install before the MSI lays down the new product. It always
-/// targets the legacy program folder directly (never the registry, which can point at a folder that
-/// is not the legacy one). It force-stops the legacy server (matched by its folder path, so the new
-/// install is never touched), deletes the entire legacy folder, and clears the stale uninstall
-/// registry key. It deliberately does NOT run the old uninstaller (which can fail or reload
-/// Spicetify) and does NOT call spicetify apply — configure_install owns that. If the folder cannot
-/// be removed it shows the exact reason, guides the user through Task Manager, and errors so the
-/// installer stops instead of leaving a duplicate behind.
-pub fn remove_previous_version() -> Result<(), String> {
-    let new_program = program_dir()?;
-    let old_program = install_dir()?;
-    if old_program == new_program {
-        return Ok(());
-    }
-    if old_program.exists() {
-        terminate_program_in(&old_program);
-        remove_dir_with_retries(&old_program).map_err(|e| guided_removal_failure(&old_program, e))?;
-    }
-    cleanup_legacy_uninstall_key();
-    Ok(())
-}
-
-/// Force-stop the legacy server by its full folder path. Path matching leaves the freshly installed
-/// executable (same file name, different folder) running.
-fn terminate_program_in(dir: &PathBuf) {
-    let _ = platform::force_terminate_installed_process(&dir.join("MemorySentry.exe"));
-}
-
-/// Delete the legacy folder, retrying briefly because a just-killed process can hold a handle for a
-/// moment. A folder that vanished (NotFound) counts as success.
-fn remove_dir_with_retries(dir: &PathBuf) -> std::io::Result<()> {
-    let mut last_error =
-        std::io::Error::new(std::io::ErrorKind::Other, "the legacy folder could not be removed");
-    for _ in 0..5 {
-        match fs::remove_dir_all(dir) {
-            Ok(()) => return Ok(()),
-            Err(error) => {
-                if error.kind() == std::io::ErrorKind::NotFound {
-                    return Ok(());
-                }
-                last_error = error;
-                std::thread::sleep(std::time::Duration::from_millis(400));
-            }
-        }
-    }
-    Err(last_error)
-}
-
-/// Drop the stale Inno uninstall key once the legacy folder is gone, so Add/Remove Programs does
-/// not keep a dead entry. The key is the Inno AppId, distinct from the MSI product's own key.
-fn cleanup_legacy_uninstall_key() {
-    let key = legacy_uninstall_key();
-    let _ = Command::new("reg.exe")
-        .args(["delete", &key, "/f"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-}
-
-fn legacy_uninstall_key() -> String {
-    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{C0C9DB49-DBD6-4985-84A1-C4D0C1AA98EC}_is1".to_string()
-}
-
-/// Last-resort message when the legacy folder is locked: name the exact folder and walk the user
-/// through ending the process and deleting it, then return the error so the install stops.
-fn guided_removal_failure(dir: &PathBuf, error: std::io::Error) -> String {
-    let message = format!(
-        "Memory Sentry could not remove the old version at:\n{}\n\nReason: {}\n\nFinish it manually: close Spotify, open Task Manager (Ctrl+Shift+Esc), end any \"Memory Sentry\" process, delete the folder shown above, then run Setup again.",
-        dir.display(),
-        error
-    );
-    platform::fatal_setup_message(&message);
-    message
-}
-
-/// MSI install entry point. Stops the previous server and migrates data (copy-only), removes the
-/// old Inno install (aborting with an exact error dialog if that fails), then registers the new
-/// Custom App and applies Spicetify. Any step returning an error stops the chain so the installer
-/// rolls the whole transaction back instead of leaving a partial or duplicated install.
-pub fn msi_install(custom_app_dir: &str) -> Result<(), String> {
-    let program = program_dir()?;
-    fs::create_dir_all(&program)
-        .map_err(|e| format!("Could not create the program folder {}: {e}", program.display()))?;
-    prepare_upgrade()?;
-    remove_previous_version()?;
-    configure_install(custom_app_dir)
-}
-
 pub fn pre_uninstall() -> Result<(), String> {
     // Do not make the user close Spotify just to uninstall. Restore and stop the helper first,
     // remove its logon launch registration, then let spicetify apply refresh/restart Spotify.
@@ -1306,21 +1217,6 @@ fn request_shutdown(port: u16, token: &str) -> Result<(), String> {
 pub fn check_supported_os() -> Result<(), String> {
     let (name, build) = platform::detect_supported_client_os()?;
     println!("Supported system detected: {name} build {build}.");
-    Ok(())
-}
-
-pub fn check_spicetify_cli() -> Result<(), String> {
-    let cli = find_spicetify().ok_or(
-        "Spicetify CLI was not found. Install Spicetify for the same Windows user that runs Spotify, then rerun Memory Sentry Setup."
-    )?;
-    println!("Spicetify CLI found at {}.", cli.display());
-    Ok(())
-}
-
-pub fn check_install_prerequisites() -> Result<(), String> {
-    check_supported_os()?;
-    check_spicetify_cli()?;
-    println!("Installation prerequisites passed. Spotify may restart automatically when Spicetify applies the Custom App.");
     Ok(())
 }
 

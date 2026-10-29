@@ -110,7 +110,6 @@ extern "system" {
 
 #[link(name = "user32")]
 extern "system" {
-    fn MessageBoxW(hwnd: Handle, text: *const u16, caption: *const u16, utype: u32) -> i32;
     fn IsWindow(hwnd: Handle) -> i32;
     fn IsWindowVisible(hwnd: Handle) -> i32;
     fn IsIconic(hwnd: Handle) -> i32;
@@ -569,19 +568,6 @@ pub fn detach_stdio_from_children() {
                 SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0);
             }
         }
-    }
-}
-
-/// Show a modal error dialog with the exact reason. Used by setup-time verbs so a failure surfaces
-/// to the user, not only to the installer log. MB_OK | MB_ICONERROR.
-pub fn fatal_setup_message(message: &str) {
-    let encode = |value: &str| -> Vec<u16> {
-        value.encode_utf16().chain(std::iter::once(0)).collect()
-    };
-    let text = encode(message);
-    let caption = encode("Memory Sentry — Setup stopped");
-    unsafe {
-        MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), 0x0000_0010);
     }
 }
 
