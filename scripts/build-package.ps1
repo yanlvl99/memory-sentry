@@ -54,45 +54,16 @@ function Write-Sha256([string]$Path) {
 # --- MSI (WiX v5) build ---
 $WixCommand = Get-Command "wix" -ErrorAction SilentlyContinue
 if (-not $WixCommand) { $WixCommand = Get-Command "wix.exe" -ErrorAction SilentlyContinue }
+if (-not $WixCommand) { throw "WiX toolset (wix) was not found. Install the .NET SDK and run 'dotnet tool install --global wix', then add the UI and Util extensions." }
 $WixProjDir = Join-Path $Root "installer\wix"
-if ($WixCommand -and (Test-Path -LiteralPath (Join-Path $WixProjDir "Product.wxs") -PathType Leaf)) {
-    $Msi = Join-Path $Dist ("MemorySentryForSpicetify-" + $Version + ".msi")
-    Push-Location $WixProjDir
-    try {
-        & $WixCommand.Source build -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext -arch x64 -o $Msi "Product.wxs"
-        if ($LASTEXITCODE -ne 0) { throw "WiX MSI build failed with exit code $LASTEXITCODE." }
-    } finally { Pop-Location }
-    if (-not (Test-Path -LiteralPath $Msi -PathType Leaf)) { throw "WiX completed without producing $Msi." }
-    Write-Sha256 $Msi
-    Write-Host "MSI installer: $Msi"
-} else {
-    Write-Warning "WiX (wix) not found or Product.wxs missing; skipped MSI build. Install .NET SDK + 'dotnet tool install --global wix' + UI/Util extensions."
-}
+if (-not (Test-Path -LiteralPath (Join-Path $WixProjDir "Product.wxs") -PathType Leaf)) { throw "The WiX project installer\wix\Product.wxs is missing." }
+$Msi = Join-Path $Dist ("MemorySentryForSpicetify-" + $Version + ".msi")
+Push-Location $WixProjDir
+try {
+    & $WixCommand.Source build -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext -arch x64 -o $Msi "Product.wxs"
+    if ($LASTEXITCODE -ne 0) { throw "WiX MSI build failed with exit code $LASTEXITCODE." }
+} finally { Pop-Location }
+if (-not (Test-Path -LiteralPath $Msi -PathType Leaf)) { throw "WiX completed without producing $Msi." }
+Write-Sha256 $Msi
+Write-Host "Official installer: $Msi"
 
-$InnoCandidates = @(
-    (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"),
-    (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe"),
-    (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
-    (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 7\ISCC.exe"),
-    (Join-Path $env:ProgramFiles "Inno Setup 7\ISCC.exe"),
-    (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 7\ISCC.exe")
-)
-$ISCC = $InnoCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-if (-not $ISCC) {
-    $command = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
-    if ($command) { $ISCC = $command.Source }
-}
-if (-not $ISCC) { throw "Inno Setup compiler (ISCC.exe) was not found. Install Inno Setup 6 or 7 before packaging." }
-
-$Iss = Join-Path $Root "installer\inno\MemorySentry.iss"
-& $ISCC ("/DAppVersion=" + $Version) ("/DStageDir=" + $Stage) $Iss
-if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed with exit code $LASTEXITCODE." }
-$SetupExe = Join-Path $Dist ("MemorySentrySetup-" + $Version + ".exe")
-if (-not (Test-Path -LiteralPath $SetupExe -PathType Leaf)) { throw "Inno Setup completed without producing $SetupExe." }
-$sha = [System.Security.Cryptography.SHA256]::Create()
-try { $stream = [System.IO.File]::OpenRead($SetupExe); try { $Hash = ([System.BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-', '').ToLowerInvariant() } finally { $stream.Dispose() } } finally { $sha.Dispose() }
-$HashPath = $SetupExe + ".sha256"
-Set-Content -LiteralPath $HashPath -Value ($Hash + "  " + [IO.Path]::GetFileName($SetupExe)) -Encoding ASCII
-Write-Host ("SHA-256 " + [IO.Path]::GetFileName($SetupExe) + ": " + $Hash)
-Write-Host "Official installer: $SetupExe"
-Write-Host "Checksum: $HashPath"

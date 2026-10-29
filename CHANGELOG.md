@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The installer is now a single per-user WiX v5 MSI (`MemorySentryForSpicetify-<version>.msi`). The Inno Setup build, its CI jobs and release artifacts were removed, so the MSI is the only supported install, upgrade and uninstall path.
 - Split user data into its own folder (`%LOCALAPPDATA%\MemorySentryForSpicetify`) and install the program under `%LOCALAPPDATA%\Programs\MemorySentryForSpicetify`, so an upgrade never leaves an orphaned second copy. An existing single-folder install migrates automatically on upgrade, and `settings.json` is stamped with a schema version. A corrupt or missing settings file no longer blocks startup (the bad file is kept as `settings.json.bad` and fresh defaults are written), and an upgrade now force-stops a hung server before replacing it instead of failing. The Spicetify Custom App is renamed to `MemorySentryForSpicetify`, and the old one is unregistered on upgrade so no duplicate icon remains.
 - The Audio process is no longer pinned to a fixed 36 MB ceiling: it now adapts between 36 MB and 60 MB like the other roles, raising under sustained load at the ceiling and falling back when quiet, and its state badge reads "Adaptive" once a limit is applied.
 - Make the low-limit warning apply only through the "Apply lower limit" button: closing it by clicking outside or pressing Escape now restores the previous value instead of applying, and the warning no longer reappears on its own.

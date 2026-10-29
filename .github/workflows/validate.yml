@@ -48,12 +48,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "The server version command failed." }
           & $binary --self-test
           if ($LASTEXITCODE -ne 0) { throw "The server self-test failed." }
-      - name: Install Inno Setup 6
-        shell: pwsh
-        run: choco install innosetup --yes --no-progress
-      - name: Build the one supported per-user Setup EXE
+      - name: Install WiX v5 and build the per-user MSI
         shell: pwsh
         run: |
+          dotnet tool install --global wix --version 5.0.2
+          $env:Path += ";$env:USERPROFILE\.dotnet\tools"
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+          wix extension add -g WixToolset.Util.wixext/5.0.2
           $cargo = Get-Content server/Cargo.toml -Raw
           if ($cargo -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw "Could not read Cargo version." }
           .\scripts\build-package.ps1 -Version $Matches[1]
@@ -63,5 +64,5 @@ jobs:
           name: MemorySentry-validation-build
           if-no-files-found: error
           path: |
-            dist/MemorySentrySetup-*.exe
-            dist/MemorySentrySetup-*.exe.sha256
+            dist/MemorySentryForSpicetify-*.msi
+            dist/MemorySentryForSpicetify-*.msi.sha256
