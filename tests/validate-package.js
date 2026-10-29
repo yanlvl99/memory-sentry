@@ -57,7 +57,7 @@ check('privacy explicitly states no uploads', /No information is uploaded/i.test
 check('security notes never disable antivirus', /does not disable antivirus/i.test(read('SECURITY.md')));
 check('Marketplace preview exists', fs.existsSync(path.join(root, marketplaceManifest.preview)));
 check('release publishes only the official per-user MSI and its SHA-256', /MemorySentryForSpicetify-\*\.msi/.test(read('.github/workflows/release.yml')) && /MemorySentryForSpicetify-\*\.msi\.sha256/.test(read('.github/workflows/release.yml')) && !/MemorySentry-\*windows-x64\.zip/.test(read('.github/workflows/release.yml')) && /action-gh-release/i.test(read('.github/workflows/release.yml')));
-check('build output has one supported installer and no custom portable ZIP', /MemorySentryForSpicetify-.*\.msi/.test(read('scripts/build-package.ps1')) && !/MemorySentrySetup-/.test(read('scripts/build-package.ps1')) && !/Compress-Archive/.test(read('scripts/build-package.ps1')) && !/MemorySentry-.*windows-x64\.zip/.test(read('scripts/build-package.ps1')));
+check('build output uses the MSI packaging script and no custom portable ZIP', /MemorySentryForSpicetify-.*\.msi/.test(read('scripts/build-package.ps1')) && !/MemorySentrySetup-/.test(read('scripts/build-package.ps1')) && !/Compress-Archive/.test(read('scripts/build-package.ps1')) && !/MemorySentry-.*windows-x64\.zip/.test(read('scripts/build-package.ps1')));
 
 const wixScript = read('installer/wix/Product.wxs');
 const buildScript = read('scripts/build-package.ps1');
@@ -138,6 +138,8 @@ const sbbBody = rustRuntime.slice(rustRuntime.indexOf('fn start_background_copy(
 check('server writes the monitor log to data_dir, not the program folder', sbbBody.includes('data_dir()'));
 check('configure migrates legacy layout before reading saved settings', configureBody.includes('migrate_legacy_layout()') && configureBody.indexOf('migrate_legacy_layout()') < configureBody.indexOf('let existing_raw'));
 check('build script compiles WiX MSI', /\$WixCommand.*build/.test(buildScript) && /WixToolset\.UI\.wixext/.test(buildScript) && /\.msi/.test(buildScript));
+check('packaging script builds native x64 and arm64 servers and MSIs', /x86_64-pc-windows-msvc/.test(buildScript) && /aarch64-pc-windows-msvc/.test(buildScript) && /WixArch/.test(buildScript) && /-arch \$arch\.WixArch/.test(buildScript));
+check('CI installs the aarch64 Windows target in both workflows', /rustup target add aarch64-pc-windows-msvc/.test(validation) && /rustup target add aarch64-pc-windows-msvc/.test(read('.github/workflows/release.yml')));
 
 check('CI runs package validation', validation.includes('node tests/validate-package.js'));
 check('release versions are aligned on 1.0.0-rc.3', rustCargo.includes('version = "1.0.0-rc.3"') && read('server/Cargo.lock').includes('version = "1.0.0-rc.3"') && rustRuntime.includes('const VERSION: &str = "1.0.0-rc.3";') && read('README.md').includes('1.0.0-rc.3') && app.includes('v1.0.0-rc.3'));
