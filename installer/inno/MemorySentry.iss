@@ -66,7 +66,7 @@ brazilianportuguese.InstallationGuide=Guia de instalação
 [Files]
 Source: "{#StageDir}\MemorySentry.exe"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "{#StageDir}\MemorySentry.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#StageDir}\app\*"; DestDir: "{userappdata}\spicetify\CustomApps\SpicetifyMemorySentry"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#StageDir}\app\*"; DestDir: "{userappdata}\spicetify\CustomApps\MemorySentryForSpicetify"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#StageDir}\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#StageDir}\PRIVACY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
@@ -82,7 +82,9 @@ Name: "{autoprograms}\Memory Sentry\Uninstall Memory Sentry"; Filename: "{uninst
 Filename: "{app}\MemorySentry.exe"; Parameters: "--launch"; Description: "{cm:StartMemorySentry}"; Flags: runhidden
 
 [UninstallDelete]
+Type: filesandordirs; Name: "{userappdata}\spicetify\CustomApps\MemorySentryForSpicetify"
 Type: filesandordirs; Name: "{userappdata}\spicetify\CustomApps\SpicetifyMemorySentry"
+Type: filesandordirs; Name: "{localappdata}\MemorySentryForSpicetify"
 Type: filesandordirs; Name: "{app}\logs"
 Type: files; Name: "{app}\settings.json"
 Type: files; Name: "{app}\helper.pid"
@@ -110,7 +112,7 @@ var
   LogFile: String;
 begin
   Result := '';
-  LogFile := ExpandConstant('{localappdata}\SpicetifyMemorySentry\logs\setup.log');
+  LogFile := ExpandConstant('{localappdata}\MemorySentryForSpicetify\logs\setup.log');
   if FileExists(LogFile) and LoadStringFromFile(LogFile, LogText) then begin
     if Length(LogText) > 1800 then
       LogText := Copy(LogText, Length(LogText) - 1799, 1800);
@@ -167,7 +169,7 @@ var
   Diagnostic: String;
 begin
   if CurStep = ssPostInstall then begin
-    AppTarget := ExpandConstant('{userappdata}\spicetify\CustomApps\SpicetifyMemorySentry');
+    AppTarget := ExpandConstant('{userappdata}\spicetify\CustomApps\MemorySentryForSpicetify');
     if (not Exec(ExpandConstant('{app}\MemorySentry.exe'), '--configure "' + AppTarget + '"', '', SW_HIDE, ewWaitUntilTerminated, Code)) or (Code <> 0) then begin
       // Only roll back the external Custom App if the server confirms recovery/unregistration.
       if RunInstalledServer('--pre-uninstall', CleanupCode) and (CleanupCode = 0) then
@@ -191,8 +193,8 @@ var
   RecoveryJson: String;
 begin
   Result := False;
-  RecoveryTsv := ExpandConstant('{app}\working-set-backup.tsv');
-  RecoveryJson := ExpandConstant('{app}\working-set-backup.json');
+  RecoveryTsv := ExpandConstant('{localappdata}\MemorySentryForSpicetify\working-set-backup.tsv');
+  RecoveryJson := ExpandConstant('{localappdata}\SpicetifyMemorySentry\working-set-backup.json');
   if FileExists(ExpandConstant('{app}\MemorySentry.exe')) then begin
     if (not RunInstalledServer('--pre-uninstall', Code)) or (Code <> 0) then begin
       MsgBox(CustomMessage('UninstallStopped'), mbError, MB_OK);
