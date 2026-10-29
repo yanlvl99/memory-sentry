@@ -11,6 +11,9 @@ pub const QUOTA_LIMITS_HARDWS_MIN_DISABLE: u32 = 0x0000_0002;
 pub const QUOTA_LIMITS_HARDWS_MAX_ENABLE: u32 = 0x0000_0004;
 pub const HARD_CAP_FLAGS: u32 = QUOTA_LIMITS_HARDWS_MIN_DISABLE | QUOTA_LIMITS_HARDWS_MAX_ENABLE;
 pub const MIN_WORKING_SET_BYTES: usize = 80 * 1024;
+const TH32CS_SNAPPROCESS: u32 = 0x0000_0002;
+const PROCESS_TERMINATE: u32 = 0x0001;
+const ERROR_NO_MORE_FILES: u32 = 18;
 
 type Handle = *mut c_void;
 
@@ -90,6 +93,13 @@ extern "system" {
     fn CreateMutexW(attributes: *mut c_void, initial_owner: i32, name: *const u16) -> Handle;
     fn ReleaseMutex(handle: Handle) -> i32;
     fn QueryFullProcessImageNameW(process: Handle, flags: u32, exe_name: *mut u16, size: *mut u32) -> i32;
+    fn CreateToolhelp32Snapshot(flags: u32, process_id: u32) -> Handle;
+    fn Process32FirstW(snapshot: Handle, entry: *mut ProcessEntry32W) -> i32;
+    fn Process32NextW(snapshot: Handle, entry: *mut ProcessEntry32W) -> i32;
+    fn TerminateProcess(process: Handle, exit_code: u32) -> i32;
+    fn WaitForSingleObject(handle: Handle, milliseconds: u32) -> u32;
+    fn GetStdHandle(which: i32) -> Handle;
+    fn SetHandleInformation(handle: Handle, mask: u32, flags: u32) -> i32;
 }
 
 #[link(name = "psapi")]
@@ -100,6 +110,7 @@ extern "system" {
 
 #[link(name = "user32")]
 extern "system" {
+    fn MessageBoxW(hwnd: Handle, text: *const u16, caption: *const u16, utype: u32) -> i32;
     fn IsWindow(hwnd: Handle) -> i32;
     fn IsWindowVisible(hwnd: Handle) -> i32;
     fn IsIconic(hwnd: Handle) -> i32;
@@ -140,6 +151,25 @@ extern "system" {
         out: *mut *mut c_void,
     ) -> i32;
 }
+
+#[repr(C)]
+struct ProcessEntry32W {
+    dw_size: u32,
+    cnt_usage: u32,
+    th32_process_id: u32,
+    th32_default_heap_id: usize,
+    th32_module_id: u32,
+    cnt_threads: u32,
+    th32_parent_process_id: i32,
+    pc_pri_class_base: i32,
+    dw_flags: u32,
+    sz_exe_file: [u16; 260],
+}
+
+// PROCESSENTRY32W is 568 bytes on 64-bit Windows. Process32First rejects a mismatched dwSize,
+// so an incorrect layout silently enumerates zero processes and the forced stop becomes a no-op.
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<ProcessEntry32W>() == 568);
 
 #[derive(Clone, Debug)]
 pub struct ProcessRow {
@@ -525,6 +555,36 @@ pub fn classify_windows(
     ("hidden", largest_window(candidates))
 }
 
+/// Clear the inherit flag on our stdout/stderr so a detached child we spawn (the monitor) does not
+/// inherit the installer custom action's output pipe. Without this, the child keeps the pipe's write
+/// end open after the parent exits, so the waiting custom action never sees EOF and the setup hangs.
+pub fn detach_stdio_from_children() {
+    const STD_OUTPUT_HANDLE: i32 = -11;
+    const STD_ERROR_HANDLE: i32 = -12;
+    const HANDLE_FLAG_INHERIT: u32 = 0x0000_0001;
+    unsafe {
+        for which in [STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+            let handle = GetStdHandle(which);
+            if !handle.is_null() && handle as isize != -1 {
+                SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0);
+            }
+        }
+    }
+}
+
+/// Show a modal error dialog with the exact reason. Used by setup-time verbs so a failure surfaces
+/// to the user, not only to the installer log. MB_OK | MB_ICONERROR.
+pub fn fatal_setup_message(message: &str) {
+    let encode = |value: &str| -> Vec<u16> {
+        value.encode_utf16().chain(std::iter::once(0)).collect()
+    };
+    let text = encode(message);
+    let caption = encode("Memory Sentry — Setup stopped");
+    unsafe {
+        MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), 0x0000_0010);
+    }
+}
+
 pub fn random_token() -> Result<String, String> {
     let mut bytes = [0u8; 32];
     let status = unsafe {
@@ -688,6 +748,77 @@ pub fn process_matches_executable(pid: u32, expected_path: &Path) -> bool {
     let expected = expected_path.canonicalize().unwrap_or_else(|_| expected_path.to_path_buf());
     let normalize = |value: &str| value.replace('/', "\\").trim_start_matches(r"\\?\").to_ascii_lowercase();
     normalize(&actual) == normalize(&expected.to_string_lossy())
+}
+
+/// PIDs of running processes whose image path matches `installed_exe`, excluding this process.
+/// A failed snapshot or enumeration is reported as `Err` so it can never masquerade as "nothing
+/// to stop".
+pub fn installed_process_pids(installed_exe: &Path) -> Result<Vec<u32>, String> {
+    let mut pids = Vec::new();
+    let self_pid = current_process_id();
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot.is_null() || snapshot as isize == -1 {
+        return Err(format!(
+            "Could not snapshot the process list (Win32 error {}).",
+            last_error()
+        ));
+    }
+    let mut entry = ProcessEntry32W {
+        dw_size: std::mem::size_of::<ProcessEntry32W>() as u32,
+        cnt_usage: 0,
+        th32_process_id: 0,
+        th32_default_heap_id: 0,
+        th32_module_id: 0,
+        cnt_threads: 0,
+        th32_parent_process_id: 0,
+        pc_pri_class_base: 0,
+        dw_flags: 0,
+        sz_exe_file: [0; 260],
+    };
+    if unsafe { Process32FirstW(snapshot, &mut entry) } == 0 {
+        let error = last_error();
+        unsafe { CloseHandle(snapshot); }
+        if error != ERROR_NO_MORE_FILES {
+            return Err(format!("Could not enumerate processes (Win32 error {error})."));
+        }
+        return Ok(pids);
+    }
+    loop {
+        let pid = entry.th32_process_id;
+        if pid != self_pid && process_matches_executable(pid, installed_exe) {
+            pids.push(pid);
+        }
+        if unsafe { Process32NextW(snapshot, &mut entry) } == 0 {
+            break;
+        }
+    }
+    unsafe { CloseHandle(snapshot); }
+    Ok(pids)
+}
+
+/// Terminate every running instance of the installed server executable, waiting briefly for
+/// each to exit. Never touches this process. Returns Err if enumeration fails or a process still
+/// survives, so callers can refuse to replace a locked executable.
+pub fn force_terminate_installed_process(installed_exe: &Path) -> Result<(), String> {
+    for pid in installed_process_pids(installed_exe)? {
+        let handle = open_process(pid, PROCESS_TERMINATE)?;
+        if unsafe { TerminateProcess(handle, 1) } == 0 {
+            let error = last_error();
+            unsafe { CloseHandle(handle); }
+            return Err(format!("TerminateProcess({pid}) failed with Win32 error {error}"));
+        }
+        unsafe { WaitForSingleObject(handle, 3000); }
+        unsafe { CloseHandle(handle); }
+    }
+    let survivors = installed_process_pids(installed_exe)?;
+    if survivors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Memory Sentry process(es) {:?} survived forced termination.",
+            survivors
+        ))
+    }
 }
 
 pub struct SingleInstanceGuard {
