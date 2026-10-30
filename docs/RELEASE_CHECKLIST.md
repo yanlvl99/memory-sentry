@@ -32,6 +32,7 @@ Do not call the release stable until all required real-desktop tests are complet
 
 ## Public release
 
+- [ ] Promote `develop` to `main` through a release pull request, then create the version tag on the `main` merge commit; the publish workflow builds and attaches the installers from that tag.
 - [ ] CI passes on the exact release commit.
 - [ ] MSI and SHA-256 files are attached to the correct release.
 - [ ] Mark v1.0.0-rc.4 as a prerelease; create stable v1.0.0 only after every required Windows 10/11 real-desktop test passes.
