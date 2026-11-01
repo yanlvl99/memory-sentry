@@ -472,7 +472,7 @@ function MSSApp() {
             : (process.capped ? tx('tagAdaptive') : tx('tagNoCeiling')));
         return h('div', { className: 'mss-process', key },
           h('div', { className: 'mss-process-main' },
-            h('div', { className: 'mss-process-name' }, MSSRoleLabel(process.role), h('span', { className: 'mss-role' }, MSS_ROLE_NAMES[process.role] || process.role)),
+            h('div', { className: 'mss-process-name' }, MSSRoleLabel(process.role), h('span', { className: 'mss-role' }, `· ${process.pid}`), h('span', { className: 'mss-memory-value' }, `${MSSFormatMB(displayedMemoryMB)} MB`)),
             meta ? h('div', { className: 'mss-process-meta' }, meta) : null
           ),
           h('div', { className: 'mss-bar-cell', tabIndex: 0, 'aria-label': peekText, onMouseMove: MSSPositionPeek, onMouseEnter: MSSPositionPeek },
