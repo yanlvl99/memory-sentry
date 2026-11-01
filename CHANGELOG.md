@@ -7,6 +7,7 @@
 ## Unreleased
 
 - Differentiate process rows by PID and show the memory value on the line: the role-name chip is replaced by the process PID so identical rows are distinguishable, and the memory MB value is now visible next to the role name instead of only in the tooltip. Small font sizes (10/11.5px) were bumped to 11/12px for readability. (d62d5f6)
+- The process memory tooltip now clamps to the viewport instead of the bar cell, so it no longer covers the column header or a neighbouring row, flips below the bar when there is no room above, and keeps its arrow pointing at the hovered position.
 - Documented the repository's branching and release model: `main` is the protected stable branch holding only released code and `v*` tags, while `develop` is the protected integration branch that every feature, fix and documentation pull request targets, with CI (JavaScript validation, Rust policy tests and the Windows x64/ARM64 setup build) running before merge. A release is cut by promoting `develop` into `main` through a dedicated release pull request and tagging the resulting merge commit; direct merges into `main` are disallowed (PR #24).
 
 ## 1.0.0-rc.4 — WiX v5 MSI installer, Windows ARM64, split data folder, adaptive Audio ceiling
