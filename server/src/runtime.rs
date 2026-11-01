@@ -16,7 +16,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const VERSION: &str = "1.0.0-rc.4";
+const VERSION: &str = "1.0.0-rc.5";
 const DEFAULT_PORT: u16 = 38472;
 const DEFAULT_HIDDEN_DELAY_SECONDS: u64 = 2;
 const MIN_MANUAL_CAP_MB: u32 = 8;
