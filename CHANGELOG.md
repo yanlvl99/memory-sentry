@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0-rc.5 — Automatic caps survive PID changes
+
+- Automatic memory limits now survive Spotify process ID changes: the adaptive ceiling reached for each role is persisted by role (not by PID) and reapplied to new processes of the same role, so a PID rotation no longer drops the learned limit. Per-process backups are still kept for restore. (PR #26, a84b522, 1b08369)
+
+## Unreleased
+
+- Documented the repository's branching and release model: `main` is the protected stable branch holding only released code and `v*` tags, while `develop` is the protected integration branch that every feature, fix and documentation pull request targets, with CI (JavaScript validation, Rust policy tests and the Windows x64/ARM64 setup build) running before merge. A release is cut by promoting `develop` into `main` through a dedicated release pull request and tagging the resulting merge commit; direct merges into `main` are disallowed (PR #24).
+
 ## 1.0.0-rc.4 — WiX v5 MSI installer, Windows ARM64, split data folder, adaptive Audio ceiling
 
 - The installer is now a single per-user WiX v5 MSI (`MemorySentryForSpicetify-<version>-<arch>.msi`); the Inno Setup build, its CI jobs and its release artifacts were removed, so the MSI is the only supported install, upgrade and uninstall path.

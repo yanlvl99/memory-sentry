@@ -16,7 +16,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const VERSION: &str = "1.0.0-rc.4";
+const VERSION: &str = "1.0.0-rc.5";
 const DEFAULT_PORT: u16 = 38472;
 const DEFAULT_HIDDEN_DELAY_SECONDS: u64 = 2;
 const MIN_MANUAL_CAP_MB: u32 = 8;
@@ -32,7 +32,7 @@ const TRIM_COOLDOWN_MS: u64 = 15_000;
 const MINIMUM_BACKUP_HEADER: &str = "# Memory Sentry recovery records v1";
 const APP_NAME: &str = "MemorySentryForSpicetify";
 const LEGACY_APP_NAME: &str = "SpicetifyMemorySentry";
-const CURRENT_SCHEMA_VERSION: u32 = 2;
+const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Clone, Debug)]
 struct Settings {
@@ -47,6 +47,7 @@ struct Settings {
     optimize_when_hidden: bool,
     manual_caps: BTreeMap<(u32, u64), u32>,
     manual_role_caps: BTreeMap<String, u32>,
+    auto_role_caps: BTreeMap<String, u32>,
     schema_version: u32,
 }
 
@@ -445,6 +446,24 @@ fn parse_manual_role_caps(text: &str) -> BTreeMap<String, u32> {
         .collect()
 }
 
+fn parse_auto_role_caps(text: &str) -> BTreeMap<String, u32> {
+    parse_json_string_array(text, "autoRoleCaps")
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|entry| {
+            let (role, cap) = entry.split_once(':')?;
+            let cap = cap.parse::<u32>().ok()?;
+            if !matches!(role, "Main" | "GPU" | "Renderer" | "Utility" | "Crashpad" | "Helper" | "Audio")
+                || cap < MIN_CAP_MB
+                || cap > MAX_CAP_MB
+            {
+                return None;
+            }
+            Some((role.to_string(), cap))
+        })
+        .collect()
+}
+
 fn load_settings(path: &Path) -> Result<Settings, String> {
     let raw = fs::read_to_string(path)
         .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
@@ -466,6 +485,7 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
     let optimize_when_hidden = parse_json_bool(&raw, "optimizeWhenHidden").unwrap_or(true);
     let manual_caps = parse_manual_caps(&raw);
     let manual_role_caps = parse_manual_role_caps(&raw);
+    let auto_role_caps = parse_auto_role_caps(&raw);
     Ok(Settings {
         port,
         token,
@@ -478,6 +498,7 @@ fn load_settings(path: &Path) -> Result<Settings, String> {
         optimize_when_hidden,
         manual_caps,
         manual_role_caps,
+        auto_role_caps,
         schema_version: CURRENT_SCHEMA_VERSION,
     })
 }
@@ -499,9 +520,15 @@ fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
         .map(|(role, cap)| json_quote(&format!("{role}:{cap}")))
         .collect::<Vec<_>>()
         .join(", ");
+    let auto_role_caps = settings
+        .auto_role_caps
+        .iter()
+        .map(|(role, cap)| json_quote(&format!("{role}:{cap}")))
+        .collect::<Vec<_>>()
+        .join(", ");
     let contents = format!(
-        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"optimizeWhenBackground\": {},\n  \"optimizeWhenMinimized\": {},\n  \"optimizeWhenHidden\": {},\n  \"manualCaps\": [{}],\n  \"manualRoleCaps\": [{}],\n  \"schemaVersion\": {},\n  \"version\": \"{}\"\n}}\n",
-        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, manual_caps, manual_role_caps, settings.schema_version, VERSION
+        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"hiddenDelaySeconds\": {},\n  \"trimToCap\": {},\n  \"optimizeWhenBackground\": {},\n  \"optimizeWhenMinimized\": {},\n  \"optimizeWhenHidden\": {},\n  \"manualCaps\": [{}],\n  \"manualRoleCaps\": [{}],\n  \"autoRoleCaps\": [{}],\n  \"schemaVersion\": {},\n  \"version\": \"{}\"\n}}\n",
+        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.hidden_delay_seconds, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, manual_caps, manual_role_caps, auto_role_caps, settings.schema_version, VERSION
     );
     let mut file = File::create(&temp).map_err(|e| format!("Could not stage settings: {e}"))?;
     file.write_all(contents.as_bytes())
@@ -531,6 +558,7 @@ fn bootstrap_default_settings(path: &Path) -> Result<Settings, String> {
         optimize_when_hidden: true,
         manual_caps: BTreeMap::new(),
         manual_role_caps: BTreeMap::new(),
+        auto_role_caps: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
     };
     write_settings(path, &settings)?;
@@ -912,6 +940,7 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
         optimize_when_hidden: parse_json_bool(&existing_raw, "optimizeWhenHidden").unwrap_or(true),
         manual_caps: parse_manual_caps(&existing_raw),
         manual_role_caps: parse_manual_role_caps(&existing_raw),
+        auto_role_caps: parse_auto_role_caps(&existing_raw),
         schema_version: CURRENT_SCHEMA_VERSION,
     };
     write_settings(&settings_path, &settings)?;
@@ -1728,7 +1757,8 @@ fn apply_initial_cap(
     }
     let limits = platform::read_original_limits(process.pid, process.creation)?;
     let before = process.working_set_mb;
-    let baseline = role.baseline_cap_mb().unwrap_or(24);
+    let baseline = configured_auto_cap(&state.settings, role)
+        .unwrap_or_else(|| role.baseline_cap_mb().unwrap_or(24));
     let record = BackupRecord::capture_original(process.pid, process.creation, role, limits, false);
     state.active_caps.insert(process.pid, record);
     // Recovery must be durable before the working-set limit is changed.
@@ -2083,6 +2113,7 @@ fn update_caps(state: &mut AppState, now: u64) {
                     if let Some(record) = state.active_caps.get_mut(&process.pid) {
                         record.record_applied_cap(role, next_cap, false);
                     }
+                    state.settings.auto_role_caps.insert(role_name(role).to_string(), next_cap);
                     if let Some(profile) = state.profiles.get_mut(&process.pid) {
                         profile.current_cap_mb = next_cap;
                         profile.last_adjustment_at_ms = now;
@@ -2110,6 +2141,8 @@ fn update_caps(state: &mut AppState, now: u64) {
                     }
                     if let Err(error) = persist_backups(state) {
                         log_event(state, format!("Adjusted PID {} to {next_cap} MB but could not persist updated recovery state: {error}", process.pid), "error");
+                    } else if let Err(error) = write_settings(&state.settings_path, &state.settings) {
+                        log_event(state, format!("Adjusted PID {} to {next_cap} MB but could not persist settings: {error}", process.pid), "error");
                     } else {
                         log_event(state, format!(
                             "Adaptive cap {} {} PID {} from {old_cap} MB to {next_cap} MB (CPU {:.1}%, working set {:.1} MB{}).",
@@ -2142,6 +2175,10 @@ fn configured_manual_cap(
         .get(role_name(role))
         .copied()
         .or_else(|| settings.manual_caps.get(&(process.pid, process.creation)).copied())
+}
+
+fn configured_auto_cap(settings: &Settings, role: ProcessRole) -> Option<u32> {
+    settings.auto_role_caps.get(role_name(role)).copied()
 }
 
 fn reconcile_manual_caps(state: &mut AppState) {
@@ -3445,6 +3482,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
+            auto_role_caps: BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         };
         write_settings(&path, &settings).expect("write settings");
@@ -3508,6 +3546,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
+            auto_role_caps: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         assert!(should_manage_limits(&settings, "minimized"));
@@ -3542,6 +3581,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
+            auto_role_caps: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
@@ -3579,6 +3619,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
+            auto_role_caps: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
@@ -3631,6 +3672,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::from([((42, 100), 40)]),
             manual_role_caps: BTreeMap::from([("Renderer".to_string(), 52)]),
+            auto_role_caps: BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         };
         let restarted_process = platform::ProcessRow {
@@ -3703,6 +3745,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
+            auto_role_caps: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
@@ -3738,6 +3781,7 @@ mod tests {
             optimize_when_hidden: true,
             manual_caps: BTreeMap::new(),
             manual_role_caps: BTreeMap::new(),
+            auto_role_caps: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         settings.manual_caps.insert((42, identity), 36);
