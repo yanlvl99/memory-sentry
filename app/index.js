@@ -10,11 +10,21 @@ function MSSPositionPeek(event) {
   const peek = cell.querySelector('.mss-peek');
   if (!peek) return;
   const rect = cell.getBoundingClientRect();
-  const point = typeof event.clientX === 'number' ? event.clientX - rect.left : rect.width / 2;
-  const half = (peek.offsetWidth || 0) / 2;
-  const min = Math.min(half, rect.width / 2);
-  const max = Math.max(rect.width - half, rect.width / 2);
-  peek.style.left = `${Math.min(Math.max(point, min), max)}px`;
+  const peekWidth = peek.offsetWidth || 0;
+  const peekHeight = peek.offsetHeight || 0;
+  const half = peekWidth / 2;
+  const edge = 8;
+  const pointerX = typeof event.clientX === 'number' ? event.clientX : rect.left + rect.width / 2;
+  // Clamp the tooltip to the viewport (not the bar cell) so it never covers the column header or a neighbouring row.
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || rect.right;
+  const minCenter = edge + half;
+  const maxCenter = Math.max(viewportWidth - edge - half, minCenter);
+  const center = Math.min(Math.max(pointerX, minCenter), maxCenter);
+  peek.style.left = `${center - rect.left}px`;
+  // Keep the arrow over the real pointer even when the box is clamped away from it.
+  peek.style.setProperty('--mss-peek-arrow-offset', `${pointerX - center}px`);
+  // Flip the tooltip below the bar when there is no room above it (first rows in a short panel).
+  peek.classList.toggle('mss-peek-below', rect.top - peekHeight - 10 < 0);
 }
 
 function MSSDebugToggle(value, onChange) {

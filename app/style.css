@@ -107,7 +107,7 @@
   content: '';
   position: absolute;
   left: 50%;
-  margin-left: -4px;
+  margin-left: calc(-4px + var(--mss-peek-arrow-offset, 0px));
   top: 100%;
   width: 7px;
   height: 7px;
@@ -120,6 +120,10 @@
 .mss-bar-cell:hover .mss-peek,
 .mss-bar-cell:focus-visible .mss-peek { opacity: 1; transform: translateX(-50%) translateY(-4px); }
 .mss-bar-cell:focus-visible { outline: 1px solid var(--mss-border); outline-offset: 3px; border-radius: 4px; }
+.mss-peek.mss-peek-below { bottom: auto; top: calc(100% + 4px); }
+.mss-bar-cell:hover .mss-peek.mss-peek-below,
+.mss-bar-cell:focus-visible .mss-peek.mss-peek-below { transform: translateX(-50%) translateY(4px); }
+.mss-peek.mss-peek-below::after { top: auto; bottom: 100%; margin-top: 0; margin-bottom: -4px; border-right: 0; border-bottom: 0; border-left: 1px solid rgba(255, 255, 255, 0.14); border-top: 1px solid rgba(255, 255, 255, 0.14); }
 .mss-hover-hint { margin-top: 8px; }
 
 .mss-tag {
