@@ -52,13 +52,11 @@ The server is implemented in Rust; the Custom App is JavaScript served to Spotif
 
 ## Branching and release model
 
-The repository uses two long-lived branches:
+The repository uses a single long-lived branch (trunk-based):
 
-- `main` is the stable branch. It holds only released code and carries the release tags (`v*`). It is protected: changes arrive through a pull request with green status checks, and direct pushes, force-pushes and deletions are disallowed.
-- `develop` is the integration branch. Every feature, fix and documentation pull request targets `develop`, where CI (JavaScript validation, Rust policy tests and the Windows x64/ARM64 setup build) runs before merge. `develop` is protected the same way.
-
-Do not merge directly into `main`. A release is cut by promoting `develop` into `main` through a dedicated release pull request, then creating the version tag on the resulting `main` merge commit; the publish workflow builds and attaches the per-user MSIs from that tag.
+- `main` is the integration AND release branch. Every feature, fix and documentation pull request targets `main`, where CI (JavaScript validation, Rust policy tests and the Windows x64/ARM64 setup build) runs before merge. `main` is protected: changes arrive through a pull request with green status checks, and direct pushes, force-pushes and deletions are disallowed.
+- A release is cut by creating an annotated version tag (`v*`) on the `main` commit; the publish workflow builds and attaches the per-user MSIs from that tag. There is no separate `develop` branch.
 
 ## Publishing
 
-Feature and fix pull requests target `develop`; only the release promotion merges `develop` into `main` (see the branching model above). Use English Conventional Commit messages and review the exact staged diff. The PR must pass JavaScript validation, policy tests, Windows x64 and ARM64 compilation and setup packaging. Do not merge or publish a stable release until a clean Windows 10/11 desktop test confirms audio continuity, restore, upgrade, crash recovery and uninstall behavior.
+Feature and fix pull requests target `main`. Use English Conventional Commit messages and review the exact staged diff. The PR must pass JavaScript validation, policy tests, Windows x64 and ARM64 compilation and setup packaging. Do not merge or publish a stable release until a clean Windows 10/11 desktop test confirms audio continuity, restore, upgrade, crash recovery and uninstall behavior.
