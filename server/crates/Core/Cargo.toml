@@ -1,0 +1,14 @@
+[package]
+name = "memory-sentry-core"
+version = "1.0.0-rc.5"
+edition = "2021"
+rust-version = "1.75"
+publish = false
+description = "Platform-independent adaptive policy for the Memory Sentry server"
+
+[lib]
+name = "memory_sentry_core"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
