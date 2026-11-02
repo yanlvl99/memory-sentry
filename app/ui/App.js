@@ -369,7 +369,10 @@ function MSSApp() {
   function scheduleManualLimit(process, key, value) {
     const timers = manualApplyTimers.current;
     if (!manualInputOrigins.current.has(key)) {
-      manualInputOrigins.current.set(key, String(manualInputs[key] ?? process.manualCapMB ?? process.defaultLimitMB));
+      // Seed the pre-edit origin from SERVER truth, not the visible draft: manualInputs now carries
+      // every keystroke, so an in-progress or abandoned draft must never become the origin the
+      // warning modal restores or the pin action prefers.
+      manualInputOrigins.current.set(key, String(process.manualCapMB ?? process.defaultLimitMB));
     }
     if (timers.has(key)) window.clearTimeout(timers.get(key));
     const input = String(value);
@@ -378,7 +381,11 @@ function MSSApp() {
       timers.delete(key);
       const capMB = Number(input);
       if (!Number.isInteger(capMB) || capMB < 8 || capMB > 512) {
+        const origin = manualInputOrigins.current.get(key);
         manualInputOrigins.current.delete(key);
+        // Roll the draft back to the last applied truth so a rejected number never lingers as the
+        // displayed value or the next session's origin.
+        setManualInputs(previous => ({ ...previous, [key]: String(origin ?? process.manualCapMB ?? process.defaultLimitMB) }));
         setManualMessage({ text: tx('limitRange'), error: true });
         return;
       }
