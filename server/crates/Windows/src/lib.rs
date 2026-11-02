@@ -1,6 +1,10 @@
 //! Win32 process, memory, window-state and installation primitives.
 //! All operations validate the process creation timestamp immediately before mutation.
 
+// The entire crate is Windows-only (raw kernel32/psapi/user32 FFI plus std::os::windows). Off
+// Windows it compiles to an empty crate, mirroring the previous `#[cfg(windows)] mod platform`.
+#![cfg(windows)]
+
 use std::ffi::c_void;
 use std::path::Path;
 use std::process::Command;
@@ -14,6 +18,19 @@ pub const MIN_WORKING_SET_BYTES: usize = 80 * 1024;
 const TH32CS_SNAPPROCESS: u32 = 0x0000_0002;
 const PROCESS_TERMINATE: u32 = 0x0001;
 const ERROR_NO_MORE_FILES: u32 = 18;
+// QUERY_LIMITED_INFORMATION is enough to open a foreign process for metadata + memory reads and,
+// unlike QUERY_INFORMATION, succeeds even on many protected processes without elevation.
+const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+// ReadProcessMemory additionally requires VM_READ on the process handle.
+const PROCESS_VM_READ: u32 = 0x0010;
+// NtQueryInformationProcess information class 0 == ProcessBasicInformation.
+const PROCESS_BASIC_INFORMATION_CLASS: u32 = 0;
+// x64 PEB offsets for reading a remote command line. There is no public API for a foreign process's
+// full command line, so we walk PEB -> ProcessParameters -> CommandLine. These are the well-known
+// x64 layout offsets; the size asserts below pin the local struct layouts so Process32/PEB reads
+// cannot silently mis-enumerate on a mismatched ABI.
+const PEB_PROCESS_PARAMETERS_OFFSET: usize = 0x20;
+const RTL_USER_PROCESS_PARAMETERS_COMMAND_LINE_OFFSET: usize = 0x70;
 
 type Handle = *mut c_void;
 
@@ -52,6 +69,22 @@ struct ProcessMemoryCountersEx2 {
     private_usage: usize,
     private_working_set_size: usize,
     shared_commit_usage: u64,
+}
+
+// MEMORYSTATUSEX for GlobalMemoryStatusEx; the adaptive engine reads this as its memory-pressure
+// signal (Android lmkd uses Pressure Stall Information; Windows has no PSI, so dwMemoryLoad plus the
+// available/total physical ratio is the closest built-in proxy).
+#[repr(C)]
+struct MemoryStatusEx {
+    dw_length: u32,
+    dw_memory_load: u32,
+    ull_total_phys: u64,
+    ull_avail_phys: u64,
+    ull_total_page_file: u64,
+    ull_avail_page_file: u64,
+    ull_total_virtual: u64,
+    ull_avail_virtual: u64,
+    ull_avail_extended_virtual: u64,
 }
 
 #[repr(C)]
@@ -96,6 +129,7 @@ extern "system" {
     fn CloseHandle(handle: Handle) -> i32;
     fn GetLastError() -> u32;
     fn SetLastError(error: u32);
+    fn GlobalMemoryStatusEx(buffer: *mut MemoryStatusEx) -> i32;
     fn GetProcessTimes(
         process: Handle,
         creation: *mut FileTime,
@@ -122,6 +156,13 @@ extern "system" {
     fn GetStdHandle(which: i32) -> Handle;
     fn SetHandleInformation(handle: Handle, mask: u32, flags: u32) -> i32;
     fn GetNativeSystemInfo(info: *mut SystemInfo);
+    fn ReadProcessMemory(
+        process: Handle,
+        base_address: *const c_void,
+        buffer: *mut c_void,
+        size: usize,
+        bytes_read: *mut usize,
+    ) -> i32;
 }
 
 #[link(name = "psapi")]
@@ -158,6 +199,40 @@ extern "system" {
 #[link(name = "ntdll")]
 extern "system" {
     fn RtlGetVersion(info: *mut RtlOsVersionInfoExW) -> i32;
+    fn NtQueryInformationProcess(
+        process: Handle,
+        process_information_class: u32,
+        process_information: *mut c_void,
+        process_information_length: u32,
+        return_length: *mut u32,
+    ) -> i32;
+}
+
+/// Reads system physical memory for the adaptive pressure signal: returns
+/// `(total_mb, available_mb, memory_load_percent)`. On failure returns zeros so callers treat the
+/// pressure as unknown rather than trusting stale values.
+pub fn system_memory() -> (u64, u64, u32) {
+    let mut status = MemoryStatusEx {
+        dw_length: std::mem::size_of::<MemoryStatusEx>() as u32,
+        dw_memory_load: 0,
+        ull_total_phys: 0,
+        ull_avail_phys: 0,
+        ull_total_page_file: 0,
+        ull_avail_page_file: 0,
+        ull_total_virtual: 0,
+        ull_avail_virtual: 0,
+        ull_avail_extended_virtual: 0,
+    };
+    let ok = unsafe { GlobalMemoryStatusEx(&mut status) };
+    if ok == 0 {
+        return (0, 0, 0);
+    }
+    const MIB: u64 = 1024 * 1024;
+    (
+        status.ull_total_phys / MIB,
+        status.ull_avail_phys / MIB,
+        status.dw_memory_load,
+    )
 }
 
 #[link(name = "ole32")]
@@ -192,6 +267,32 @@ struct ProcessEntry32W {
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::size_of::<ProcessEntry32W>() == 568);
 
+// PROCESS_BASIC_INFORMATION (NTSTATUS exit status is not exposed here; the fields we rely on are the
+// PEB pointer and the pid lineage). x64 layout is six pointer-sized slots = 48 bytes.
+#[repr(C)]
+struct ProcessBasicInformation {
+    reserved1: *mut c_void,
+    peb_base_address: *mut c_void,
+    reserved2_0: *mut c_void,
+    reserved2_1: *mut c_void,
+    unique_process_id: usize,
+    inherited_from_unique_process_id: usize,
+}
+
+// UNICODE_STRING as laid out in a remote PEB: two u16 lengths then, after alignment padding, the
+// pointer to a UTF-16 buffer. repr(C) places `buffer` at offset 8 on x64.
+#[repr(C)]
+struct UnicodeString {
+    length: u16,
+    maximum_length: u16,
+    buffer: *mut c_void,
+}
+
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<ProcessBasicInformation>() == 48);
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<UnicodeString>() == 16);
+
 #[derive(Clone, Debug)]
 pub struct ProcessRow {
     pub pid: u32,
@@ -211,6 +312,10 @@ pub struct ProcessRow {
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
     pub processes: Vec<ProcessRow>,
+    // Wall-clock ms when the producer captured these counters. CPU percentages must divide by the age
+    // of the instant the values were OBSERVED, not the moment the main loop drained the channel, so the
+    // capture thread stamps this once per snapshot before sending it.
+    pub captured_at_ms: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -226,6 +331,7 @@ pub struct ProcessStats {
     pub cpu_time_ms: f64,
     pub working_set_mb: f64,
     pub private_working_set_mb: Option<f64>,
+    pub private_mb: Option<f64>,
     pub page_fault_count: u64,
 }
 
@@ -263,7 +369,7 @@ fn process_times(handle: Handle) -> Result<(u64, f64), String> {
     Ok((creation.value(), cpu_ticks as f64 / 10_000.0))
 }
 
-fn process_stats_with_handle(handle: Handle) -> Result<(f64, Option<f64>, u64), String> {
+fn process_stats_with_handle(handle: Handle) -> Result<(f64, Option<f64>, Option<f64>, u64), String> {
     let mut counters = ProcessMemoryCounters {
         cb: std::mem::size_of::<ProcessMemoryCounters>() as u32,
         ..ProcessMemoryCounters::default()
@@ -301,9 +407,17 @@ fn process_stats_with_handle(handle: Handle) -> Result<(f64, Option<f64>, u64), 
     } else {
         None
     };
+    // PrivateUsage (PROCESS_MEMORY_COUNTERS_EX) is the private commit charge, the same notion the
+    // WMI PrivatePageCount fed the PowerShell path, so both discovery paths report a consistent value.
+    let private_mb = if extended_ok && extended.private_usage > 0 {
+        Some(extended.private_usage as f64 / (1024.0 * 1024.0))
+    } else {
+        None
+    };
     Ok((
         working_set_size as f64 / (1024.0 * 1024.0),
         private_working_set_mb,
+        private_mb,
         counters.page_fault_count as u64,
     ))
 }
@@ -312,8 +426,8 @@ pub fn inspect_process(pid: u32) -> Result<ProcessStats, String> {
     let handle = open_process(pid, PROCESS_QUERY_INFORMATION)?;
     let result = (|| {
         let (creation, cpu_time_ms) = process_times(handle)?;
-        let (working_set_mb, private_working_set_mb, page_fault_count) = process_stats_with_handle(handle)?;
-        Ok(ProcessStats { creation, cpu_time_ms, working_set_mb, private_working_set_mb, page_fault_count })
+        let (working_set_mb, private_working_set_mb, private_mb, page_fault_count) = process_stats_with_handle(handle)?;
+        Ok(ProcessStats { creation, cpu_time_ms, working_set_mb, private_working_set_mb, private_mb, page_fault_count })
     })();
     unsafe { CloseHandle(handle); }
     result
@@ -648,16 +762,189 @@ pub fn detect_supported_client_os() -> Result<(&'static str, u32), String> {
     }
 }
 
-pub fn powershell_snapshot() -> Result<Snapshot, String> {
+// Read `len` raw bytes from a remote process. Bounded so a corrupt length can never drive a huge
+// allocation, and any partial read is treated as failure rather than trusting a short buffer.
+fn read_memory_bytes(handle: Handle, address: usize, len: usize) -> Option<Vec<u8>> {
+    const MAX_READ: usize = 32_768;
+    if address == 0 || len == 0 || len > MAX_READ {
+        return None;
+    }
+    let mut buffer = vec![0u8; len];
+    let mut bytes_read = 0usize;
+    let ok = unsafe {
+        ReadProcessMemory(
+            handle,
+            address as *const c_void,
+            buffer.as_mut_ptr() as *mut c_void,
+            len,
+            &mut bytes_read,
+        )
+    };
+    if ok == 0 || bytes_read != len {
+        return None;
+    }
+    Some(buffer)
+}
+
+fn read_usize(handle: Handle, address: usize) -> Option<usize> {
+    let bytes = read_memory_bytes(handle, address, std::mem::size_of::<usize>())?;
+    let mut arr = [0u8; 8];
+    arr[..bytes.len()].copy_from_slice(&bytes);
+    Some(usize::from_le_bytes(arr))
+}
+
+/// Decode a remote UNICODE_STRING buffer (UTF-16LE bytes) into a String. Lossy so a stray surrogate
+/// never aborts discovery; the even-length assumption matches Windows' UTF-16 command lines.
+fn parse_command_line_utf16(bytes: &[u8]) -> String {
+    let units: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+        .collect();
+    String::from_utf16_lossy(&units)
+}
+
+// The full command line of a remote process, obtained by walking PEB -> ProcessParameters ->
+// CommandLine. There is no public Win32 API for this, so any failure (access denied, protected
+// process, a vanished handle) returns None and the caller degrades to an empty command line - the
+// same as the PowerShell path when WMI returned no CommandLine - rather than dropping the process.
+fn native_command_line(pid: u32) -> Option<String> {
+    let handle = open_process(pid, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ).ok()?;
+    let result = (|| {
+        let mut basic = ProcessBasicInformation {
+            reserved1: std::ptr::null_mut(),
+            peb_base_address: std::ptr::null_mut(),
+            reserved2_0: std::ptr::null_mut(),
+            reserved2_1: std::ptr::null_mut(),
+            unique_process_id: 0,
+            inherited_from_unique_process_id: 0,
+        };
+        let mut returned = 0u32;
+        let status = unsafe {
+            NtQueryInformationProcess(
+                handle,
+                PROCESS_BASIC_INFORMATION_CLASS,
+                &mut basic as *mut _ as *mut c_void,
+                std::mem::size_of::<ProcessBasicInformation>() as u32,
+                &mut returned,
+            )
+        };
+        if status != 0 || basic.peb_base_address.is_null() {
+            return None;
+        }
+        let peb = basic.peb_base_address as usize;
+        let parameters = read_usize(handle, peb + PEB_PROCESS_PARAMETERS_OFFSET)?;
+        let string_addr = parameters + RTL_USER_PROCESS_PARAMETERS_COMMAND_LINE_OFFSET;
+        let raw = read_memory_bytes(handle, string_addr, std::mem::size_of::<UnicodeString>())?;
+        let length = u16::from_le_bytes([raw[0], raw[1]]) as usize;
+        let mut ptr_arr = [0u8; 8];
+        ptr_arr.copy_from_slice(&raw[8..16]);
+        let buffer = usize::from_le_bytes(ptr_arr);
+        if length == 0 {
+            return Some(String::new());
+        }
+        let chars = read_memory_bytes(handle, buffer, length)?;
+        Some(parse_command_line_utf16(&chars))
+    })();
+    unsafe { CloseHandle(handle); }
+    result
+}
+
+// PROCESSENTRY32W.sz_exe_file is the executable base name only (e.g. "Spotify.exe"), which is exactly
+// the Name='Spotify.exe' filter the WMI query applied, so comparing it here keeps the same process set.
+fn entry_exe_matches(name: &[u16; 260], expected_lower: &str) -> bool {
+    let end = name.iter().position(|&unit| unit == 0).unwrap_or(name.len());
+    let text: String = String::from_utf16_lossy(&name[..end]).to_ascii_lowercase();
+    text == expected_lower
+}
+
+/// Pure Win32 process discovery, app-agnostic: enumerate every process whose executable base name is
+/// in `targets` (lowercased) with a Toolhelp32 snapshot, read each command line from the remote PEB,
+/// then reuse inspect_process for creation/CPU/working-set/faults. This replaces the per-tick
+/// PowerShell + Get-CimInstance subprocess (tens of MB transient + a WMI query every snapshot) with
+/// in-process calls. The Snapshot/ProcessRow shape is identical so the monitor, API and dashboard are
+/// unchanged. Callers keep a PowerShell fallback for the rare pass where native enumeration or the PEB
+/// reads fail broadly, so discovery is never worse than before. Which executable to target is supplied
+/// by the caller (the application profile) and never hardcoded here.
+pub fn native_process_snapshot(targets: &[&str]) -> Result<Snapshot, String> {
+    let mut snapshot = Snapshot::default();
+    let toolhelp = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if toolhelp.is_null() || toolhelp as isize == -1 {
+        return Err(format!(
+            "Could not snapshot the process list (Win32 error {}).",
+            last_error()
+        ));
+    }
+    let mut entry = ProcessEntry32W {
+        dw_size: std::mem::size_of::<ProcessEntry32W>() as u32,
+        cnt_usage: 0,
+        th32_process_id: 0,
+        th32_default_heap_id: 0,
+        th32_module_id: 0,
+        cnt_threads: 0,
+        th32_parent_process_id: 0,
+        pc_pri_class_base: 0,
+        dw_flags: 0,
+        sz_exe_file: [0; 260],
+    };
+    if unsafe { Process32FirstW(toolhelp, &mut entry) } == 0 {
+        let error = last_error();
+        unsafe { CloseHandle(toolhelp); }
+        if error == ERROR_NO_MORE_FILES {
+            return Ok(snapshot);
+        }
+        return Err(format!("Could not enumerate processes (Win32 error {error})."));
+    }
+    loop {
+        let pid = entry.th32_process_id;
+        let ppid = entry.th32_parent_process_id.max(0) as u32;
+        if pid != 0 && targets.iter().any(|target| entry_exe_matches(&entry.sz_exe_file, target)) {
+            let cmd = native_command_line(pid).unwrap_or_default();
+            let mut creation = 0u64;
+            let mut cpu_time_ms = 0.0f64;
+            let mut working_set_mb = None;
+            let mut private_working_set_mb = None;
+            let mut private_mb = None;
+            let mut page_fault_count = None;
+            let mut error_code = 0i32;
+            match inspect_process(pid) {
+                Ok(stats) => {
+                    // The creation timestamp is the identity revalidated before every mutation.
+                    creation = stats.creation;
+                    cpu_time_ms = stats.cpu_time_ms;
+                    working_set_mb = Some(stats.working_set_mb);
+                    private_working_set_mb = stats.private_working_set_mb;
+                    private_mb = stats.private_mb;
+                    page_fault_count = Some(stats.page_fault_count);
+                }
+                Err(_) => error_code = -1,
+            }
+            snapshot.processes.push(ProcessRow {
+                pid, ppid, cmd, creation, cpu_time_ms, cpu_percent: None,
+                working_set_mb, private_working_set_mb, private_mb,
+                page_fault_count, page_faults_delta: None, error_code,
+            });
+        }
+        if unsafe { Process32NextW(toolhelp, &mut entry) } == 0 {
+            break;
+        }
+    }
+    unsafe { CloseHandle(toolhelp); }
+    Ok(snapshot)
+}
+
+pub fn powershell_snapshot(image_name: &str) -> Result<Snapshot, String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    // The image name is a fixed value from the application profile, never free-form user input, so
+    // substituting it into the WMI filter is safe. A placeholder token (rather than format!) keeps the
+    // many PowerShell `-f` braces (`{0}`, `{1}`, ...) intact.
     let script = r#"
 $ErrorActionPreference = 'Stop'
 try {
   [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
   $utf8 = New-Object System.Text.UTF8Encoding($false)
   $culture = [Globalization.CultureInfo]::InvariantCulture
-  foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='Spotify.exe'")) {
+  foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='__MSS_IMAGE__'")) {
     $created = '0'
     try { if ($p.CreationDate) { $created = [string](([datetime]$p.CreationDate).ToFileTimeUtc()) } } catch {}
     $cpuMs = 0.0
@@ -676,9 +963,10 @@ try {
   [Console]::Error.WriteLine($_.Exception.Message)
   exit 2
 }
-"#;
+"#
+    .replace("__MSS_IMAGE__", image_name);
     let output = Command::new("powershell.exe")
-        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script])
+        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script.as_str()])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|error| format!("Could not launch Windows PowerShell: {error}"))?;
@@ -1231,6 +1519,119 @@ mod tests {
         if let Ok(pids) = result {
             assert!(pids.windows(2).all(|pair| pair[0] <= pair[1]));
         }
+    }
+
+    #[test]
+    fn parse_command_line_utf16_decodes_a_known_command_line() {
+        // The remote PEB stores the command line as a UTF-16LE UNICODE_STRING; a wrong byte order or
+        // an odd-length truncation would corrupt the identity sub-labels, so pin the decode exactly.
+        let cmdline = "\"C:\\Users\\me\\AppData\\Spotify.exe\" --type=renderer --renderer-client-id=7";
+        let bytes: Vec<u8> = cmdline.encode_utf16().flat_map(|unit| unit.to_le_bytes()).collect();
+        assert_eq!(parse_command_line_utf16(&bytes), cmdline);
+    }
+
+    #[test]
+    fn entry_exe_matches_filters_by_case_insensitive_base_name() {
+        let mut name = [0u16; 260];
+        for (index, unit) in "Spotify.exe".encode_utf16().enumerate() {
+            name[index] = unit;
+        }
+        assert!(entry_exe_matches(&name, "spotify.exe"));
+        let mut other = [0u16; 260];
+        for (index, unit) in "SpotifyWebHelper.exe".encode_utf16().enumerate() {
+            other[index] = unit;
+        }
+        assert!(!entry_exe_matches(&other, "spotify.exe"));
+    }
+
+    #[test]
+    fn native_process_snapshot_enumerates_without_panicking() {
+        // Must never panic on a real machine even with no Spotify running or with processes we cannot
+        // open; any process present carries a non-zero pid, and command lines may be empty when the
+        // PEB read is not permitted (the caller's fallback then covers a broad failure).
+        let snapshot = native_process_snapshot(&["spotify.exe"]).expect("toolhelp enumeration should succeed on Windows");
+        for process in &snapshot.processes {
+            assert_ne!(process.pid, 0);
+        }
+    }
+
+    #[test]
+    fn native_command_line_reads_our_own_live_process() {
+        // The pure parser proves the decode, but only a read against a real, accessible process proves
+        // the whole FFI chain works on this machine: OpenProcess(QUERY_LIMITED|VM_READ) ->
+        // NtQueryInformationProcess -> the x64 PEB offsets -> ReadProcessMemory. Our own test binary
+        // always has a command line containing its executable name, so this asserts a non-empty read.
+        let pid = current_process_id();
+        let cmd = native_command_line(pid).expect("a process can always PEB-read its own command line");
+        let exe_stem = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .unwrap_or_default();
+        assert!(!cmd.is_empty(), "self command line should not be empty for pid {pid}");
+        if !exe_stem.is_empty() {
+            assert!(
+                cmd.to_ascii_lowercase().contains(&exe_stem.to_ascii_lowercase()),
+                "self command line should name its own executable; got: {cmd}"
+            );
+        }
+    }
+
+    // Proves native discovery is behavior-equivalent to the retired PowerShell/WMI path on REAL
+    // processes: same Spotify.exe set, same parent lineage, and command lines carrying the same
+    // role-determining tokens that process_role()/process_identity() parse. #[ignore]d so it neither
+    // runs in CI nor spawns PowerShell on every suite run; invoke it on a machine with Spotify open
+    // (cargo test -p memory-sentry-windows -- --ignored) to validate the STEP A swap end-to-end.
+    #[test]
+    #[ignore = "compares against powershell_snapshot live; run manually with Spotify running"]
+    fn native_discovery_matches_powershell_on_live_processes() {
+        let native = native_process_snapshot(&["spotify.exe"]).expect("native enumeration");
+        let shell = powershell_snapshot("Spotify.exe").expect("powershell enumeration");
+        let role_markers = ["--type=renderer", "--type=gpu-process", "--type=utility", "crashpad", "audio.mojom.audioservice", "--utility-sub-type=audio"];
+        let role_of = |cmd: &str| -> Vec<&'static str> {
+            let lower = cmd.to_ascii_lowercase();
+            role_markers.iter().copied().filter(|m| lower.contains(m)).collect()
+        };
+        let mut native_pids: Vec<u32> = native.processes.iter().map(|p| p.pid).collect();
+        let mut shell_pids: Vec<u32> = shell.processes.iter().map(|p| p.pid).collect();
+        native_pids.sort_unstable();
+        shell_pids.sort_unstable();
+        println!("native found {} procs, powershell found {} procs", native_pids.len(), shell_pids.len());
+        assert_eq!(native_pids, shell_pids, "native and WMI enumerate a different Spotify.exe process set");
+        for n in &native.processes {
+            let Some(s) = shell.processes.iter().find(|p| p.pid == n.pid) else { continue };
+            assert_eq!(n.ppid, s.ppid, "parent pid differs for pid {}", n.pid);
+            // Only the live, readable command lines can be diffed; a protected PID yields empty cmd.
+            if !n.cmd.is_empty() && !s.cmd.is_empty() {
+                assert_eq!(role_of(&n.cmd), role_of(&s.cmd), "role tokens differ for pid {}\n native: {}\n shell:  {}", n.pid, n.cmd, s.cmd);
+            }
+        }
+    }
+
+    // Quantifies the STEP A win directly: the old path spawns powershell.exe + a WMI query every tick,
+    // the new one is an in-process Toolhelp walk + PEB reads. #[ignore]d so the suite never pays the
+    // multi-second PowerShell cost; run manually to show the recurring per-tick cost collapse.
+    #[test]
+    #[ignore = "times powershell_snapshot (multi-second); run manually for the perf figure"]
+    fn native_discovery_is_far_cheaper_than_powershell() {
+        use std::time::Instant;
+        // Warm-up once so the first-call JIT/paths do not skew the median.
+        let _ = native_process_snapshot(&["spotify.exe"]);
+        let mut native_samples = Vec::new();
+        for _ in 0..5 {
+            let start = Instant::now();
+            let _ = native_process_snapshot(&["spotify.exe"]).expect("native enumeration");
+            native_samples.push(start.elapsed().as_millis());
+        }
+        let start = Instant::now();
+        let _ = powershell_snapshot("Spotify.exe").expect("powershell enumeration");
+        let shell_ms = start.elapsed().as_millis();
+        native_samples.sort_unstable();
+        let native_median = native_samples[native_samples.len() / 2];
+        println!("native median {native_median} ms over 5 calls vs one powershell call {shell_ms} ms");
+        assert!(
+            native_median < shell_ms,
+            "native discovery (median {native_median} ms) should be cheaper than a PowerShell+WMI tick ({shell_ms} ms)"
+        );
     }
 
     #[test]

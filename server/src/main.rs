@@ -4,10 +4,7 @@
 //! policy remains testable cross-platform, but Win32 operations fail closed off Windows.
 
 #[cfg(windows)]
-#[path = "platform/windows.rs"]
-mod platform;
-#[cfg(windows)]
-mod runtime;
+mod Runtime;
 
 #[cfg(windows)]
 fn log_setup_failure(error: &str) {
@@ -47,14 +44,14 @@ fn main() {
     #[cfg(windows)]
     {
         let result = match args.as_slice() {
-            [command] if command == "--check-os" => runtime::check_supported_os(),
-            [] => runtime::run_monitor(),
-            [command] if command == "--monitor" => runtime::run_monitor(),
-            [command] if command == "--launch" => runtime::launch_monitor(),
-            [command] if command == "--pre-uninstall" => runtime::pre_uninstall(),
-            [command] if command == "--restore-limits" => runtime::restore_limits_command(),
-            [command, app_dir] if command == "--configure" => runtime::configure_install(app_dir),
-            [command, new_exe] if command == "--swap" => runtime::swap_server(new_exe),
+            [command] if command == "--check-os" => Runtime::check_supported_os(),
+            [] => Runtime::run_monitor(),
+            [command] if command == "--monitor" => Runtime::run_monitor(),
+            [command] if command == "--launch" => Runtime::launch_monitor(),
+            [command] if command == "--pre-uninstall" => Runtime::pre_uninstall(),
+            [command] if command == "--restore-limits" => Runtime::restore_limits_command(),
+            [command, app_dir] if command == "--configure" => Runtime::configure_install(app_dir),
+            [command, new_exe] if command == "--swap" => Runtime::swap_server(new_exe),
             _ => Err("Unknown arguments. Supported commands: --version, --self-test, --check-os, --monitor, --launch, --swap <new-server-exe>, --configure <custom-app-folder>, --pre-uninstall, --restore-limits.".to_string()),
         };
         if let Err(error) = result {
