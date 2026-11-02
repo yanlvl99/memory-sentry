@@ -193,6 +193,7 @@ pub(crate) struct AppState {
     profiles: BTreeMap<u32, AdaptiveProfile>,
     target_retry_at_ms: BTreeMap<(u32, u64), u64>,
     page_fault_baselines: BTreeMap<(u32, u64), u64>,
+    cpu_baselines: BTreeMap<(u32, u64), (u64, u64)>,
     audio_pids: BTreeSet<u32>,
     audio_pids_error: String,
     telemetry: Telemetry,

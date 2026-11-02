@@ -55,6 +55,7 @@ pub(crate) fn build_state(base: PathBuf, settings: Settings) -> AppState {
         profiles: BTreeMap::new(),
         target_retry_at_ms: BTreeMap::new(),
         page_fault_baselines: BTreeMap::new(),
+        cpu_baselines: BTreeMap::new(),
         audio_pids: BTreeSet::new(),
         audio_pids_error: String::new(),
         telemetry: Telemetry::default(),
@@ -221,22 +222,28 @@ pub fn run_monitor() -> Result<(), String> {
 
 pub(crate) fn accept_snapshot(state: &mut AppState, mut snapshot: windows::Snapshot) {
     let sampled_at = now_ms();
-    let elapsed_ms = sampled_at.saturating_sub(state.snapshot_at_ms);
     for process in &mut snapshot.processes {
+        let key = target_key(process.pid, process.creation);
+        // The percentage divides by the exact age of the shared cpu baseline, never by the nominal
+        // snapshot window. refresh_memory advances that baseline on its own (faster) cadence, so
+        // reusing the previous snapshot's accumulated cpu_time over this wider window would dilute
+        // every reading. Both writers store (cpu ms, sampled at) so each delta pairs with its own
+        // elapsed time.
         process.cpu_percent = state
-            .snapshot
-            .processes
-            .iter()
-            .find(|previous| previous.pid == process.pid && previous.creation == process.creation)
-            .and_then(|previous| {
+            .cpu_baselines
+            .get(&key)
+            .copied()
+            .and_then(|(previous_cpu, previous_at)| {
                 estimate_cpu_percent(
-                    previous.cpu_time_ms as u64,
+                    previous_cpu,
                     process.cpu_time_ms as u64,
-                    elapsed_ms,
+                    sampled_at.saturating_sub(previous_at),
                 )
             })
             .map(|value| (value * 10.0).round() / 10.0);
-        let key = target_key(process.pid, process.creation);
+        state
+            .cpu_baselines
+            .insert(key, (process.cpu_time_ms as u64, sampled_at));
         process.page_faults_delta = state.page_fault_baselines.get(&key).map(|previous| {
             if let Some(current) = process.page_fault_count {
                 if current >= *previous {
@@ -274,6 +281,9 @@ pub(crate) fn accept_snapshot(state: &mut AppState, mut snapshot: windows::Snaps
         .retain(|pid, profile| active.get(pid).copied() == Some(profile.creation));
     state
         .target_retry_at_ms
+        .retain(|(pid, creation), _| active.get(pid).copied() == Some(*creation));
+    state
+        .cpu_baselines
         .retain(|(pid, creation), _| active.get(pid).copied() == Some(*creation));
     refresh_audio_session_pids(state);
 }
@@ -1380,22 +1390,29 @@ pub(crate) fn refresh_memory(state: &mut AppState, now: u64) {
             if stats.creation == process.creation {
                 process.working_set_mb = Some(stats.working_set_mb);
                 // The dashboard shows the private working set whenever Windows provides it, so the
-                // native fast refresh must update that field too - not just working_set_mb. Before
-                // this the displayed RAM only changed when the slower PowerShell snapshot landed
-                // (WATCH_SNAPSHOT_MS), so the "Atualizacao" slider appeared to do nothing.
+                // native fast refresh must update that field too - not just working_set_mb, or the
+                // "Atualizacao" slider would only move RAM numbers when a discovery fallback landed.
                 process.private_working_set_mb = stats.private_working_set_mb;
-                // Native CPU on the cheap memory cadence: refresh the percentage every sample so the
-                // dashboard tracks Task Manager's rhythm instead of waiting for the slower PowerShell
-                // snapshot. GetProcessTimes and the WMI CPU fields share the same 100 ns -> ms basis.
-                if let Some(elapsed) = interval.filter(|ms| *ms > 0) {
-                    if let Some(percent) =
-                        estimate_cpu_percent(process.cpu_time_ms as u64, stats.cpu_time_ms as u64, elapsed)
-                    {
-                        process.cpu_percent = Some((percent * 10.0).round() / 10.0);
+                // Native CPU on the cheap memory cadence: the percentage divides the cpu-time delta by
+                // the exact age of the shared baseline (now - sampled at), not by this loop's nominal
+                // interval, and both writers refresh it - so the snapshot path and this one can never
+                // dilute each other's windows. GetProcessTimes and the WMI CPU fields share the same
+                // 100 ns -> ms basis.
+                let key = target_key(process.pid, process.creation);
+                if let Some((previous_cpu, previous_at)) = state.cpu_baselines.get(&key).copied() {
+                    let elapsed = now.saturating_sub(previous_at);
+                    if elapsed > 0 {
+                        if let Some(percent) =
+                            estimate_cpu_percent(previous_cpu, stats.cpu_time_ms as u64, elapsed)
+                        {
+                            process.cpu_percent = Some((percent * 10.0).round() / 10.0);
+                        }
                     }
                 }
+                state
+                    .cpu_baselines
+                    .insert(key, (stats.cpu_time_ms as u64, now));
                 process.cpu_time_ms = stats.cpu_time_ms;
-                let key = target_key(process.pid, process.creation);
                 if let Some(previous_faults) = state.page_fault_baselines.get(&key).copied() {
                     let delta = if stats.page_fault_count >= previous_faults {
                         stats.page_fault_count - previous_faults
