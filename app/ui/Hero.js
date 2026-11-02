@@ -8,7 +8,7 @@ function Hero(props) {
     targets, sortedTargets, dispMB, totalMB, cappedCount, serverLabel,
     expandedRole, setExpandedRole, hoveredKey, setHoveredKey,
     manualInputs, manualMessage, manualReady,
-    setMode, onSchedule, onClear, onPin, onCopy
+    setMode, onInput, onSchedule, onClear, onPin, onCopy
   } = props;
 
   const modeDisabled = saving || !helperRunning || typeof status?.config?.enabled !== 'boolean';
@@ -81,7 +81,7 @@ function Hero(props) {
       role: expandedRole,
       processes: expandedProcesses,
       debug, memory, config, manualInputs, busy, manualReady,
-      onCopy: onCopy, onSchedule: onSchedule, onClear: onClear, onPin: onPin,
+      onCopy: onCopy, onInput: onInput, onSchedule: onSchedule, onClear: onClear, onPin: onPin,
       onClose: () => setExpandedRole(null)
     }) : null,
     manualMessage ? h('div', { className: `mss-notice${manualMessage.error ? ' mss-notice-error' : ''}` }, manualMessage.text) : null

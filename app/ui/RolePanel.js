@@ -2,7 +2,7 @@
 // lists every process in it. Each row keeps its OWN limit field keyed by the per-process identity
 // (`Renderer:#7`, `Utility:network`, ...) — the group is only a container; the value is individual.
 function MSSRolePanel(props) {
-  const { role, processes, debug, memory, config, manualInputs, busy, manualReady, onCopy, onSchedule, onClear, onPin, onClose } = props;
+  const { role, processes, debug, memory, config, manualInputs, busy, manualReady, onCopy, onInput, onSchedule, onClear, onPin, onClose } = props;
   const canEdit = manualReady && config.enabled && !busy;
   const first = processes[0] || {};
   return h('div', { className: 'mss-role-panel', key: role },
@@ -41,7 +41,7 @@ function MSSRolePanel(props) {
             h('button', { type: 'button', className: `mss-seg-btn${pinned ? ' mss-on' : ''}`, 'aria-pressed': pinned, disabled: busy || !config.enabled, title: tx('procManualHint'), onClick: () => { if (!pinned) onPin(process); } }, tx('segManual'))
           ) : null,
           canEdit && pinned ? h('label', { className: 'mss-identity-limit' },
-            h('input', { id: `mss-limit-${key}`, className: 'mss-input', type: 'number', min: 8, max: 512, step: 1, 'aria-label': tx('manualLimit'), title: tx('manualLimit'), value: manualInputs[key] ?? String(process.manualCapMB ?? defaultMB), disabled: busy || !config.enabled, onChange: event => { const value = event.target.value; onSchedule(process, key, value); } }),
+            h('input', { id: `mss-limit-${key}`, className: 'mss-input', type: 'number', min: 8, max: 512, step: 1, 'aria-label': tx('manualLimit'), title: tx('manualLimit'), value: manualInputs[key] ?? String(process.manualCapMB ?? defaultMB), disabled: busy || !config.enabled, onChange: event => { const value = event.target.value; onInput(key, value); onSchedule(process, key, value); } }),
             h('span', { className: 'mss-small' }, 'MB')
           ) : null,
           h('button', { type: 'button', className: 'mss-chip-btn', onClick: () => onCopy(process.pid) }, tx('copyPid')),

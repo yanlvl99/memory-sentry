@@ -474,7 +474,7 @@ function MSSApp() {
       targets, sortedTargets, dispMB, totalMB, listMaxMB, cappedCount, serverLabel,
       expandedRole, setExpandedRole, hoveredKey, setHoveredKey,
       manualInputs, manualMessage, manualReady: capsEditable,
-      setMode, onSchedule: scheduleManualLimit, onClear: clearManualLimit, onPin: pinCurrentCeiling, onCopy: mssCopy
+      setMode, onInput: (key, value) => setManualInputs(previous => ({ ...previous, [key]: value })), onSchedule: scheduleManualLimit, onClear: clearManualLimit, onPin: pinCurrentCeiling, onCopy: mssCopy
     }),
     h(Settings, {
       config, saving, helperRunning, status,
