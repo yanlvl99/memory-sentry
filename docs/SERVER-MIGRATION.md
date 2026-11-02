@@ -6,7 +6,7 @@ This document tracks the move from the legacy Node.js server to the current serv
 
 The server implements process discovery, Windows working-set operations, the loopback dashboard API, per-install authentication, recovery persistence, per-user startup, and guarded upgrade/uninstall commands. The current implementation is written in Rust and uses no third-party crates in its core. New installations do not require Node.js or Koffi; Node.js 22+ may be needed temporarily to recover limits saved by the legacy Node.js version.
 
-Automatic limits apply to Spotify's process tree after the configured background delay. Audio-role processes start at a 36 MB automatic ceiling and adapt upward to 60 MB under sustained load, like the other roles. In manual mode, 36 MB is the Audio default and can be overridden per process role. Role overrides persist across Spotify restarts and PID changes, while original limits are backed up per process instance. The same configured background delay applies in automatic and manual modes.
+Automatic limits apply to Spotify's process tree after the configured background delay. Audio-role processes start at a 36 MB automatic ceiling and adapt upward to 60 MB under sustained load, like the other roles. In Custom mode a pinned process holds a fixed ceiling (the Audio default is 36 MB) while its siblings keep adapting, keyed by PID-free process identity. Pins and learned profiles persist across Spotify restarts and PID changes, while original limits are backed up per process instance. The same configured background delay applies to every process the engine manages.
 
 ## Important safety model
 

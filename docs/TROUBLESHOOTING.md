@@ -45,7 +45,7 @@ Private working set, commit size, and pagefile I/O are different measurements. P
 
 The server applies role-based ceilings only to Spotify's process tree. Audio-role processes start at a 36 MB automatic ceiling and adapt upward to 60 MB under sustained load, like the other roles. Original limits are recorded for recovery; this does not mean that every restore is guaranteed to complete immediately.
 
-If hard faults, pagefile I/O, or restore latency rise sharply on a low-memory PC, the limits may be too aggressive for that machine. Turn **Memory Sentry off** by selecting **Disabled** in the memory mode to stop automatic and manual limits, then include the measurements in a report. Selecting **Manual** only switches policy and does not stop limits.
+If hard faults, pagefile I/O, or restore latency rise sharply on a low-memory PC, the limits may be too aggressive for that machine. Turn **Memory Sentry off** by selecting **Disabled** in the memory mode to stop all limits, then include the measurements in a report. Custom mode is the only active mode; pinning a process to Manual only fixes that process's ceiling and does not stop limits.
 
 ## Uninstall stops because recovery failed
 
