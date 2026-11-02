@@ -312,6 +312,10 @@ pub struct ProcessRow {
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
     pub processes: Vec<ProcessRow>,
+    // Wall-clock ms when the producer captured these counters. CPU percentages must divide by the age
+    // of the instant the values were OBSERVED, not the moment the main loop drained the channel, so the
+    // capture thread stamps this once per snapshot before sending it.
+    pub captured_at_ms: u64,
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -123,6 +123,13 @@ pub fn run_monitor() -> Result<(), String> {
             Ok(snapshot) if !peb_failed_broadly => Ok(snapshot),
             _ => windows::powershell_snapshot(app_profile().process_image_name()),
         };
+        // Stamp the observation instant before handing the snapshot over: the main loop drains the
+        // channel up to a poll interval later, and CPU windows measured from that acceptance time
+        // would be too short, inflating the next percentage.
+        let result = result.map(|mut snapshot| {
+            snapshot.captured_at_ms = now_ms();
+            snapshot
+        });
         if tx.send(result).is_err() {
             break;
         }
@@ -222,12 +229,16 @@ pub fn run_monitor() -> Result<(), String> {
 
 pub(crate) fn accept_snapshot(state: &mut AppState, mut snapshot: windows::Snapshot) {
     let sampled_at = now_ms();
+    // Baselines pair with the moment the counters were captured, not with this acceptance time: the
+    // channel can hold a snapshot for up to a full poll interval, and stamping it late would shrink
+    // the window the next writer divides against and inflate its percentage.
+    let observed_at = if snapshot.captured_at_ms > 0 { snapshot.captured_at_ms } else { sampled_at };
     for process in &mut snapshot.processes {
         let key = target_key(process.pid, process.creation);
         // The percentage divides by the exact age of the shared cpu baseline, never by the nominal
         // snapshot window. refresh_memory advances that baseline on its own (faster) cadence, so
         // reusing the previous snapshot's accumulated cpu_time over this wider window would dilute
-        // every reading. Both writers store (cpu ms, sampled at) so each delta pairs with its own
+        // every reading. Both writers store (cpu ms, observed at) so each delta pairs with its own
         // elapsed time.
         process.cpu_percent = state
             .cpu_baselines
@@ -237,13 +248,13 @@ pub(crate) fn accept_snapshot(state: &mut AppState, mut snapshot: windows::Snaps
                 estimate_cpu_percent(
                     previous_cpu,
                     process.cpu_time_ms as u64,
-                    sampled_at.saturating_sub(previous_at),
+                    observed_at.saturating_sub(previous_at),
                 )
             })
             .map(|value| (value * 10.0).round() / 10.0);
         state
             .cpu_baselines
-            .insert(key, (process.cpu_time_ms as u64, sampled_at));
+            .insert(key, (process.cpu_time_ms as u64, observed_at));
         process.page_faults_delta = state.page_fault_baselines.get(&key).map(|previous| {
             if let Some(current) = process.page_fault_count {
                 if current >= *previous {
