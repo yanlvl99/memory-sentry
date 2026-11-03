@@ -51,6 +51,7 @@ The server is implemented in Rust; the Custom App is JavaScript served to Spotif
 - installer/wix/Product.wxs: per-user MSI product definition, install wizard and custom actions.
 - [BENCHMARKING.md](BENCHMARKING.md): repeatable RAM and interaction-latency tests.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): release gates.
+- [MARKETPLACE.md](MARKETPLACE.md): Marketplace listing and the distribution model.
 
 ## Branching and release model
 
