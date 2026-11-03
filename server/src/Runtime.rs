@@ -36,7 +36,7 @@ pub(crate) use Api::*;
 // them into the `Runtime` namespace as well.
 pub(crate) use Monitor::*;
 
-const VERSION: &str = "1.0.0-rc.6";
+const VERSION: &str = "1.0.0-rc.7";
 const DEFAULT_PORT: u16 = 38472;
 const DEFAULT_HIDDEN_DELAY_SECONDS: f64 = 2.0;
 const DEFAULT_REFRESH_INTERVAL_MS: u64 = 700;
