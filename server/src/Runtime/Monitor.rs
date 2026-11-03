@@ -460,6 +460,7 @@ pub(crate) fn ensure_profile(state: &mut AppState, pid: u32, creation: u64, role
             current_cap_mb: baseline,
             demand: DemandHistogram::default(),
             cpu_ewma: Some(10),
+            last_floor_mb: MIN_CAP_MB,
             last_evaluated_snapshot_at_ms: state.snapshot_at_ms,
             last_adjustment_at_ms: 0,
             last_reason: "baseline".to_string(),
@@ -922,6 +923,7 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
             profile.last_evaluated_snapshot_at_ms = state.snapshot_at_ms;
             profile.last_cpu_percent = cpu;
             profile.last_working_set_mb = working_set;
+            profile.last_floor_mb = effective_floor;
             profile.demand.observe(observed_ws);
             if let Some(cpu) = cpu {
                 profile.cpu_ewma = Some(usage_ewma(profile.cpu_ewma, cpu));
@@ -1084,7 +1086,7 @@ pub(crate) fn configured_manual_cap(
     role: ProcessRole,
 ) -> Option<u32> {
     // Per-process identity wins; a bare-role entry (older data, or roles with no sub-label) then
-    // acts as the shared default; finally a legacy PID-scoped cap is honoured for its exact PID.
+    // acts as the shared default.
     let identity = process_identity(&process.cmd, role);
     manual_cap_for_identity(settings, &identity, role)
 }

@@ -80,12 +80,18 @@ pub(crate) fn status_payload(state: &AppState) -> String {
         // aprendido". Null until this identity has been sampled long enough to persist a score.
         let learned = state.settings.usage_scores.get(&identity).copied();
         let bucket = learned.map(|score| memory_sentry_core::usage_bucket(score as f64).label());
+        // Demand and floor behind the current target: the percentile the policy aims at and the
+        // effective floor (absolute, state or learned) it may not cross. Surfaced in the debug table so
+        // the decision can be read without guessing.
+        let demand_p95 = profile
+            .and_then(|p| p.demand.percentile_mb(memory_sentry_core::DEMAND_PERCENTILE));
+        let floor = profile.map(|p| p.last_floor_mb).unwrap_or(MIN_CAP_MB);
         if !targets_buf.is_empty() {
             targets_buf.push(',');
         }
         let _ = write!(
             targets_buf,
-            "{{\"pid\":{},\"creation\":{},\"role\":{},\"subLabel\":{},\"identity\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"pageFaultsPerSec\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":true,\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{},\"usageScore\":{},\"usageBucket\":{}}}",
+            "{{\"pid\":{},\"creation\":{},\"role\":{},\"subLabel\":{},\"identity\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"pageFaultsPerSec\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":true,\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{},\"usageScore\":{},\"usageBucket\":{},\"demandP95MB\":{},\"minimumCapMB\":{}}}",
             p.pid, json_quote(&p.creation.to_string()), json_quote(role_name(*role)),
             json_optional_string(sub_label.as_deref()),
             json_quote(&identity),
@@ -104,7 +110,9 @@ pub(crate) fn status_payload(state: &AppState) -> String {
             default_cap,
             json_quote(adaptive_status),
             learned.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
-            json_optional_string(bucket)
+            json_optional_string(bucket),
+            json_optional_number(demand_p95),
+            floor
         );
     }
 

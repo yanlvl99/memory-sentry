@@ -36,7 +36,7 @@ pub(crate) use Api::*;
 // them into the `Runtime` namespace as well.
 pub(crate) use Monitor::*;
 
-const VERSION: &str = "1.0.0-rc.6";
+const VERSION: &str = "1.0.0-rc.7";
 const DEFAULT_PORT: u16 = 38472;
 const DEFAULT_HIDDEN_DELAY_SECONDS: f64 = 2.0;
 const DEFAULT_REFRESH_INTERVAL_MS: u64 = 700;
@@ -139,6 +139,7 @@ struct AdaptiveProfile {
     current_cap_mb: u32,
     demand: DemandHistogram,
     cpu_ewma: Option<u32>,
+    last_floor_mb: u32,
     last_evaluated_snapshot_at_ms: u64,
     last_adjustment_at_ms: u64,
     last_reason: String,
@@ -796,6 +797,14 @@ mod tests {
         assert!(
             payload.contains("\"pageFaultsPerSec\":15.500"),
             "payload must expose the per-process fault rate: {payload}"
+        );
+        assert!(
+            payload.contains("\"demandP95MB\":null"),
+            "payload must expose the demand percentile slot: {payload}"
+        );
+        assert!(
+            payload.contains("\"minimumCapMB\":4"),
+            "payload must expose the effective floor: {payload}"
         );
     }
 }

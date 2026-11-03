@@ -26,6 +26,11 @@ function Diagnostics(props) {
   const [tab, setTab] = R.useState('overview');
   const [filter, setFilter] = R.useState('');
   const [severity, setSeverity] = R.useState('all');
+  // Master-detail: the compact row keeps the glanceable memory picture; the forensic fields
+  // (identity, creation, pin, learned bucket, faults, error) open in an expandable detail row so
+  // the wide monospace values never push the table outside the card.
+  const [expanded, setExpanded] = R.useState({});
+  const toggleRow = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   const num = (v, suffix = '') => (v == null ? '—' : `${v}${suffix}`);
   const pct = (v) => (Number.isFinite(v) ? `${v.toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 })}%` : '—');
   const usedMB = (t) => MSSFormatMB(memory.privateWorkingSet ? t.privateWorkingSetMB : t.workingSetMB);
@@ -42,6 +47,9 @@ function Diagnostics(props) {
   const learnedBadge = (t) => (t.usageBucket
     ? h('span', { className: `mss-learned mss-learned-${t.usageBucket}`, title: `${tx('learnedProfile')} · ${tx(`bucket_${t.usageBucket}`)} · ${t.usageScore}%` }, tx(`bucket_${t.usageBucket}`))
     : h('span', { className: 'mss-learned mss-learned-none', title: tx('learnedHint') }, tx('learnedNone')));
+  // Long monospace values (identity/creation) are truncated on screen with the full text in the tooltip.
+  const truncMono = (v) => (v ? h('span', { className: 'mss-mono mss-diag-trunc', title: String(v) }, String(v)) : '—');
+  const detailField = (label, value) => h('div', { className: 'mss-diag-detail-item' }, h('span', null, label), h('div', null, value));
 
   const overviewTab = h('div', { className: 'mss-diag-tabpane' },
     MSSDebugSection(tx('debugTelemetry'), h('div', { className: 'mss-diag-grid' },
@@ -68,28 +76,62 @@ function Diagnostics(props) {
     ))
   );
 
+  // Compact columns: role, PID and the memory numbers you read at a glance (including the demand
+  // percentile and effective floor this view exists to expose). Everything else lives in the detail row.
+  const compactCols = [
+    { label: tx('colRole'), num: false },
+    { label: 'PID', num: false },
+    { label: tx('colUsed'), num: true },
+    { label: tx('colCap'), num: true },
+    { label: tx('colDemand'), num: true },
+    { label: tx('colFloor'), num: true },
+    { label: tx('colState'), num: false },
+    { label: tx('colCpu'), num: true },
+  ];
   const processesTab = h('div', { className: 'mss-diag-tabpane' },
     h('div', { className: 'mss-diag-filterrow' },
       h('input', { className: 'mss-input mss-diag-filter', type: 'search', placeholder: tx('dbgFilterPlaceholder'), 'aria-label': tx('dbgFilterPlaceholder'), value: filter, onChange: (e) => setFilter(e.target.value) }),
       h('span', { className: 'mss-diag-count' }, tx('dbgShowing', { shown: shownTargets.length, total: targets.length }))
     ),
-    shownTargets.length ? h('table', { className: 'mss-diag-table' },
-      h('thead', null, h('tr', null, [tx('colRole'), 'PID', tx('colIdentity'), tx('colCreated'), tx('colUsed'), tx('colCap'), tx('colPin'), tx('colState'), tx('colLearned'), tx('colCpu'), tx('colFaults'), tx('colFaultRate'), tx('colErr')].map((label, i) => h('th', { key: i }, label)))),
-      h('tbody', null, shownTargets.map((t) => h('tr', { key: `${t.pid}:${t.creation}` },
-        h('td', null, `${MSSRoleLabel(t.role)}${t.subLabel ? ` ${t.subLabel}` : ''}`),
-        h('td', { className: 'mss-mono' }, String(t.pid)),
-        h('td', { className: 'mss-mono' }, t.identity || '—'),
-        h('td', { className: 'mss-mono' }, t.creation || '—'),
-        h('td', { className: 'mss-diag-num' }, `${usedMB(t)} MB`),
-        h('td', { className: 'mss-diag-num' }, t.capped ? `${MSSFormatMB(t.limitMB)} MB` : '—'),
-        h('td', { className: 'mss-diag-num' }, t.manualCapMB != null ? `${t.manualCapMB} MB` : '—'),
-        h('td', null, t.manual ? tx('tagManual') : (t.capped ? t.adaptiveStatus || tx('tagAdaptive') : tx('tagNoCeiling'))),
-        h('td', null, learnedBadge(t)),
-        h('td', { className: 'mss-diag-num' }, pct(t.cpuPercent)),
-        h('td', { className: 'mss-diag-num' }, num(t.pageFaultsDelta)),
-        h('td', { className: 'mss-diag-num' }, t.pageFaultsPerSec == null ? '—' : Number(t.pageFaultsPerSec).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 })),
-        h('td', { className: 'mss-diag-num' }, t.errorCode ? String(t.errorCode) : '—')
-      )))
+    shownTargets.length ? h('div', { className: 'mss-diag-tablewrap' },
+      h('table', { className: 'mss-diag-table' },
+        h('thead', null, h('tr', null,
+          h('th', { className: 'mss-diag-expcol', 'aria-label': tx('dbgExpand') }),
+          ...compactCols.map((c, i) => h('th', { key: i, className: c.num ? 'mss-diag-num' : undefined }, c.label))
+        )),
+        h('tbody', null, shownTargets.map((t) => {
+          const id = `${t.pid}:${t.creation}`;
+          const open = !!expanded[id];
+          return h(R.Fragment, { key: id },
+            h('tr', { className: 'mss-diag-row' },
+              h('td', { className: 'mss-diag-expcol' },
+                h('button', { type: 'button', className: 'mss-diag-expand', 'aria-expanded': open, 'aria-label': tx('dbgExpand'), title: tx('dbgExpand'), onClick: () => toggleRow(id) }, open ? '▾' : '▸')
+              ),
+              h('td', null, `${MSSRoleLabel(t.role)}${t.subLabel ? ` ${t.subLabel}` : ''}`),
+              h('td', { className: 'mss-mono' }, String(t.pid)),
+              h('td', { className: 'mss-diag-num' }, `${usedMB(t)} MB`),
+              h('td', { className: 'mss-diag-num' }, t.capped ? `${MSSFormatMB(t.limitMB)} MB` : '—'),
+              h('td', { className: 'mss-diag-num' }, t.demandP95MB == null ? '—' : `${Number(t.demandP95MB).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 })} MB`),
+              h('td', { className: 'mss-diag-num' }, t.minimumCapMB == null ? '—' : `${t.minimumCapMB} MB`),
+              h('td', null, t.manual ? tx('tagManual') : (t.capped ? t.adaptiveStatus || tx('tagAdaptive') : tx('tagNoCeiling'))),
+              h('td', { className: 'mss-diag-num' }, pct(t.cpuPercent))
+            ),
+            open ? h('tr', { className: 'mss-diag-detailrow' },
+              h('td', { className: 'mss-diag-detailcell', colSpan: compactCols.length + 1 },
+                h('div', { className: 'mss-diag-detail' },
+                  detailField(tx('colIdentity'), truncMono(t.identity)),
+                  detailField(tx('colCreated'), truncMono(t.creation)),
+                  detailField(tx('colPin'), t.manualCapMB != null ? `${t.manualCapMB} MB` : '—'),
+                  detailField(tx('colLearned'), learnedBadge(t)),
+                  detailField(tx('colFaults'), num(t.pageFaultsDelta)),
+                  detailField(tx('colFaultRate'), t.pageFaultsPerSec == null ? '—' : Number(t.pageFaultsPerSec).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 })),
+                  detailField(tx('colErr'), t.errorCode ? String(t.errorCode) : '—')
+                )
+              )
+            ) : null
+          );
+        }))
+      )
     ) : h('div', { className: 'mss-empty' }, tx('dbgNoMatch'))
   );
 
