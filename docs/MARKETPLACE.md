@@ -10,7 +10,7 @@ The Marketplace listing is discovery-only: it links to this repository and does 
 
 Memory Sentry manages the **resident working set**, not committed memory. It does not free or decommit memory, and observed results vary by workload and system. Avoid describing the result as freed, released, or swapped-out memory.
 
-The server API binds to loopback, requires a per-install token, validates the Spotify HTTPS Origin and loopback Host header, and records original process limits for recovery. Custom mode gives Audio-role processes a 36 MB ceiling that adapts upward to 60 MB under sustained load, and a pinned process holds a fixed ceiling stored by PID-free process identity. Original limits are recorded per process instance. Logs and metrics stay on the PC.
+The server API binds to loopback, requires a per-install token, validates the Spotify HTTPS Origin and loopback Host header, and records original process limits for recovery. Custom mode starts every role at a 38 MB ceiling with a 4 MB absolute floor, raises a process that thrashes at its ceiling and remembers that ceiling as the identity's learned safe floor, and lets Audio adapt upward to 60 MB under sustained load; a pinned process holds a fixed ceiling stored by PID-free process identity. Original limits are recorded per process instance. Logs and metrics stay on the PC.
 
 ## Listing requirements
 
