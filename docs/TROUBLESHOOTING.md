@@ -35,7 +35,7 @@ Memory Sentry is designed to substantially reduce Spotify's resident working set
 
 On very low-end PCs, the window can briefly appear black while Spotify's interface becomes visible again. **That alone does not prove a reload or loss of state.** Check whether the previous page and UI state return as they were. Input may also take a few seconds to respond after the window is restored. A persistent black screen, lost state, crash, interrupted playback, or unusably long delay is not something to dismiss as normal.
 
-The dashboard's **Limit restoration duration** measures the server's limit-restoration operation, not the time until Spotify accepts the first input. Page faults may contribute to delay, but the available counters do not identify the cause of a particular event. If the problem persists, turn **Memory Sentry off** by selecting **Disabled** in the memory mode to stop both automatic and manual limits, then include local logs plus manually measured restore-to-interaction times in a report. Selecting **Manual** only switches policy and does not stop limits.
+The dashboard's **Limit restoration duration** measures the server's limit-restoration operation, not the time until Spotify accepts the first input. Page faults may contribute to delay, but the available counters do not identify the cause of a particular event. If the problem persists, turn **Memory Sentry off** by selecting **Disabled** in the memory mode to stop all limits, then include local logs plus manually measured restore-to-interaction times in a report. Pinning a process to **Manual** only fixes that process's ceiling and does not stop limits.
 
 ## Working set dropped, but commit size or pagefile activity did not
 
