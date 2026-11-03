@@ -321,6 +321,33 @@ pub fn estimate_cpu_percent(
     Some(((elapsed_cpu / elapsed_ms as f64) * 100.0).clamp(0.0, 100.0))
 }
 
+/// Faults counted between two readings of the Windows counter. That counter is a 32-bit DWORD, so a
+/// reading smaller than the previous one means it wrapped past its maximum; the delta is reconstructed
+/// across that boundary instead of reading as a negative (and therefore huge) drop.
+pub fn faults_since(previous_faults: u64, current_faults: u64) -> u64 {
+    if current_faults >= previous_faults {
+        current_faults - previous_faults
+    } else {
+        current_faults + (1u64 << 32) - previous_faults
+    }
+}
+
+/// Faults per second for the window that actually separates two readings. Callers must pass the age of
+/// the reading they divided against: the fast memory refresh and the slower process snapshot each
+/// advance the shared baseline, so dividing by a nominal window dilutes the reading whenever the other
+/// sampler moved the counter in between. `None` when the age is unknown, which callers treat as "no
+/// fault pressure" rather than as zero.
+pub fn estimate_faults_per_second(
+    previous_faults: u64,
+    current_faults: u64,
+    elapsed_ms: u64,
+) -> Option<f64> {
+    if elapsed_ms == 0 {
+        return None;
+    }
+    Some(faults_since(previous_faults, current_faults) as f64 * 1000.0 / elapsed_ms as f64)
+}
+
 pub fn working_set_at_ceiling(working_set_mb: f64, ceiling_mb: u32) -> bool {
     working_set_mb.is_finite() && working_set_mb >= ceiling_mb as f64
 }
@@ -486,6 +513,19 @@ mod tests {
         s.cpu_percent = 18.0;
         s.high_cpu_ms = 20_000;
         assert_eq!(decide_adjustment(s), None);
+    }
+
+    #[test]
+    fn fault_rate_divides_by_the_age_of_its_own_reading() {
+        assert_eq!(estimate_faults_per_second(1_000, 3_000, 2_000), Some(1_000.0));
+        assert_eq!(estimate_faults_per_second(0, 500, 1_000), Some(500.0));
+        // The counter is 32-bit: a reading that wrapped still yields the faults that actually happened.
+        assert_eq!(
+            estimate_faults_per_second(u32::MAX as u64 - 99, 400, 1_000),
+            Some(500.0)
+        );
+        assert_eq!(faults_since(7, 3), (1u64 << 32) - 4);
+        assert_eq!(estimate_faults_per_second(1_000, 3_000, 0), None);
     }
 
     #[test]

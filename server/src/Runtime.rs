@@ -192,7 +192,7 @@ pub(crate) struct AppState {
     active_caps: BTreeMap<u32, BackupRecord>,
     profiles: BTreeMap<u32, AdaptiveProfile>,
     target_retry_at_ms: BTreeMap<(u32, u64), u64>,
-    page_fault_baselines: BTreeMap<(u32, u64), u64>,
+    page_fault_baselines: BTreeMap<(u32, u64), (u64, u64)>,
     cpu_baselines: BTreeMap<(u32, u64), (u64, u64)>,
     audio_pids: BTreeSet<u32>,
     audio_pids_error: String,
@@ -304,6 +304,7 @@ mod tests {
             private_mb: None,
             page_fault_count: None,
             page_faults_delta: None,
+            page_faults_per_sec: None,
             error_code: 0,
         };
         let settings = Settings {
@@ -347,6 +348,7 @@ mod tests {
             private_mb: None,
             page_fault_count: None,
             page_faults_delta: None,
+            page_faults_per_sec: None,
             error_code: 0,
         };
         let settings = Settings {
@@ -615,6 +617,7 @@ mod tests {
             private_mb: None,
             page_fault_count: None,
             page_faults_delta: None,
+            page_faults_per_sec: None,
             error_code: 0,
         };
 
