@@ -10,7 +10,15 @@
 
 use std::collections::BTreeSet;
 
-pub const MIN_CAP_MB: u32 = 12;
+/// Hard technical floor for an automatic ceiling. This is a safety bound, not a policy floor: the
+/// per-identity learned safe floor normally sits above it, and the page-fault thrash guard is what
+/// actually protects a starved process. Below a few megabytes a Chromium process only produces
+/// faults, so this also keeps the engine out of degenerate caps.
+pub const MIN_CAP_MB: u32 = 4;
+/// Starting automatic ceiling, the same for every role. The first minutes after launch stay
+/// generous (which is what prevents a freeze when the user returns to the window) and the engine
+/// learns each identity's own safe edge from there.
+pub const INITIAL_CAP_MB: u32 = 38;
 pub const MAX_CAP_MB: u32 = 64;
 pub const INCREASE_STEP_MB: u32 = 8;
 pub const DECREASE_STEP_MB: u32 = 6;
@@ -54,30 +62,24 @@ impl ProcessRole {
         }
     }
 
-    /// Starting automatic ceiling. Audio begins here and may adapt upward like the other roles.
+    /// Starting automatic ceiling: uniform across roles, so a fresh process is never capped below a
+    /// level that would force it to refault everything the moment the window comes back.
     pub fn baseline_cap_mb(self) -> Option<u32> {
-        match self {
-            Self::Main | Self::Audio => Some(36),
-            Self::Gpu | Self::Renderer => Some(28),
-            Self::Utility | Self::Helper => Some(24),
-            Self::Crashpad => Some(16),
-        }
+        Some(INITIAL_CAP_MB)
     }
 
+    /// Absolute floor shared by every role. Per-identity learning can raise it; nothing lowers it.
     pub fn minimum_cap_mb(self) -> Option<u32> {
-        match self {
-            Self::Audio => Some(36),
-            Self::Main => Some(16),
-            Self::Gpu | Self::Helper | Self::Renderer | Self::Utility | Self::Crashpad => Some(12),
-        }
+        Some(MIN_CAP_MB)
     }
 
     pub fn maximum_cap_mb(self) -> Option<u32> {
         match self {
-            Self::Main => Some(36),
-            _ => self
-                .baseline_cap_mb()
-                .map(|base| MAX_CAP_MB.min(base.saturating_add(24))),
+            Self::Main => Some(38),
+            Self::Audio => Some(60),
+            Self::Gpu | Self::Renderer => Some(52),
+            Self::Utility | Self::Helper => Some(48),
+            Self::Crashpad => Some(40),
         }
     }
 
@@ -288,6 +290,8 @@ pub struct PolicySample {
     pub low_cpu_ms: u64,
     /// Page faults per second since the previous sample; the thrash signal for the safety valve.
     pub faults_per_sec: f64,
+    /// Effective floor for this identity: the absolute minimum raised by the learned safe edge.
+    pub minimum_cap_mb: u32,
     /// Total installed RAM in MB, used only to pick the headroom tier (0 == unknown -> Medium).
     pub system_total_mb: u64,
     pub last_adjustment_ms: u64,
@@ -362,11 +366,13 @@ pub fn working_set_at_ceiling(working_set_mb: f64, ceiling_mb: u32) -> bool {
 pub fn decide_adjustment(sample: PolicySample) -> Option<Adjustment> {
     let role_min = sample.role.minimum_cap_mb()?;
     let role_base = sample.role.baseline_cap_mb().unwrap_or(MAX_CAP_MB);
-    let minimum = role_min; // absolute per-role floor (already >= MIN_CAP_MB)
+    // The learned safe edge can only raise the absolute floor. Clamped to the role ceiling below so a
+    // stale value cannot freeze the process.
+    let floor = sample.minimum_cap_mb.max(role_min);
     // Headroom scales with installed RAM: a large machine lets a busy process grow higher (thrash less),
     // a small one keeps the ceiling tight. Unknown total -> Medium -> no bonus (unchanged behavior).
     let tier = memory_tier(sample.system_total_mb);
-    let maximum = sample.role.maximum_cap_mb()?.saturating_add(tier.maximum_bonus_mb());
+    let maximum = sample.role.maximum_cap_mb()?.saturating_add(tier.maximum_bonus_mb()).min(MAX_CAP_MB);
 
     if !sample.working_set_mb.is_finite()
         || sample.working_set_mb < 0.0
@@ -376,7 +382,7 @@ pub fn decide_adjustment(sample: PolicySample) -> Option<Adjustment> {
         || sample.faults_per_sec < 0.0
         || !sample.busy_percent.is_finite()
         || !(0.0..=100.0).contains(&sample.busy_percent)
-        || sample.current_cap_mb < minimum
+        || sample.current_cap_mb < role_min
         || sample.current_cap_mb > maximum
         || sample.now_ms.saturating_sub(sample.last_adjustment_ms) < ADJUSTMENT_COOLDOWN_MS
     {
@@ -394,7 +400,7 @@ pub fn decide_adjustment(sample: PolicySample) -> Option<Adjustment> {
     // rarely-busy identities descend on a tighter margin toward the floor (last drop), while
     // frequently-busy ones keep headroom above the floor so they are never starved on return.
     let bucket = usage_bucket(sample.busy_percent);
-    let effective_min = role_min.saturating_add(bucket.floor_extra_mb()).min(role_base);
+    let effective_min = floor.saturating_add(bucket.floor_extra_mb()).min(role_base);
     let margin = bucket.decrease_margin_mb();
 
     if sample.cpu_percent >= HIGH_CPU_PERCENT
@@ -486,6 +492,7 @@ mod tests {
             high_cpu_ms: 0,
             low_cpu_ms: 12_000,
             faults_per_sec: 0.0,
+            minimum_cap_mb: MIN_CAP_MB,
             system_total_mb: 0,
             last_adjustment_ms: 0,
             now_ms: 20_000,
@@ -493,10 +500,23 @@ mod tests {
     }
 
     #[test]
-    fn main_baseline_and_floor_are_preserved() {
-        assert_eq!(ProcessRole::Main.baseline_cap_mb(), Some(36));
-        assert_eq!(ProcessRole::Main.minimum_cap_mb(), Some(16));
-        assert_eq!(ProcessRole::Main.maximum_cap_mb(), Some(36));
+    fn every_role_starts_at_38_with_a_4_mb_absolute_floor() {
+        for role in [
+            ProcessRole::Main,
+            ProcessRole::Audio,
+            ProcessRole::Gpu,
+            ProcessRole::Renderer,
+            ProcessRole::Utility,
+            ProcessRole::Helper,
+            ProcessRole::Crashpad,
+        ] {
+            assert_eq!(role.baseline_cap_mb(), Some(38), "{role:?}");
+            assert_eq!(role.minimum_cap_mb(), Some(4), "{role:?}");
+        }
+        assert_eq!(ProcessRole::Main.maximum_cap_mb(), Some(38));
+        assert_eq!(ProcessRole::Audio.maximum_cap_mb(), Some(60));
+        assert_eq!(ProcessRole::Renderer.maximum_cap_mb(), Some(52));
+        assert_eq!(ProcessRole::Crashpad.maximum_cap_mb(), Some(40));
     }
 
     #[test]
@@ -595,12 +615,14 @@ mod tests {
     }
 
     #[test]
-    fn a_frequently_busy_process_is_not_squeezed_below_its_headroom() {
-        // Active usage raises the effective floor to the current cap, so a hot process keeps memory.
+    fn a_learned_safe_floor_keeps_a_busy_process_from_descending() {
+        // The learned safe edge raises the floor; with the Active headroom it can exceed the current
+        // cap, so a hot process keeps its memory instead of being squeezed.
         let mut s = sample(ProcessRole::Main);
         s.current_cap_mb = 24;
         s.working_set_mb = 10.0;
-        s.busy_percent = 60.0; // Active -> effective floor 16 + 8 = 24, cannot descend from 24
+        s.busy_percent = 60.0; // Active -> +8 headroom
+        s.minimum_cap_mb = 20; // learned safe edge
         assert_eq!(decide_adjustment(s), None);
     }
 
@@ -617,16 +639,16 @@ mod tests {
     }
 
     #[test]
-    fn audio_adapts_upward_from_36_to_60_megabytes() {
+    fn audio_adapts_upward_from_38_to_60_megabytes() {
         let mut s = sample(ProcessRole::Audio);
-        s.working_set_mb = 36.0;
+        s.working_set_mb = 38.0;
         s.cpu_percent = 50.0;
         s.high_cpu_ms = 20_000;
-        assert_eq!(ProcessRole::Audio.baseline_cap_mb(), Some(36));
-        assert_eq!(ProcessRole::Audio.minimum_cap_mb(), Some(36));
+        assert_eq!(ProcessRole::Audio.baseline_cap_mb(), Some(38));
+        assert_eq!(ProcessRole::Audio.minimum_cap_mb(), Some(4));
         assert_eq!(ProcessRole::Audio.maximum_cap_mb(), Some(60));
         let decision = decide_adjustment(s).expect("audio should adapt upward under load");
-        assert_eq!(decision.next_cap_mb, 44);
+        assert_eq!(decision.next_cap_mb, 46);
         assert_eq!(decision.direction, AdjustmentDirection::Increase);
         assert_eq!(ProcessRole::Audio.manual_default_cap_mb(), 36);
     }
@@ -648,11 +670,17 @@ mod tests {
     }
 
     #[test]
-    fn main_process_cannot_fall_below_sixteen_megabytes() {
+    fn an_idle_process_falls_to_the_absolute_floor_but_a_learned_floor_stops_it() {
         let mut s = sample(ProcessRole::Main);
-        s.current_cap_mb = 18;
-        s.working_set_mb = 10.0;
-        assert_eq!(decide_adjustment(s).map(|d| d.next_cap_mb), Some(16));
+        s.current_cap_mb = 10;
+        s.working_set_mb = 2.0;
+        assert_eq!(decide_adjustment(s).map(|d| d.next_cap_mb), Some(4));
+        // The learned safe edge blocks the same descent.
+        let mut learned = sample(ProcessRole::Main);
+        learned.current_cap_mb = 10;
+        learned.working_set_mb = 2.0;
+        learned.minimum_cap_mb = 8;
+        assert_eq!(decide_adjustment(learned).map(|d| d.next_cap_mb), Some(8));
     }
 
     #[test]
