@@ -74,7 +74,7 @@ function Diagnostics(props) {
       h('span', { className: 'mss-diag-count' }, tx('dbgShowing', { shown: shownTargets.length, total: targets.length }))
     ),
     shownTargets.length ? h('table', { className: 'mss-diag-table' },
-      h('thead', null, h('tr', null, [tx('colRole'), 'PID', tx('colIdentity'), tx('colCreated'), tx('colUsed'), tx('colCap'), tx('colPin'), tx('colState'), tx('colLearned'), tx('colCpu'), tx('colFaults'), tx('colFaultRate'), tx('colErr')].map((label, i) => h('th', { key: i }, label)))),
+      h('thead', null, h('tr', null, [tx('colRole'), 'PID', tx('colIdentity'), tx('colCreated'), tx('colUsed'), tx('colCap'), tx('colDemand'), tx('colFloor'), tx('colPin'), tx('colState'), tx('colLearned'), tx('colCpu'), tx('colFaults'), tx('colFaultRate'), tx('colErr')].map((label, i) => h('th', { key: i }, label)))),
       h('tbody', null, shownTargets.map((t) => h('tr', { key: `${t.pid}:${t.creation}` },
         h('td', null, `${MSSRoleLabel(t.role)}${t.subLabel ? ` ${t.subLabel}` : ''}`),
         h('td', { className: 'mss-mono' }, String(t.pid)),
@@ -82,6 +82,8 @@ function Diagnostics(props) {
         h('td', { className: 'mss-mono' }, t.creation || '—'),
         h('td', { className: 'mss-diag-num' }, `${usedMB(t)} MB`),
         h('td', { className: 'mss-diag-num' }, t.capped ? `${MSSFormatMB(t.limitMB)} MB` : '—'),
+        h('td', { className: 'mss-diag-num' }, t.demandP95MB == null ? '—' : `${Number(t.demandP95MB).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 })} MB`),
+        h('td', { className: 'mss-diag-num' }, t.minimumCapMB == null ? '—' : `${t.minimumCapMB} MB`),
         h('td', { className: 'mss-diag-num' }, t.manualCapMB != null ? `${t.manualCapMB} MB` : '—'),
         h('td', null, t.manual ? tx('tagManual') : (t.capped ? t.adaptiveStatus || tx('tagAdaptive') : tx('tagNoCeiling'))),
         h('td', null, learnedBadge(t)),
