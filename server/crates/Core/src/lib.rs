@@ -31,6 +31,11 @@ pub const LOW_WORKING_SET_MARGIN_MB: f64 = 6.0;
 /// How long a backgrounded process must stay quiet before the engine proactively squeezes it toward
 /// its floor even without the usual working-set headroom (Chrome's idle-reclaim model).
 pub const IDLE_PROACTIVE_MS: u64 = 60_000;
+/// A process that burns CPU while holding almost no resident memory is starved even when its fault
+/// rate does not cross the thrash threshold: a micro-process that keeps refaulting shows up as CPU
+/// load with a tiny working set. Measured heuristics (one logical core, megabytes resident).
+pub const STARVATION_CPU_PERCENT: f64 = 50.0;
+pub const STARVATION_WORKING_SET_MB: f64 = 8.0;
 /// Page faults per second above which a capped process is judged to be starved (thrashing). The
 /// engine then stops squeezing it and backs the ceiling off — the safety valve that lets the
 /// aggressive background floors stay crash-free. Measured on real hardware (Windows 11, eight Spotify
@@ -80,6 +85,18 @@ impl ProcessRole {
             Self::Gpu | Self::Renderer => Some(52),
             Self::Utility | Self::Helper => Some(48),
             Self::Crashpad => Some(40),
+        }
+    }
+
+    /// Floor for a given window state, layered above the absolute minimum. Audio never drops below
+    /// 25 MB so playback does not glitch. A renderer keeps 38 MB while the window is visible in the
+    /// background, because the next alt-tab is a repaint away; once minimized or hidden the return
+    /// path is a full restore anyway, so it may descend to the absolute floor.
+    pub fn state_floor_mb(self, visible_background: bool) -> u32 {
+        match self {
+            Self::Audio => 25,
+            Self::Renderer if visible_background => 38,
+            _ => MIN_CAP_MB,
         }
     }
 
@@ -309,6 +326,7 @@ pub enum AdjustmentReason {
     SustainedHighCpu,
     LowCpuAndMemoryHeadroom,
     ThrashRelief,
+    CpuStarvation,
     IdleProactive,
 }
 
@@ -412,6 +430,23 @@ pub fn decide_adjustment(sample: PolicySample) -> Option<Adjustment> {
             next_cap_mb: next,
             direction: AdjustmentDirection::Increase,
             reason: AdjustmentReason::SustainedHighCpu,
+        });
+    }
+
+    // The other face of starvation: a process cannot hold the pages it needs, so it burns CPU
+    // refaulting while its resident set stays tiny and never reaches the ceiling. Give it the same
+    // relief as the page-fault valve instead of waiting for the fault rate to cross the threshold.
+    if sample.cpu_percent >= STARVATION_CPU_PERCENT
+        && sample.high_cpu_ms >= HIGH_CPU_DURATION_MS
+        && sample.working_set_mb <= STARVATION_WORKING_SET_MB
+        && !at_ceiling
+        && sample.current_cap_mb < maximum
+    {
+        let next = maximum.min(sample.current_cap_mb.saturating_add(INCREASE_STEP_MB));
+        return (next > sample.current_cap_mb).then_some(Adjustment {
+            next_cap_mb: next,
+            direction: AdjustmentDirection::Increase,
+            reason: AdjustmentReason::CpuStarvation,
         });
     }
 
@@ -592,6 +627,48 @@ mod tests {
         assert_eq!(decision.next_cap_mb, 20);
         assert_eq!(decision.reason, AdjustmentReason::ThrashRelief);
         assert_eq!(decision.direction, AdjustmentDirection::Increase);
+    }
+
+    #[test]
+    fn a_tiny_process_burning_cpu_gets_a_relief_increase() {
+        let mut s = sample(ProcessRole::Renderer);
+        s.current_cap_mb = 4;
+        s.working_set_mb = 1.5;
+        s.cpu_percent = 75.7;
+        s.high_cpu_ms = 7_000;
+        let decision = decide_adjustment(s).expect("cpu starvation relief expected");
+        assert_eq!(decision.next_cap_mb, 12);
+        assert_eq!(decision.reason, AdjustmentReason::CpuStarvation);
+        assert_eq!(decision.direction, AdjustmentDirection::Increase);
+    }
+
+    #[test]
+    fn high_cpu_with_real_memory_does_not_raise_below_the_ceiling() {
+        // 18 MB resident is not starvation; without reaching the ceiling there is nothing to gain.
+        let mut s = sample(ProcessRole::Renderer);
+        s.current_cap_mb = 20;
+        s.working_set_mb = 18.0;
+        s.cpu_percent = 75.0;
+        s.high_cpu_ms = 7_000;
+        assert_eq!(decide_adjustment(s), None);
+    }
+
+    #[test]
+    fn audio_never_descends_below_25_mb() {
+        assert_eq!(ProcessRole::Audio.state_floor_mb(true), 25);
+        assert_eq!(ProcessRole::Audio.state_floor_mb(false), 25);
+        let mut s = sample(ProcessRole::Audio);
+        s.current_cap_mb = 26;
+        s.working_set_mb = 20.0;
+        s.minimum_cap_mb = ProcessRole::Audio.state_floor_mb(true);
+        assert_eq!(decide_adjustment(s).map(|d| d.next_cap_mb), Some(25));
+    }
+
+    #[test]
+    fn renderer_holds_38_while_visible_and_drops_to_4_when_hidden() {
+        assert_eq!(ProcessRole::Renderer.state_floor_mb(true), 38);
+        assert_eq!(ProcessRole::Renderer.state_floor_mb(false), 4);
+        assert_eq!(ProcessRole::Main.state_floor_mb(true), 4);
     }
 
     #[test]
