@@ -119,6 +119,9 @@ check('page-fault rate divides deltas by the shared timestamped baseline, never 
 // calibration of the thrash threshold has to read. The debug surface must expose it (not only the
 // raw delta) so the thresholds can be measured instead of guessed.
 check('debug console exposes the per-process page-fault rate behind the thrash guard', rustApi.includes('pageFaultsPerSec\\":{}') && rustServer.includes('json_optional_number(p.page_faults_per_sec)') && app.includes("tx('colFaultRate')") && app.includes('t.pageFaultsPerSec') && app.includes("colFaultRate: 'Faults/s'") && app.includes("colFaultRate: 'Falhas/s'"));
+// The demand percentile and the effective floor are the inputs behind the current target: exposing
+// them in the same table lets the new policy be read instead of guessed.
+check('debug console exposes the demand percentile and the effective floor', rustApi.includes('demandP95MB\\":{}') && rustApi.includes('minimumCapMB\\":{}') && rustServer.includes('last_floor_mb') && app.includes("tx('colDemand')") && app.includes("tx('colFloor')") && app.includes('t.demandP95MB') && app.includes('t.minimumCapMB') && app.includes("colDemand: 'Demand'") && app.includes("colDemand: 'Demanda'") && app.includes("colFloor: 'Piso'"));
 // The floorless policy: every role starts at 38 MB, the absolute floor is 4 MB, and a ceiling that
 // caused thrashing becomes that identity's learned safe floor instead of a per-role clamp. Guard the
 // constants, the effective floor in the policy sample, the persistence key and the runtime wiring.

@@ -308,6 +308,21 @@
 .mss-diag-filter { flex: 1 1 180px; min-width: 140px; }
 .mss-diag-count { font-size: 11.5px; color: var(--mss-dim); white-space: nowrap; }
 .mss-diag-table td.mss-diag-num { text-align: right; }
+/* Master-detail processes table: a scroll wrapper is the safety net so the compact row can never
+   push past the card, the expand chevron sits in its own narrow column, and the detail row opens a
+   full-width definition grid beneath a row. Long monospace values truncate with an ellipsis. */
+.mss-diag-table th.mss-diag-num { text-align: right; }
+.mss-diag-tablewrap { overflow-x: auto; }
+.mss-diag-expcol { width: 26px; padding-right: 2px; }
+.mss-diag-expand { background: none; border: 0; color: var(--mss-muted); cursor: pointer; font-size: 11px; line-height: 1; padding: 2px 4px; border-radius: 5px; }
+.mss-diag-expand:hover { color: var(--spice-text, #ffffff); background: var(--mss-surface-strong); }
+.mss-diag-row:hover { background: var(--mss-surface); }
+.mss-diag-detailrow > td { border-top: 0; padding: 0; }
+.mss-diag-detail { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 18px; padding: 6px 12px 12px; margin: 0 0 4px; background: var(--mss-surface); border: 1px solid var(--mss-border); border-top: 1px dashed var(--mss-border); border-radius: 8px; }
+.mss-diag-detail-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mss-diag-detail-item > span { font-size: 10.5px; color: var(--mss-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+.mss-diag-detail-item > div { font-size: 12px; font-variant-numeric: tabular-nums; }
+.mss-diag-trunc { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 /* Learned usage badge (local-only telemetry). A quiet pill coloured by how busy this identity
    usually is, so a frequently-used process reads as protected and a rare one as reclaim-soon.
    'Learning' (no score yet) is a dashed placeholder. Mirrors the .mss-event-level language. */

@@ -139,6 +139,7 @@ struct AdaptiveProfile {
     current_cap_mb: u32,
     demand: DemandHistogram,
     cpu_ewma: Option<u32>,
+    last_floor_mb: u32,
     last_evaluated_snapshot_at_ms: u64,
     last_adjustment_at_ms: u64,
     last_reason: String,
@@ -796,6 +797,14 @@ mod tests {
         assert!(
             payload.contains("\"pageFaultsPerSec\":15.500"),
             "payload must expose the per-process fault rate: {payload}"
+        );
+        assert!(
+            payload.contains("\"demandP95MB\":null"),
+            "payload must expose the demand percentile slot: {payload}"
+        );
+        assert!(
+            payload.contains("\"minimumCapMB\":4"),
+            "payload must expose the effective floor: {payload}"
         );
     }
 }
