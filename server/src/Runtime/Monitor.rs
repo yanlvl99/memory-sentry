@@ -1086,7 +1086,7 @@ pub(crate) fn configured_manual_cap(
     role: ProcessRole,
 ) -> Option<u32> {
     // Per-process identity wins; a bare-role entry (older data, or roles with no sub-label) then
-    // acts as the shared default; finally a legacy PID-scoped cap is honoured for its exact PID.
+    // acts as the shared default.
     let identity = process_identity(&process.cmd, role);
     manual_cap_for_identity(settings, &identity, role)
 }
