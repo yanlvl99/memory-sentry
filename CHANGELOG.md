@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Spotify occasionally keeping a reduced memory ceiling while you were actively using it: the dashboard now tells the local server the instant its window is focused and on screen, and a fresh report releases every limit even when the server's own window enumeration briefly fails to see the Spotify window (a tray hide/show or a focus hand-off to a modal). This release path only ever restores limits, so it can never cap a foreground Spotify.
+
 ## 1.0.0-rc.7 — Demand-based adaptive policy
 
 - The debug console now reports each process's page-fault rate next to its cumulative delta, so the exact thrash signal the adaptive engine acts on can be inspected. This is the value a real-machine calibration of the thrash threshold has to read.

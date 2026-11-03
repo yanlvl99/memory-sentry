@@ -156,6 +156,13 @@ pub(crate) fn status_payload(state: &AppState) -> String {
     } else {
         0
     };
+    // How stale the last dashboard focus/visibility beacon is, surfaced in Debug so the foreground
+    // restore path can be verified on a real machine. Null until the renderer has reported once.
+    let client_state_age_seconds = if state.client_state_at_ms > 0 {
+        Some(now_ms().saturating_sub(state.client_state_at_ms) / 1000)
+    } else {
+        None
+    };
     let (sys_total_mb, sys_avail_mb, mem_load) = windows::system_memory();
     let memory = format!(
         "{{\"spotifyTotalMB\":{},\"targetTotalMB\":{},\"processCount\":{},\"targetCount\":{},\"cappedCount\":{},\"privateWorkingSet\":{},\"systemTotalMB\":{},\"systemAvailableMB\":{},\"memoryLoadPercent\":{},\"pressureLevel\":{},\"targets\":[{}],\"sampledAt\":{}}}",
@@ -176,7 +183,8 @@ pub(crate) fn status_payload(state: &AppState) -> String {
     );
 
     format!(
-        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"windowStateReason\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{}}}}}",
+        "{{\"ok\":true,\"debugApi\":{},\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"windowStateReason\":{},\"hiddenSeconds\":{},\"clientForeground\":{},\"clientStateAgeSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{}}}}}",
+        cfg!(feature = "debug-api"),
         json_quote(VERSION),
         json_quote(&state.started_at),
         state.root_pid.is_some(),
@@ -185,6 +193,8 @@ pub(crate) fn status_payload(state: &AppState) -> String {
         json_quote(&state.window_state),
         json_quote(&state.window_state_reason),
         hidden_seconds,
+        state.client_foreground,
+        json_optional_number(client_state_age_seconds.map(|v| v as f64)),
         public_config(&state.settings),
         memory,
         last_action,
@@ -634,6 +644,78 @@ pub(crate) fn handle_http_request(stream: TcpStream, shared: SharedState) {
             let payload = status_payload(&state);
             write_http_response(stream, 200, "OK", &payload, Some(origin));
         }
+        ("POST", "/api/window-state") => {
+            // The dashboard renderer reports focus/visibility the instant either changes. A fresh
+            // "focused and on-screen" beacon lets a genuinely foreground Spotify always restore its
+            // limits, even when the server's own window enumeration is mid-transition and unknown (the
+            // bug that left a capped process stuck while the user was actively using Spotify). This
+            // path only releases limits; it never caps, so it cannot violate the foreground invariant.
+            let focused = parse_json_bool(&request.body, "focused").unwrap_or(false);
+            let visible = parse_json_bool(&request.body, "visible").unwrap_or(false);
+            state.client_foreground = focused && visible;
+            let now = now_ms();
+            state.client_state_at_ms = now;
+            // Act now rather than waiting for the next poll, so the ceiling lifts the moment focus
+            // returns. The restore inside is throttled and idempotent, so a burst of events is harmless.
+            maybe_auto_optimize(&mut state, now);
+            write_http_response(stream, 200, "OK", r#"{"ok":true}"#, Some(origin));
+        }
+        // Debug-only diagnostics and on-demand cap control. Absent from every build that does not
+        // pass --features debug-api, where these paths fall through to the 404 arm below.
+        #[cfg(feature = "debug-api")]
+        ("POST", "/api/debug/windows") => {
+            write_http_response(stream, 200, "OK", &DebugApi::windows_view(&state), Some(origin));
+        }
+        #[cfg(feature = "debug-api")]
+        ("POST", "/api/debug/probe") => {
+            write_http_response(
+                stream,
+                200,
+                "OK",
+                &DebugApi::probe(&state, &request.body),
+                Some(origin),
+            );
+        }
+        #[cfg(feature = "debug-api")]
+        ("POST", "/api/debug/system") => {
+            write_http_response(stream, 200, "OK", &DebugApi::system_view(&state), Some(origin));
+        }
+        #[cfg(feature = "debug-api")]
+        ("POST", "/api/debug/force-cap") => match DebugApi::force_cap(&mut state, &request.body) {
+            Ok(payload) => write_http_response(stream, 200, "OK", &payload, Some(origin)),
+            Err(error) => {
+                let payload = format!("{{\"ok\":false,\"error\":{}}}", json_quote(&error));
+                write_http_response(stream, 400, "Bad Request", &payload, Some(origin));
+            }
+        },
+        #[cfg(feature = "debug-api")]
+        ("POST", "/api/debug/release-cap") => match DebugApi::release_cap(&mut state, &request.body) {
+            Ok(payload) => write_http_response(stream, 200, "OK", &payload, Some(origin)),
+            Err(error) => {
+                let payload = format!("{{\"ok\":false,\"error\":{}}}", json_quote(&error));
+                write_http_response(stream, 400, "Bad Request", &payload, Some(origin));
+            }
+        },
+        #[cfg(feature = "debug-api")]
+        ("POST", "/api/debug/empty") => match DebugApi::empty_working_set(&state, &request.body) {
+            Ok(payload) => write_http_response(stream, 200, "OK", &payload, Some(origin)),
+            Err(error) => {
+                let payload = format!("{{\"ok\":false,\"error\":{}}}", json_quote(&error));
+                write_http_response(stream, 400, "Bad Request", &payload, Some(origin));
+            }
+        },
+        #[cfg(feature = "debug-api")]
+        ("POST", "/api/debug/window-control") => {
+            // Always 200: the payload carries its own ok/error so a scenario cleanup can fire a verb
+            // at a window that may already be gone without the HTTP client throwing.
+            write_http_response(
+                stream,
+                200,
+                "OK",
+                &DebugApi::window_control(&request.body),
+                Some(origin),
+            );
+        },
         ("POST", "/api/config") => match update_config(&mut state, &request.body) {
             Ok(()) => {
                 let payload = format!(
