@@ -3,7 +3,7 @@
 
 use memory_sentry_windows as windows;
 use memory_sentry_core::{
-    pressure_level, ProcessRole, HIGH_CPU_PERCENT, MAX_CAP_MB, MIN_CAP_MB,
+    pressure_level, ProcessRole, DemandHistogram, MAX_CAP_MB, MIN_CAP_MB,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs::File;
@@ -137,8 +137,8 @@ impl BackupRecord {
 struct AdaptiveProfile {
     creation: u64,
     current_cap_mb: u32,
-    high_cpu_ms: u64,
-    low_cpu_ms: u64,
+    demand: DemandHistogram,
+    cpu_ewma: Option<u32>,
     last_evaluated_snapshot_at_ms: u64,
     last_adjustment_at_ms: u64,
     last_reason: String,

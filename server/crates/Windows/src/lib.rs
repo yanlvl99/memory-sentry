@@ -130,6 +130,8 @@ extern "system" {
     fn GetLastError() -> u32;
     fn SetLastError(error: u32);
     fn GlobalMemoryStatusEx(buffer: *mut MemoryStatusEx) -> i32;
+    fn CreateMemoryResourceNotification(notification_type: i32) -> Handle;
+    fn QueryMemoryResourceNotification(handle: Handle, state: *mut i32) -> i32;
     fn GetProcessTimes(
         process: Handle,
         creation: *mut FileTime,
@@ -233,6 +235,57 @@ pub fn system_memory() -> (u64, u64, u32) {
         status.ull_avail_phys / MIB,
         status.dw_memory_load,
     )
+}
+
+/// Coarse system memory pressure. The primary signal is the OS memory resource notification, which is
+/// the same Low/High condition Windows uses to ask applications to shrink or grow; the GlobalMemoryStatusEx
+/// ratio is only a fallback when the notification object cannot be created. This is the trigger the
+/// policy uses instead of a timer, mirroring the documented Windows behaviour of keeping memory use
+/// constant while neither the Low nor the High condition is signalled.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MemoryPressure {
+    Low,
+    Normal,
+    High,
+}
+
+pub fn memory_pressure() -> MemoryPressure {
+    use std::sync::OnceLock;
+    static LOW: OnceLock<usize> = OnceLock::new();
+    static HIGH: OnceLock<usize> = OnceLock::new();
+    // The handles live for the process; the OS closes them at termination. Re-creating them per poll
+    // would leak handles at the monitor cadence.
+    let low = *LOW.get_or_init(|| unsafe { CreateMemoryResourceNotification(0) as usize });
+    let high = *HIGH.get_or_init(|| unsafe { CreateMemoryResourceNotification(1) as usize });
+    let mut state: i32 = 0;
+    unsafe {
+        if low != 0
+            && QueryMemoryResourceNotification(low as Handle, &mut state) != 0
+            && state != 0
+        {
+            return MemoryPressure::Low;
+        }
+        state = 0;
+        if high != 0
+            && QueryMemoryResourceNotification(high as Handle, &mut state) != 0
+            && state != 0
+        {
+            return MemoryPressure::High;
+        }
+    }
+    let (total, available, load) = system_memory();
+    let available_pct = if total > 0 {
+        available.saturating_mul(100).checked_div(total).unwrap_or(100)
+    } else {
+        100
+    };
+    if load >= 90 || available_pct <= 10 {
+        MemoryPressure::Low
+    } else if available_pct >= 40 {
+        MemoryPressure::High
+    } else {
+        MemoryPressure::Normal
+    }
 }
 
 #[link(name = "ole32")]
@@ -1512,6 +1565,16 @@ pub fn audio_session_pids() -> Result<Vec<u32>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn memory_pressure_reports_a_level_without_panicking() {
+        let pressure = memory_pressure();
+        println!("memory pressure: {pressure:?}");
+        let (total, available, _) = system_memory();
+        if total > 0 {
+            assert!(available <= total);
+        }
+    }
 
     #[test]
     fn audio_session_pids_enumerates_without_panicking() {
