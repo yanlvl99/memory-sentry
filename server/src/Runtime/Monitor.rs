@@ -5,8 +5,8 @@
 //! parent module and reach this one through `use super::*;`.
 
 use memory_sentry_core::{
-    decide_adjustment, estimate_cpu_percent, estimate_faults_per_second, faults_since, usage_ewma,
-    working_set_at_ceiling, AdjustmentReason, AppProfile, ProcessRole, HIGH_CPU_PERCENT,
+    decide_adjustment, estimate_cpu_percent, estimate_faults_per_second, faults_since, memory_tier,
+    usage_ewma, working_set_at_ceiling, AdjustmentReason, AppProfile, ProcessRole, HIGH_CPU_PERCENT,
     LOW_CPU_PERCENT, MAX_CAP_MB, MIN_CAP_MB,
 };
 use memory_sentry_spotify::SpotifyProfile;
@@ -840,6 +840,65 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
             .applied_maximum_mb
             .or_else(|| state.profiles.get(&process.pid).map(|p| p.current_cap_mb))
             .unwrap_or(role.baseline_cap_mb().unwrap_or(24));
+        // A stored cap can fall outside the current role's range when the process is reclassified
+        // (Spotify moves the audio session between Main and a dedicated Audio process, for example).
+        // The policy refuses to act on an out-of-range cap, so without this the process would be
+        // frozen at an invalid ceiling forever. Re-base it into range and let the next pass adapt.
+        let role_min = role.minimum_cap_mb().unwrap_or(MIN_CAP_MB);
+        let role_max = role
+            .maximum_cap_mb()
+            .unwrap_or(MAX_CAP_MB)
+            .saturating_add(memory_tier(system_total_mb).maximum_bonus_mb())
+            .min(MAX_CAP_MB);
+        let rebased = current_cap.clamp(role_min, role_max);
+        if rebased != current_cap {
+            let cap_bytes = rebased as usize * 1024 * 1024;
+            let minimum_bytes = windows::MIN_WORKING_SET_BYTES.min(cap_bytes);
+            match windows::set_working_set_limits(
+                process.pid,
+                process.creation,
+                minimum_bytes,
+                cap_bytes,
+                windows::HARD_CAP_FLAGS,
+            ) {
+                Ok(()) => {
+                    if let Some(record) = state.active_caps.get_mut(&process.pid) {
+                        record.record_applied_cap(role, rebased, false);
+                    }
+                    if let Some(profile) = state.profiles.get_mut(&process.pid) {
+                        profile.current_cap_mb = rebased;
+                        profile.last_reason = "role-rebased".to_string();
+                        profile.high_cpu_ms = 0;
+                        profile.low_cpu_ms = 0;
+                    }
+                    let _ = persist_or_log(state);
+                    if let Err(error) = write_settings(&state.settings_path, &state.settings) {
+                        log_event(
+                            state,
+                            format!("Could not persist the re-based cap for PID {}: {error}", process.pid),
+                            "warn",
+                        );
+                    }
+                    log_event(
+                        state,
+                        format!(
+                            "Re-based {} PID {} cap from {} MB to {} MB for its current role.",
+                            role_name(role),
+                            process.pid,
+                            current_cap,
+                            rebased
+                        ),
+                        "info",
+                    );
+                }
+                Err(error) => log_event(
+                    state,
+                    format!("Could not re-base PID {} cap: {error}", process.pid),
+                    "warn",
+                ),
+            }
+            continue;
+        }
         let cpu = process.cpu_percent;
         let working_set = process.working_set_mb;
         let identity = process_identity(&process.cmd, role);
@@ -909,6 +968,13 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
             high_cpu_ms: profile.high_cpu_ms,
             low_cpu_ms: profile.low_cpu_ms,
             faults_per_sec,
+            minimum_cap_mb: state
+                .settings
+                .safe_floors
+                .get(&identity)
+                .copied()
+                .unwrap_or(MIN_CAP_MB)
+                .clamp(role_min, role_max),
             system_total_mb,
             last_adjustment_ms: profile.last_adjustment_at_ms,
             now_ms: now,
@@ -930,6 +996,18 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
                         record.record_applied_cap(role, next_cap, false);
                     }
                     state.settings.auto_role_caps.insert(process_identity(&process.cmd, role), next_cap);
+                    // A relief increase is the engine finding this identity's safe edge: remember it
+                    // so the next quiet window cannot descend back into the cap that just thrashed.
+                    if decision.reason == AdjustmentReason::ThrashRelief {
+                        let floor = state
+                            .settings
+                            .safe_floors
+                            .entry(identity.clone())
+                            .or_insert(MIN_CAP_MB);
+                        if next_cap > *floor {
+                            *floor = next_cap;
+                        }
+                    }
                     if let Some(profile) = state.profiles.get_mut(&process.pid) {
                         profile.current_cap_mb = next_cap;
                         profile.last_adjustment_at_ms = now;

@@ -232,6 +232,7 @@ pub fn configure_install(app_dir_arg: &str) -> Result<(), String> {
         manual_role_caps: parse_manual_role_caps(&existing_raw),
         auto_role_caps: parse_auto_role_caps(&existing_raw),
         usage_scores: parse_usage_scores(&existing_raw),
+        safe_floors: parse_safe_floors(&existing_raw),
         schema_version: CURRENT_SCHEMA_VERSION,
     };
     write_settings(&settings_path, &settings)?;

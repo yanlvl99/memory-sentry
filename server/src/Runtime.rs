@@ -83,6 +83,11 @@ pub(crate) struct Settings {
     // before this session has its own samples. Keyed by process_identity (role + sub-label), NEVER a
     // PID. Local-only, never uploaded (see PRIVACY.md).
     usage_scores: BTreeMap<String, u32>,
+    // Learned safe edge per identity: the lowest automatic ceiling that did not make the process
+    // thrash. A thrash-relief increase records the new ceiling here, and the engine never descends
+    // below it again, which is what prevents an 8 -> 16 -> 8 oscillation once the per-role floors are
+    // gone. Keyed by process_identity, NEVER a PID. Local-only.
+    safe_floors: BTreeMap<String, u32>,
     schema_version: u32,
 }
 
@@ -325,6 +330,7 @@ mod tests {
             ]),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         };
         // The individually-pinned renderer keeps its own cap; a sibling falls back to the role default.
@@ -366,6 +372,7 @@ mod tests {
             manual_role_caps: BTreeMap::from([("Renderer".to_string(), 40), ("Renderer:#7".to_string(), 90)]),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         };
         // Only the exact identity is a pin; a bare-role default must not pin every sibling.
@@ -395,6 +402,7 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         };
         write_settings(&path, &settings).expect("write settings");
@@ -464,6 +472,7 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         assert!(should_manage_limits(&settings, "minimized"));
@@ -501,6 +510,7 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
@@ -541,6 +551,7 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
@@ -587,6 +598,21 @@ mod tests {
     }
 
     #[test]
+    fn safe_floor_parser_keeps_known_identities_and_valid_caps() {
+        // Identity may contain ':' (e.g. Renderer:#7), so the cap is the LAST segment. Values below
+        // the absolute floor or above the automatic cap range are dropped.
+        let serialized = r#"{"safeFloors":["Main:12","Renderer:#3:20","Unknown:40","GPU:3","Audio:65","Utility:notanumber"]}"#;
+        let floors = parse_safe_floors(serialized);
+        assert_eq!(floors.get("Main"), Some(&12));
+        assert_eq!(floors.get("Renderer:#3"), Some(&20));
+        assert!(!floors.contains_key("Unknown"));
+        assert!(!floors.contains_key("GPU"));
+        assert!(!floors.contains_key("Audio"));
+        assert!(!floors.contains_key("Utility"));
+        assert_eq!(floors.len(), 2);
+    }
+
+    #[test]
     fn role_override_is_reused_when_a_new_pid_replaces_an_old_process() {
         let mut settings = Settings {
             port: DEFAULT_PORT,
@@ -603,6 +629,7 @@ mod tests {
             manual_role_caps: BTreeMap::from([("Renderer".to_string(), 52)]),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         };
         let restarted_process = windows::ProcessRow {
@@ -674,6 +701,7 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
@@ -711,12 +739,15 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         settings.manual_role_caps.insert("Renderer".to_string(), 52);
+        settings.safe_floors.insert("Renderer:#7".to_string(), 20);
         write_settings(&path, &settings).expect("settings should be written");
         let loaded = load_settings(&path).expect("settings should load");
         assert_eq!(loaded.manual_role_caps.get("Renderer"), Some(&52));
+        assert_eq!(loaded.safe_floors.get("Renderer:#7"), Some(&20));
         assert!(!loaded.enabled);
         assert!(!loaded.auto_optimize);
         let _ = fs::remove_file(path);
@@ -739,6 +770,7 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(std::env::temp_dir().join("mss-status-payload-test"), settings);

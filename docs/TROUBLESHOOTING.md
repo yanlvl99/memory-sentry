@@ -43,7 +43,7 @@ This can be expected. Memory Sentry limits the **resident working set**—the pr
 
 Private working set, commit size, and pagefile I/O are different measurements. Pages removed from a working set can remain cached in RAM and return through a soft page fault. Modified private pages may be written to the pagefile later if Windows needs their physical frames, but commit size alone does not show how much data is currently on disk. Use separate system-level counters to measure pagefile I/O.
 
-The server applies role-based ceilings only to Spotify's process tree. Audio-role processes start at a 36 MB automatic ceiling and adapt upward to 60 MB under sustained load, like the other roles. Original limits are recorded for recovery; this does not mean that every restore is guaranteed to complete immediately.
+The server applies role-based ceilings only to Spotify's process tree. Every role starts at a 38 MB automatic ceiling with a 4 MB absolute floor, and Audio adapts upward to 60 MB under sustained load like the other roles. Original limits are recorded for recovery; this does not mean that every restore is guaranteed to complete immediately.
 
 If hard faults, pagefile I/O, or restore latency rise sharply on a low-memory PC, the limits may be too aggressive for that machine. Turn **Memory Sentry off** by selecting **Disabled** in the memory mode to stop all limits, then include the measurements in a report. Custom mode is the only active mode; pinning a process to Manual only fixes that process's ceiling and does not stop limits.
 
