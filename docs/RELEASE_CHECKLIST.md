@@ -37,6 +37,6 @@ Do not call the release stable until all required real-desktop tests are complet
 - [ ] Promote `develop` to `main` through a release pull request, then create the version tag on the `main` merge commit; the publish workflow builds and attaches the installers from that tag.
 - [ ] CI passes on the exact release commit.
 - [ ] MSI and SHA-256 files are attached to the correct release.
-- [ ] Mark v1.0.0-rc.6 as a prerelease; create stable v1.0.0 only after every required Windows 10/11 real-desktop test passes.
+- [ ] Mark any release candidate (a `-rc.N` or `0.x` version) as a prerelease; set it as `latest` and create a stable release only after every required Windows 10/11 real-desktop test passes.
 - [ ] Never state the release has no antivirus warnings; the current executable is unsigned.
 - [ ] Verify the exact GitHub repository topic `spicetify-apps`, then submit the discovery listing. The listing only links to the repository and cannot install Memory Sentry.
