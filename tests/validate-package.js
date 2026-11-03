@@ -103,6 +103,9 @@ check('below-default warning requires confirmation after five seconds', /perform
 check('dashboard relies on automatic restore and polling instead of action buttons', !app.includes("tx('applyManual')") && !app.includes("tx('restoreNow')") && !app.includes("tx('refresh')"));
 check('manual limit actions address a process by identity, not PID', /action: 'setManualCap', identity: process\.identity/.test(app) && /action: 'clearManualCap', identity:/.test(app) && rustServer.includes('parse_json_string(body, "identity")') && rustServer.includes('fn live_target_for_identity') && !rustServer.includes('fn manual_target'));
 check('dashboard shows per-process CPU and active ceiling', /process\.cpuPercent/i.test(app) && /process\.limitMB/i.test(app));
+// The pin acts on one process identity, so the confirmation messages must not call it a shared role
+// limit. The foreground-capping strings were removed with that feature and must not creep back.
+check('manual-limit messages name the process and the removed foreground strings stay gone', app.includes("limitApplied: 'Fixed limit applied to this process.'") && app.includes("limitSavedForBackground: 'Fixed limit saved for this process; it will apply when Spotify leaves the foreground.'") && app.includes("limitCleared: 'Process limit removed; the adaptive engine manages it again.'") && app.includes("limitApplied: 'Limite fixo aplicado a este processo.'") && app.includes("limitCleared: 'Limite do processo removido; o motor adaptativo volta a gerenciá-lo.'") && !app.includes('whenForeground:') && !app.includes('whenForegroundHint:') && !app.includes('foregroundShort:'));
 // Both snapshot writers (accept_snapshot and refresh_memory) update cpu time, so each percent delta must
 // be divided by the exact age of the shared timestamped baseline it was read from. Dividing by a nominal
 // window instead dilutes every reading whenever the other writer advanced the counter in between, which

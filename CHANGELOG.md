@@ -3,6 +3,7 @@
 ## Unreleased
 
 - The debug console now reports each process's page-fault rate next to its cumulative delta, so the exact thrash signal the adaptive engine acts on can be inspected. This is the value a real-machine calibration of the thrash threshold has to read.
+- The confirmation messages for a fixed limit now name the process they act on instead of calling it a shared role limit, and the leftover strings for the removed foreground capping were dropped.
 
 ## 1.0.0-rc.6 — Custom-only redesign and native process discovery
 
