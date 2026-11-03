@@ -20,6 +20,7 @@ Do not call the release stable until all required real-desktop tests are complet
 - [ ] Confirm original process limits are durably saved before each initial cap.
 - [ ] Confirm every role starts at a 38 MB automatic ceiling with a 4 MB absolute floor, and that Audio adapts upward to 60 MB under sustained load like the other roles.
 - [ ] Confirm a process that thrashes at its ceiling receives an 8 MB relief increase and that the engine does not descend back into that ceiling afterwards (learned safe floor).
+- [ ] Confirm Audio stays at 25 MB or more, a renderer keeps 38 MB while the window is visible in the background and may descend when minimized or hidden, and a tiny process burning CPU receives a relief increase.
 - [ ] Confirm high CPU alone does not raise a ceiling while the working set is below it; sustained high CPU at the full current ceiling does raise it, and idle/headroom lowers it without oscillation.
 - [ ] Confirm the selected background delay applies in Custom mode to every process the engine manages.
 - [ ] Confirm limits are restored on foreground return, switching to Disabled, shutdown, restart recovery and uninstall; pending restores remain recorded and are retried.

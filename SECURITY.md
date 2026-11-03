@@ -11,7 +11,7 @@ Please do not publish exploit details for a live issue before maintainers have h
 - Requires an allowed Spotify HTTPS origin.
 - Verifies process creation identity before changing or restoring working-set limits.
 - Saves original Windows limits before applying a limit and attempts recovery on shutdown and next launch.
-- Starts every role at a 38 MB ceiling in Custom mode, with a 4 MB absolute floor and an identity-specific learned safe floor; Audio can adapt upward to 60 MB under sustained load.
+- Starts every role at a 38 MB ceiling in Custom mode, with a 4 MB absolute floor and an identity-specific learned safe floor; Audio stays at 25 MB or more, a visible-background renderer at 38 MB, and Audio can adapt upward to 60 MB under sustained load.
 - Sends no telemetry.
 - Does not disable antivirus, SmartScreen, Windows Firewall, or execution-policy controls.
 

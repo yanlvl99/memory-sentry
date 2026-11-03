@@ -5,6 +5,7 @@
 - The debug console now reports each process's page-fault rate next to its cumulative delta, so the exact thrash signal the adaptive engine acts on can be inspected. This is the value a real-machine calibration of the thrash threshold has to read.
 - The confirmation messages for a fixed limit now name the process they act on instead of calling it a shared role limit, and the leftover strings for the removed foreground capping were dropped.
 - The adaptive engine now starts every Spotify process at the same 38 MB ceiling and can descend to a 4 MB absolute floor instead of the previous per-role floors of 12-36 MB. Main no longer grows above 38 MB, while Audio keeps adapting upward to 60 MB. A process that thrashes at its ceiling receives an 8 MB relief increase and that ceiling becomes the identity's learned safe floor, so a later quiet window never descends back into it.
+- The engine also watches CPU as a starvation signal: a process that sustains high CPU while holding almost no resident memory gets the same 8 MB relief increase, even if its page-fault rate stays under the thrash threshold. Audio keeps a 25 MB floor so playback does not glitch, and a renderer holds 38 MB while the window is visible in the background, descending toward the floor only once minimized or hidden.
 
 ## 1.0.0-rc.6 — Custom-only redesign and native process discovery
 
