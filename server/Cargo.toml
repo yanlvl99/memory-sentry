@@ -1,15 +1,37 @@
+[workspace]
+members = ["crates/Core", "crates/Windows", "crates/Spotify"]
+resolver = "2"
+
+# Module files are organized in PascalCase (matching the UI component convention); keep rustc from
+# warning about the resulting non-snake-case module names across every crate in the workspace.
+[workspace.lints.rust]
+non_snake_case = "allow"
+
+# Release tuning for the shipped server image. Fat LTO plus a single codegen unit lets every crate
+# inline across module boundaries, and stripping debug/symbol metadata shrinks the mapped image;
+# both directly reduce the resident code pages a tiny always-on process keeps warm. panic stays on
+# `unwind` on purpose: a panic in one connection thread must not abort the whole server.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+
 [package]
 name = "memory-sentry-server"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.6"
 edition = "2021"
 rust-version = "1.75"
 publish = false
 description = "Windows server for Memory Sentry, implemented in Rust"
 
-[lib]
-name = "memory_sentry_core"
-path = "src/lib.rs"
-
 [[bin]]
 name = "memory-sentry-server"
 path = "src/main.rs"
+
+[dependencies]
+memory_sentry_core = { path = "crates/Core", package = "memory-sentry-core" }
+memory_sentry_windows = { path = "crates/Windows", package = "memory-sentry-windows" }
+memory_sentry_spotify = { path = "crates/Spotify", package = "memory-sentry-spotify" }
+
+[lints]
+workspace = true

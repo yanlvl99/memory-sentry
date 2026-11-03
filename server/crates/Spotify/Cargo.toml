@@ -1,0 +1,17 @@
+[package]
+name = "memory-sentry-spotify"
+version = "1.0.0-rc.6"
+edition = "2021"
+rust-version = "1.75"
+publish = false
+description = "Spotify application profile for the Memory Sentry server"
+
+[lib]
+name = "memory_sentry_spotify"
+path = "src/lib.rs"
+
+[dependencies]
+memory_sentry_core = { path = "../Core", package = "memory-sentry-core" }
+
+[lints]
+workspace = true

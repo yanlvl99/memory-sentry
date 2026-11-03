@@ -8,9 +8,11 @@ No information is uploaded by Memory Sentry. There is no telemetry endpoint, ana
 
 The server temporarily reads Windows process metadata needed to locate Spotify's process tree, estimate per-process CPU use, measure resident working sets, and verify process identity. Local dashboard metrics include process IDs, roles, working-set estimates, private-memory estimates, CPU estimates, page-fault counters, state transitions, adaptive policy decisions, and error messages.
 
+The adaptive engine also keeps a coarse **learned usage profile**: a single busy-fraction score (0–100) per process, smoothed over time, so a rarely-used process is reclaimed sooner and a frequently-used one keeps headroom. It is keyed only by the process role and command-line shape (never a PID, never a Spotify account or any content you play), stores one small integer per process, and is used solely to tune memory limits on this PC.
+
 ## Local storage
 
-Settings, an internal per-install access token, a recovery file containing original working-set limits, and diagnostic logs are stored under `%LOCALAPPDATA%\MemorySentryForSpicetify`. Logs are capped/rotated by the server, and the data folder (including its logs) is left in place when you uninstall, so a reinstall keeps them. No Spotify account credentials, track names, playlist data, or listening history are intentionally read or stored.
+Settings, an internal per-install access token, a recovery file containing original working-set limits, a learned per-process usage profile (the busy scores described above), and diagnostic logs are stored under `%LOCALAPPDATA%\MemorySentryForSpicetify`. Logs are capped/rotated by the server, and the data folder (including its logs) is left in place when you uninstall, so a reinstall keeps them. No Spotify account credentials, track names, playlist data, or listening history are intentionally read or stored.
 
 ## Local API
 
@@ -22,4 +24,4 @@ The current server is written in Rust with no third-party runtime dependencies a
 
 ## User control
 
-Automatic optimization can be switched off in the dashboard. When disabled or when Spotify becomes visible, the server attempts to restore saved original working-set limits. The package includes an uninstaller and recovery procedure. A forced process termination or system crash can interrupt cleanup, so original settings are persisted before applying changes and recovery is attempted on the next launch.
+Optimization can be switched off by selecting **Disabled** in the dashboard. When disabled or when Spotify becomes visible, the server attempts to restore saved original working-set limits. The package includes an uninstaller and recovery procedure. A forced process termination or system crash can interrupt cleanup, so original settings are persisted before applying changes and recovery is attempted on the next launch.

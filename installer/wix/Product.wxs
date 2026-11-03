@@ -187,10 +187,19 @@
 
     <ComponentGroup Id="CustomAppUiComponents" Directory="CustomAppUiFolder">
       <Component Id="CustomAppUi" Guid="{7F4E3C92-2D53-4C80-9F31-2C3D4E5F6070}">
-        <File Id="UiCore" Source="..\..\dist\stage\app\ui\00-core.js" KeyPath="yes" />
-        <File Id="UiI18n" Source="..\..\dist\stage\app\ui\10-i18n.js" />
-        <File Id="UiApi" Source="..\..\dist\stage\app\ui\20-api.js" />
-        <File Id="UiAdapters" Source="..\..\dist\stage\app\ui\30-adapters.js" />
+        <File Id="UiCore" Source="..\..\dist\stage\app\ui\Core.js" KeyPath="yes" />
+        <File Id="UiI18n" Source="..\..\dist\stage\app\ui\I18n.js" />
+        <File Id="UiApi" Source="..\..\dist\stage\app\ui\Api.js" />
+        <File Id="UiAdapters" Source="..\..\dist\stage\app\ui\Adapters.js" />
+        <File Id="UiIcons" Source="..\..\dist\stage\app\ui\Icons.js" />
+        <File Id="UiWidgets" Source="..\..\dist\stage\app\ui\Widgets.js" />
+        <File Id="UiTopBar" Source="..\..\dist\stage\app\ui\TopBar.js" />
+        <File Id="UiRolePanel" Source="..\..\dist\stage\app\ui\RolePanel.js" />
+        <File Id="UiHero" Source="..\..\dist\stage\app\ui\Hero.js" />
+        <File Id="UiSettings" Source="..\..\dist\stage\app\ui\Settings.js" />
+        <File Id="UiDiagnostics" Source="..\..\dist\stage\app\ui\Diagnostics.js" />
+        <File Id="UiFooter" Source="..\..\dist\stage\app\ui\Footer.js" />
+        <File Id="UiApp" Source="..\..\dist\stage\app\ui\App.js" />
       </Component>
     </ComponentGroup>
   </Fragment>

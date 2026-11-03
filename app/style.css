@@ -1,12 +1,15 @@
 /* Memory Sentry dashboard inside Spotify. */
 
 .mss-page {
-  --mss-radius: 10px;
+  --mss-radius: 12px;
+  --mss-radius-sm: 8px;
   --mss-border: rgba(255, 255, 255, 0.12);
   --mss-border: color-mix(in srgb, var(--spice-text, #ffffff) 12%, transparent);
   --mss-muted: var(--spice-subtext, #a7a7a7);
   --mss-dim: color-mix(in srgb, var(--spice-subtext, #a7a7a7) 78%, transparent);
   --mss-danger: #ff5f5f;
+  --mss-surface: color-mix(in srgb, var(--spice-text, #ffffff) 3%, transparent);
+  --mss-surface-strong: color-mix(in srgb, var(--spice-text, #ffffff) 7%, transparent);
   max-width: 980px;
   margin: 0 auto;
   padding: 0 24px 48px;
@@ -15,7 +18,7 @@
   font-size: 14px;
 }
 
-/* Topbar: product name and the two global controls */
+/* Topbar: product name and the status pill live on one row */
 .mss-topbar {
   display: flex;
   flex-wrap: nowrap;
@@ -43,171 +46,215 @@
 .mss-pill-connected { color: var(--spice-text, #f5f5f5); }
 .mss-pill-waiting { color: var(--mss-muted); }
 .mss-pill-error { color: #ff8a8a; border-color: rgba(255, 82, 82, 0.45); }
+.mss-pill-lost { color: #e6b45c; border-color: rgba(214, 160, 61, 0.5); }
 .mss-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 
-/* Summary: total memory with real counts, no cards */
-.mss-summary { padding: 20px 0 18px; border-bottom: 1px solid var(--mss-border); }
-.mss-summary-label { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mss-dim); }
-.mss-summary-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 22px; margin-top: 6px; }
-.mss-summary-value {
-  font-size: 40px;
-  line-height: 1;
-  font-weight: 650;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-}
-.mss-summary-value small { margin-left: 5px; font-size: 12px; font-weight: 500; letter-spacing: 0; color: var(--mss-muted); }
-.mss-summary-note { font-size: 12px; color: var(--mss-dim); }
-
-/* Process table */
-.mss-table { padding: 4px 0 6px; }
-.mss-table-head,
-.mss-process { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 1.5fr) 96px; gap: 14px; align-items: center; }
-.mss-table-head {
-  padding: 12px 0 8px;
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--mss-dim);
-}
-.mss-col-state { text-align: right; }
-.mss-list { display: flex; flex-direction: column; }
-.mss-process { padding: 11px 0; border-top: 1px solid var(--mss-border); position: relative; }
-.mss-process-main { min-width: 0; }
-.mss-process-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13.5px; font-weight: 600; }
-.mss-process-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mss-role { font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--mss-dim); font-weight: 500; }
-.mss-memory-value { font-size: 11px; color: var(--mss-muted); font-weight: 500; margin-left: auto; }
-.mss-process-meta { margin-top: 2px; font-size: 12px; color: var(--mss-dim); }
-
-.mss-bar-cell { position: relative; min-width: 0; min-height: 26px; display: flex; align-items: center; cursor: default; }
-.mss-bar { width: 100%; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); overflow: hidden; transition: opacity 120ms ease; }
-.mss-bar i { display: block; height: 100%; border-radius: 2px; background: var(--spice-subtext, #8a8a8a); }
-.mss-bar i.mss-fill-over { background: var(--mss-danger); }
-.mss-peek {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% - 4px);
-  transform: translateX(-50%);
-  opacity: 0;
-  pointer-events: none;
-  padding: 6px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
-  background: #2a2a2e;
-  color: var(--spice-text, #f5f5f5);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
-  z-index: 6;
-  transition: opacity 120ms ease, transform 120ms ease;
-}
-.mss-peek::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  margin-left: -4px;
-  top: 100%;
-  width: 7px;
-  height: 7px;
-  margin-top: -4px;
-  background: inherit;
-  border-right: 1px solid rgba(255, 255, 255, 0.14);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  transform: rotate(45deg);
-}
-.mss-bar-cell:hover .mss-peek,
-.mss-bar-cell:focus-visible .mss-peek { opacity: 1; transform: translateX(-50%) translateY(-4px); }
-.mss-bar-cell:focus-visible { outline: 1px solid var(--mss-border); outline-offset: 3px; border-radius: 4px; }
-.mss-hover-hint { margin-top: 8px; }
-
-.mss-tag {
-  justify-self: end;
-  padding: 3px 8px;
+/* Hero: memory-composition card. Everything the tool does is anchored here. */
+.mss-hero {
+  margin: 18px 0 0;
+  padding: 18px 20px 20px;
   border: 1px solid var(--mss-border);
-  border-radius: 4px;
-  font-size: 11px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--mss-muted);
-  white-space: nowrap;
-}
-.mss-tag-on { color: var(--spice-button, #1ed760); border-color: color-mix(in srgb, var(--spice-button, #1ed760) 45%, transparent); }
-.mss-tag-over { color: var(--mss-danger); border-color: rgba(255, 95, 95, 0.45); }
-.mss-empty { padding: 14px 0; font-size: 13px; color: var(--mss-muted); }
-
-.mss-manual-controls {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  align-items: center;
-  margin-top: 2px;
-}
-.mss-input {
-  width: 84px;
-  padding: 5px 8px;
-  border: 1px solid var(--mss-border);
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.25);
-  color: inherit;
-  font-size: 12.5px;
-}
-.mss-input:disabled { opacity: 0.55; }
-
-/* Options bar, like a settings row */
-.mss-toolbar {
+  border-radius: var(--mss-radius);
+  background: var(--mss-surface);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 0;
-  border-top: 1px solid var(--mss-border);
+  gap: 12px;
 }
-.mss-seg { display: inline-flex; border: 1px solid var(--mss-border); border-radius: 7px; overflow: hidden; }
-.mss-seg-btn {
-  appearance: none;
+.mss-hero-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 18px; flex-wrap: wrap; }
+.mss-hero-id { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 260px; }
+.mss-hero-title { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: var(--spice-text, #f5f5f5); }
+.mss-hero-stats { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; font-size: 12px; color: var(--mss-dim); }
+.mss-hero-stat { font-variant-numeric: tabular-nums; }
+.mss-hero-stat-strong { color: var(--spice-text, #f5f5f5); font-weight: 600; }
+.mss-hero-stat-muted { color: var(--mss-dim); }
+
+/* Mode picker sits in the trailing edge of the hero head as an icon-only segmented control
+   (Apple HIG / Primer: labels move to tooltip + aria when segments are icon-only). */
+.mss-seg-mode { border-radius: 10px; flex: 0 0 auto; }
+.mss-mode-btn { padding: 7px 10px; justify-content: center; }
+.mss-mode-btn .mss-icon { width: 17px; height: 17px; }
+
+/* Composition bar (the interactive hero). GPU-composited width tween, never layout. */
+.mss-composition {
+  display: flex;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.07);
+  gap: 3px;
+  padding: 0;
+  box-shadow: inset 0 0 0 1px var(--mss-border);
+}
+.mss-composition-seg {
+  height: 100%;
+  min-width: 3px;
   border: 0;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: width .55s cubic-bezier(.22,1,.36,1), filter 160ms ease;
+}
+.mss-composition-seg:hover { filter: brightness(1.18) saturate(1.05); }
+.mss-composition-seg:focus-visible { outline: 2px solid var(--spice-text, #fff); outline-offset: -2px; }
+.mss-seg-active { box-shadow: inset 0 0 0 2px var(--spice-text, #fff); filter: brightness(1.1); }
+
+/* Hover readout: persistent slot below the bar so the layout never jumps. */
+.mss-hero-hover {
+  min-height: 18px;
+  font-size: 12px;
+  color: var(--mss-muted);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mss-hero-hover-idle { color: var(--mss-dim); }
+.mss-hero-hover-body { color: var(--spice-text, #f5f5f5); }
+
+/* Legend: one pill per role; click toggles the role group panel. Sizing/colour stay subtle. */
+.mss-legend { display: flex; flex-wrap: wrap; gap: 6px 8px; padding-top: 2px; }
+.mss-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border: 1px solid var(--mss-border);
+  border-radius: 999px;
   background: transparent;
   color: var(--mss-muted);
   font: inherit;
-  font-size: 12px;
-  padding: 6px 12px;
+  font-size: 11.5px;
   cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
+.mss-legend-item:hover { color: var(--spice-text, #f5f5f5); border-color: color-mix(in srgb, var(--spice-text, #ffffff) 22%, transparent); }
+.mss-legend-item:focus-visible { outline: 2px solid var(--spice-text, #fff); outline-offset: 2px; }
+.mss-legend-active { color: var(--spice-text, #f5f5f5); background: var(--mss-surface-strong); border-color: color-mix(in srgb, var(--spice-text, #ffffff) 30%, transparent); }
+.mss-legend-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.mss-legend-label { letter-spacing: 0.01em; }
+.mss-legend-multi { color: var(--mss-dim); font-variant-numeric: tabular-nums; }
+.mss-legend-count { color: var(--mss-dim); font-variant-numeric: tabular-nums; margin-left: 2px; }
+
+/* Role group panel: a container opened from the bar/legend. Each process row carries its own
+   per-identity limit field, so the group is only a listing — the cap value stays individual. */
+.mss-role-panel {
+  padding: 12px 14px;
+  border: 1px solid var(--mss-border);
+  border-radius: var(--mss-radius-sm);
+  background: var(--mss-surface-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mss-role-panel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.mss-role-panel-head strong { font-size: 13px; font-weight: 650; }
+.mss-role-panel-count { font-size: 11px; color: var(--mss-dim); letter-spacing: 0.04em; }
+.mss-role-panel-head .mss-icon-btn { margin-left: auto; }
+.mss-role-proc { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--mss-border); font-size: 12.5px; flex-wrap: wrap; }
+.mss-role-proc:first-of-type { border-top: 0; }
+.mss-role-proc-pid { color: var(--mss-muted); font-variant-numeric: tabular-nums; }
+.mss-role-proc-sub { font-size: 11px; color: var(--mss-dim); background: var(--mss-surface-strong); border: 1px solid var(--mss-border); border-radius: 4px; padding: 1px 5px; font-variant-numeric: tabular-nums; }
+.mss-role-proc-cpu { color: var(--mss-dim); font-variant-numeric: tabular-nums; }
+.mss-role-proc-mem { font-weight: 600; font-variant-numeric: tabular-nums; }
+.mss-role-proc .mss-proc-manage { margin-left: auto; }
+.mss-proc-id { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.mss-proc-manage { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.mss-seg-proc { flex: none; }
+.mss-seg-proc .mss-seg-btn { padding: 3px 9px; font-size: 11px; }
+.mss-pid-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.mss-icon-btn { border: 1px solid var(--mss-border); background: transparent; color: var(--mss-muted); border-radius: 6px; width: 26px; height: 26px; cursor: pointer; line-height: 1; }
+.mss-icon-btn:hover { color: var(--spice-text, #fff); border-color: var(--spice-text, #fff); }
+.mss-chip-btn { border: 1px solid var(--mss-border); background: transparent; color: var(--mss-muted); border-radius: 6px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
+.mss-chip-btn:hover { color: var(--spice-text, #fff); border-color: var(--spice-text, #fff); }
+.mss-chip-btn:focus-visible { outline: 2px solid var(--spice-text, #fff); outline-offset: 2px; }
+.mss-identity-limit { display: inline-flex; align-items: center; gap: 6px; }
+.mss-identity-limit .mss-input { width: 72px; }
+
+.mss-tag { padding: 3px 6px; border: 1px solid var(--mss-border); border-radius: 4px; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--mss-muted); white-space: nowrap; }
+.mss-tag-on { color: var(--spice-button, #1ed760); border-color: color-mix(in srgb, var(--spice-button, #1ed760) 45%, transparent); }
+.mss-tag-over { color: var(--mss-danger); border-color: rgba(255, 95, 95, 0.45); }
+.mss-empty { padding: 20px 0; font-size: 13px; color: var(--mss-muted); text-align: center; }
+
+/* Settings card: triggers + delay + release, laid out as a two-column form (label | control). */
+.mss-toolbar {
+  display: flex;
+  flex-direction: column;
+  margin: 18px 0 0;
+  padding: 14px 20px 12px;
+  border: 1px solid var(--mss-border);
+  border-radius: var(--mss-radius);
+  background: var(--mss-surface);
+}
+.mss-toolbar-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px 18px; flex-wrap: wrap; padding-bottom: 6px; }
+.mss-toolbar-title { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; }
+.mss-toolbar-hint { font-size: 11.5px; color: var(--mss-dim); margin-top: 2px; }
+.mss-saved { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--mss-dim); font-variant-numeric: tabular-nums; }
+.mss-saved-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--spice-button, #1ed760); box-shadow: 0 0 0 3px rgba(30, 215, 96, 0.16); flex: none; }
+
+.mss-setting {
+  display: grid;
+  grid-template-columns: minmax(110px, 150px) minmax(0, 1fr);
+  gap: 10px 18px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--mss-border);
+}
+.mss-setting:last-of-type { padding-bottom: 6px; }
+.mss-setting-label { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--spice-text, #f5f5f5); }
+.mss-setting-desc { font-size: 11.5px; color: var(--mss-dim); line-height: 1.35; font-weight: 400; }
+.mss-setting-control { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; min-width: 0; }
+
+.mss-seg { display: inline-flex; border: 1px solid var(--mss-border); border-radius: 7px; overflow: hidden; }
+.mss-seg-btn { appearance: none; border: 0; background: transparent; color: var(--mss-muted); font: inherit; font-size: 12px; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background 140ms ease, color 140ms ease; }
 .mss-seg-btn + .mss-seg-btn { border-left: 1px solid var(--mss-border); }
 .mss-seg-btn.mss-on { background: rgba(255, 255, 255, 0.1); color: var(--spice-text, #f5f5f5); font-weight: 600; }
+.mss-seg-btn:hover:not(:disabled):not(.mss-on) { background: rgba(255, 255, 255, 0.06); color: var(--spice-text, #f5f5f5); }
 .mss-seg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.mss-when { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.mss-when-label { font-size: 12px; color: var(--mss-dim); }
-.mss-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mss-muted); cursor: pointer; }
-.mss-check input { appearance: none; width: 15px; height: 15px; margin: 0; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 3px; background: transparent; cursor: inherit; display: grid; place-content: center; transition: background 120ms ease, border-color 120ms ease; }
-.mss-check input::after { content: ''; width: 8px; height: 4px; border-left: 2px solid #0b0b0b; border-bottom: 2px solid #0b0b0b; transform: rotate(-45deg) translateY(-1px); opacity: 0; }
-.mss-check input:checked { background: var(--spice-button, #1ed760); border-color: transparent; }
-.mss-check input:checked::after { opacity: 1; }
-.mss-check input:disabled { opacity: 0.5; cursor: not-allowed; }
-.mss-check input:disabled + span { opacity: 0.5; }
+.mss-seg-label { line-height: 1; }
+.mss-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex: none; }
+.mss-icon > svg { width: 100%; height: 100%; stroke: currentColor; }
+.mss-chip { appearance: none; display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px 6px 10px; border: 1px solid var(--mss-border); border-radius: 999px; background: rgba(255, 255, 255, 0.03); color: var(--mss-muted); font: inherit; font-size: 12px; cursor: pointer; transition: background 140ms ease, border-color 140ms ease, color 140ms ease; }
+.mss-chip:hover:not(:disabled):not(.mss-chip-on) { border-color: rgba(255, 255, 255, 0.4); color: var(--spice-text, #f5f5f5); }
+.mss-chip-dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.4); background: transparent; flex: none; transition: background 140ms ease, border-color 140ms ease; }
+.mss-chip-on { border-color: rgba(30, 215, 96, 0.55); background: rgba(30, 215, 96, 0.12); color: var(--spice-text, #f5f5f5); }
+.mss-chip-on .mss-chip-dot { background: var(--spice-button, #1ed760); border-color: transparent; }
+.mss-chip:focus-visible { outline: 2px solid var(--spice-text, #fff); outline-offset: 2px; }
+.mss-chip:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.mss-toolbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
-
-.mss-tool { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mss-muted); }
-.mss-select {
-  padding: 5px 8px;
-  border: 1px solid var(--mss-border);
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.25);
-  color: var(--spice-text, #f5f5f5);
-  font-size: 12.5px;
-}
+.mss-select { padding: 5px 8px; border: 1px solid var(--mss-border); border-radius: 6px; background: rgba(0, 0, 0, 0.25); color: var(--spice-text, #f5f5f5); font-size: 12.5px; }
 .mss-select:disabled { opacity: 0.55; }
-.mss-tool-note { margin-left: auto; font-size: 12px; color: var(--mss-dim); }
+
+/* Numeric sliders (delay, refresh rate): a continuous range is more practical than a dropdown, and
+   the live value readout keeps the exact number legible. The native range keeps arrow-key control.
+   The filled portion is a linear-gradient on the runnable track driven by the inline --pct variable
+   (updates instantly while scrubbing so the value never lags the pointer); the transitions live on
+   the thumb only, so hover/press/focus feel smooth without making the slider feel sluggish. */
+.mss-slider { display: flex; align-items: center; gap: 14px; flex: 0 1 340px; max-width: 100%; min-width: 0; }
+.mss-range { -webkit-appearance: none; appearance: none; flex: 1 1 auto; min-width: 0; height: 16px; background: transparent; cursor: pointer; }
+.mss-range::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, var(--spice-button, #1ed760) 0 var(--pct, 0%), var(--mss-border) var(--pct, 0%) 100%); }
+.mss-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; margin-top: -5px; border-radius: 50%; background: var(--spice-button, #1ed760); border: 2px solid #0d0d0d; box-shadow: 0 0 0 1px var(--spice-button, #1ed760); transition: transform 130ms ease, box-shadow 130ms ease; }
+.mss-range:hover:not(:disabled)::-webkit-slider-thumb { transform: scale(1.12); }
+.mss-range:active:not(:disabled)::-webkit-slider-thumb { transform: scale(1.2); box-shadow: 0 0 0 4px rgba(30, 215, 96, 0.22); }
+.mss-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(30, 215, 96, 0.3); }
+.mss-range::-moz-range-track { height: 6px; border-radius: 999px; background: var(--mss-border); }
+.mss-range::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--spice-button, #1ed760); }
+.mss-range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--spice-button, #1ed760); border: 2px solid #0d0d0d; transition: transform 130ms ease, box-shadow 130ms ease; }
+.mss-range:active:not(:disabled)::-moz-range-thumb { transform: scale(1.2); }
+.mss-range:disabled { opacity: 0.55; cursor: not-allowed; }
+.mss-range:disabled::-webkit-slider-thumb { background: var(--mss-muted); box-shadow: none; }
+.mss-range:focus-visible { outline: none; }
+.mss-slider-value { font-size: 12.5px; color: var(--spice-text, #f5f5f5); font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; min-width: 104px; text-align: right; flex: none; }
+.mss-input { width: 84px; padding: 5px 8px; border: 1px solid var(--mss-border); border-radius: 6px; background: rgba(0, 0, 0, 0.25); color: inherit; font-size: 12.5px; }
+.mss-input:disabled { opacity: 0.55; }
 
 /* Notices */
 .mss-notice {
-  margin: 12px 0;
+  margin: 14px 0;
   padding: 11px 13px;
   border: 1px solid var(--mss-border);
-  border-radius: 8px;
+  border-radius: var(--mss-radius-sm);
   background: rgba(255, 255, 255, 0.04);
   font-size: 12.5px;
   line-height: 1.5;
@@ -215,22 +262,66 @@
 .mss-notice-warn { border-color: rgba(214, 160, 61, 0.4); background: rgba(214, 160, 61, 0.09); }
 .mss-notice-error { border-color: rgba(255, 82, 82, 0.45); background: rgba(255, 82, 82, 0.09); }
 .mss-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
-.mss-btn {
-  padding: 7px 13px;
-  border: 1px solid var(--mss-border);
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  background: transparent;
-  color: inherit;
-}
+.mss-offline { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 40px 24px; margin: 24px auto; max-width: 560px; border: 1px solid var(--mss-border); border-radius: 14px; background: rgba(255, 255, 255, 0.04); }
+.mss-offline-icon .mss-icon { width: 44px; height: 44px; color: var(--mss-dim); }
+.mss-offline-title { margin: 4px 0 0; font-size: 18px; font-weight: 700; }
+.mss-offline-lead { margin: 0; font-size: 14px; color: var(--mss-muted); }
+.mss-offline-why { margin: 0; font-size: 13px; color: var(--mss-dim); line-height: 1.5; }
+.mss-offline-diag { width: 100%; margin: 4px 0 0; padding: 10px 12px; border-radius: var(--mss-radius-sm); background: rgba(0, 0, 0, 0.25); border: 1px solid var(--mss-border); color: var(--mss-dim); font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11.5px; text-align: left; white-space: pre-wrap; word-break: break-word; }
+.mss-offline-steps { margin: 6px 0 0; padding-left: 20px; text-align: left; font-size: 13px; color: var(--mss-muted); line-height: 1.7; }
+.mss-offline .mss-actions { justify-content: center; margin-top: 8px; }
+.mss-spinner { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -1px; animation: mss-spin 0.7s linear infinite; }
+@keyframes mss-spin { to { transform: rotate(360deg); } }
+.mss-btn { padding: 7px 13px; border: 1px solid var(--mss-border); border-radius: 999px; font-size: 12.5px; font-weight: 600; cursor: pointer; background: transparent; color: inherit; }
 .mss-btn-primary { border-color: transparent; background: var(--spice-button, #1ed760); color: var(--spice-button-text, #000000); }
 .mss-btn-danger { border-color: rgba(255, 82, 82, 0.5); background: #ff5252; color: #ffffff; }
 .mss-btn-secondary { background: transparent; }
 .mss-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* Diagnostics */
+.mss-diag {
+  margin: 18px 0 0;
+  padding: 16px 20px;
+  border: 1px solid var(--mss-border);
+  border-radius: var(--mss-radius);
+  background: var(--mss-surface);
+}
+.mss-diag-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.mss-diag-title { font-size: 13px; font-weight: 600; }
+.mss-diag-body { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.mss-diag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 18px; }
+.mss-diag-grid > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mss-diag-grid span { font-size: 11px; color: var(--mss-dim); }
+.mss-diag-grid strong { font-size: 13px; font-variant-numeric: tabular-nums; }
+.mss-diag-details { border: 1px solid var(--mss-border); border-radius: 8px; padding: 6px 10px; }
+.mss-diag-details > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--mss-muted); }
+.mss-diag-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11.5px; }
+.mss-diag-table th, .mss-diag-table td { text-align: left; padding: 3px 10px 3px 0; border-top: 1px solid var(--mss-border); white-space: nowrap; }
+.mss-diag-table th { color: var(--mss-dim); font-weight: 600; }
+.mss-diag-raw { max-height: 260px; overflow: auto; margin: 8px 0 0; font-size: 11px; white-space: pre; }
+.mss-mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.mss-diag-tabs { margin-bottom: 12px; flex-wrap: wrap; }
+.mss-diag-tabpane { display: flex; flex-direction: column; gap: 12px; }
+.mss-diag-section { display: flex; flex-direction: column; gap: 8px; }
+.mss-diag-section-head { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--mss-dim); border-bottom: 1px solid var(--mss-border); padding-bottom: 4px; }
+.mss-diag-filterrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mss-diag-filter { flex: 1 1 180px; min-width: 140px; }
+.mss-diag-count { font-size: 11.5px; color: var(--mss-dim); white-space: nowrap; }
+.mss-diag-table td.mss-diag-num { text-align: right; }
+/* Learned usage badge (local-only telemetry). A quiet pill coloured by how busy this identity
+   usually is, so a frequently-used process reads as protected and a rare one as reclaim-soon.
+   'Learning' (no score yet) is a dashed placeholder. Mirrors the .mss-event-level language. */
+.mss-learned { display: inline-block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--mss-border); color: var(--mss-muted); white-space: nowrap; }
+.mss-learned-none { border-style: dashed; color: var(--mss-dim); }
+.mss-learned-active { color: var(--spice-button, #1ed760); border-color: color-mix(in srgb, var(--spice-button, #1ed760) 45%, transparent); }
+.mss-learned-working-set { color: #6cb6ff; border-color: rgba(108, 182, 255, 0.45); }
+.mss-learned-frequent { color: var(--mss-muted); }
+.mss-learned-rare { color: #d6a03d; border-color: rgba(214, 160, 61, 0.4); }
+.mss-event-level { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--mss-border); margin-right: 6px; }
+.mss-event-level-info { color: var(--mss-muted); }
+.mss-event-level-warn { color: #d6a03d; border-color: rgba(214, 160, 61, 0.4); }
+.mss-event-level-error { color: #ff5252; border-color: rgba(255, 82, 82, 0.45); }
+.mss-diag-footer { font-size: 11.5px; color: var(--mss-dim); border-top: 1px solid var(--mss-border); padding-top: 8px; }
 .mss-switch {
   display: inline-flex;
   align-items: center;
@@ -256,17 +347,7 @@
 .mss-event-time { color: var(--mss-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mss-event-msg { min-width: 0; word-break: break-word; }
 
-/* Diagnostics section */
-.mss-diag { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--mss-border); }
-.mss-diag-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.mss-diag-title { font-size: 13px; font-weight: 600; }
-.mss-diag-body { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
-.mss-diag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 18px; }
-.mss-diag-grid > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.mss-diag-grid span { font-size: 11px; color: var(--mss-dim); }
-.mss-diag-grid strong { font-size: 13px; font-variant-numeric: tabular-nums; }
-
-/* Fine print and footer */
+/* Fineprint + footer */
 .mss-fineprint { margin-top: 18px; font-size: 12px; color: var(--mss-dim); }
 .mss-fineprint summary { cursor: pointer; font-weight: 600; color: var(--mss-muted); }
 .mss-fineprint p { margin: 8px 0 0; line-height: 1.6; max-width: 88ch; }
@@ -281,8 +362,8 @@
   color: var(--mss-dim);
 }
 
-/* Low-limit modal and activation flash */
-.mss-modal { display: flex; flex-direction: column; gap: 10px; padding: 4px; font-size: 13px; line-height: 1.5; }
+/* Low-limit modal + activation toast */
+.mss-modal { display: flex; flex-direction: column; gap: 10px; padding: 4px; font-size: 13px; line-height: 1.5; width: 100%; max-width: 440px; margin-inline: auto; }
 .mss-modal .mss-notice-warn { margin: 0; }
 .mss-modal-backdrop {
   position: fixed;
@@ -293,45 +374,54 @@
   padding: 24px;
   background: rgba(0, 0, 0, 0.65);
 }
-.mss-screen-flash {
+.mss-toast {
   position: fixed;
-  inset: 0;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 12px);
   z-index: 9998;
-  display: grid;
-  place-items: center;
-  font-size: 15px;
-  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border: 1px solid var(--mss-border);
+  border-radius: 999px;
+  background: rgba(20, 20, 22, 0.96);
+  color: var(--spice-text, #f5f5f5);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  opacity: 0;
   pointer-events: none;
-  animation: mss-screen-transition 520ms ease-out forwards;
+  transition: opacity 200ms ease, transform 200ms ease;
 }
-.mss-screen-flash-on { background: rgba(30, 215, 96, 0.18); color: #d6ffe4; }
-.mss-screen-flash-off { background: rgba(255, 82, 82, 0.18); color: #ffe0e0; }
-
-@keyframes mss-screen-transition {
-  from { opacity: 0; }
-  25% { opacity: 1; }
-  to { opacity: 0; }
-}
+.mss-toast-show { opacity: 1; transform: translate(-50%, 0); }
+.mss-toast-hide { opacity: 0; transform: translate(-50%, 12px); }
+.mss-toast-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.mss-toast-on .mss-toast-dot { background: var(--spice-button, #1ed760); box-shadow: 0 0 0 3px rgba(30, 215, 96, 0.2); }
+.mss-toast-off .mss-toast-dot { background: #ff5252; box-shadow: 0 0 0 3px rgba(255, 82, 82, 0.2); }
 
 @media (prefers-reduced-motion: reduce) {
-  .mss-screen-flash { animation-duration: 1ms !important; }
-  .mss-bar, .mss-peek, .mss-btn, .mss-switch, .mss-switch-knob { transition: none !important; }
+  .mss-toast { transition: none !important; }
+  .mss-spinner { animation: none !important; }
+  .mss-btn, .mss-switch, .mss-switch-knob, .mss-composition-seg, .mss-legend-item, .mss-legend-dot, .mss-seg-btn, .mss-chip, .mss-chip-dot { transition: none !important; }
+  .mss-range::-webkit-slider-thumb, .mss-range::-moz-range-thumb { transition: none !important; }
+  .mss-range:hover:not(:disabled)::-webkit-slider-thumb, .mss-range:active:not(:disabled)::-webkit-slider-thumb, .mss-range:active:not(:disabled)::-moz-range-thumb { transform: none; }
+  .mss-composition-seg:hover { filter: none; }
+  .mss-seg-active { filter: none; }
 }
 
 @media (max-width: 767px) {
   .mss-page { padding: 0 16px 40px; }
-  .mss-subtitle { display: none; }
-  .mss-summary-value { font-size: 34px; }
-  .mss-table-head,
-  .mss-process { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; }
-  .mss-table-head .mss-col-bar { display: none; }
-  .mss-bar-cell { grid-column: 1 / -1; grid-row: 2; min-height: 18px; }
-  .mss-tag { grid-row: 1; grid-column: 2; }
-  .mss-tool-note { margin-left: 0; }
+  .mss-hero, .mss-toolbar, .mss-diag { padding-left: 14px; padding-right: 14px; }
+  .mss-setting { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 10px 0; }
+  .mss-setting-label { padding-top: 0; }
 }
 
 @media (max-width: 559px) {
   .mss-topbar { flex-wrap: wrap; }
   .mss-topbar-controls { width: 100%; justify-content: space-between; }
-  .mss-summary-value { font-size: 30px; }
+  .mss-hero-stats, .mss-hero-head { gap: 6px 10px; }
+  .mss-mode-btn { padding: 6px 8px; }
 }

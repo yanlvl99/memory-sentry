@@ -10,27 +10,27 @@
 
 Memory Sentry is an open-source utility for managing the resident working set of Spotify Desktop processes while Spotify runs in the background.
 
-**Current release:** `1.0.0-rc.5` - experimental release candidate, not a stable release.
+**Current release:** `1.0.0-rc.6` - experimental release candidate, not a stable release.
 
 The current release requires Spotify Desktop and Spicetify CLI for the same Windows user. The Spicetify Custom App communicates with the Memory Sentry server, which runs as a **separate per-user process**, is currently implemented in Rust, and performs the Windows memory operations. Memory Sentry is an independent community project, not an official Spotify or Spicetify product.
 
 ## Features
 
-- Automatic and manual working-set limits for Spotify processes while Spotify is outside the foreground.
+- Adaptive working-set limits with optional per-process fixed ceilings for Spotify processes while Spotify is outside the foreground.
 - Choose which window states trigger optimization: window behind another app, minimized, hidden, or any combination of the three.
-- Role-based limits with persistent manual role overrides.
-- A three-state memory mode (Automatic, Manual, Disabled); Disabled stops new limits and requests restoration of recorded Windows limits.
+- Per-identity limits with persistent pins that survive process restarts (identity is role + command line, never the PID).
+- A two-state memory mode (Custom, Disabled): Custom runs the adaptive engine with per-process pins available; Disabled stops new limits and requests restoration of recorded Windows limits.
 - Local-only dashboard and diagnostics; the server does not upload telemetry.
 
 ## Policy and controls
 
 Memory Sentry limits the **resident working set**—the amount of process memory currently resident in physical RAM. It does not decommit memory or directly reduce committed memory, and the observed reduction varies by PC and workload.
 
-In automatic mode, a ceiling can increase by 8 MB only when CPU usage is at least 10% of one logical processor for **six consecutive seconds** while the process uses its **full current working-set ceiling**. A ceiling can decrease by 4 MB after CPU remains at or below 3% and the process has at least 6 MB of working-set headroom for **ten seconds**. Adjustments have an eight-second cooldown and role-specific limits. Main's automatic ceiling is capped at 36 MB; Audio starts at 36 MB and adapts upward to 60 MB under sustained load, like the other roles.
+In Custom mode, a ceiling can increase by 8 MB only when CPU usage is at least 10% of one logical processor for **six consecutive seconds** while the process uses its **full current working-set ceiling**. A ceiling can decrease by 6 MB after CPU remains at or below 3% and the process has at least 6 MB of working-set headroom for **ten seconds**, but the decrease is blocked while page faults show the process is thrashing. Adjustments have an eight-second cooldown and role-specific floors as low as 12 MB. Main's ceiling is capped at 36 MB; Audio starts at 36 MB and adapts upward to 60 MB under sustained load, like the other roles. Machines with more than 16 GB of RAM get extra headroom on role maxima, and a deeply idle background process is reclaimed one step toward its floor even without pressure. The engine also learns each process identity's typical busy level on-device, so rarely-busy processes are reclaimed further and frequently-busy ones keep headroom; this profile is stored locally and never uploaded.
 
-In manual mode, role defaults are Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB, and Crashpad 16 MB. A manual limit below the process role's default requires a **five-second warning countdown** and explicit confirmation.
+Pinning a process to Manual holds a fixed ceiling that outranks the adaptive engine while the rest of its role keeps adapting. The starting defaults are Main/Audio 36 MB, GPU/Renderer 28 MB, Utility/Helper 24 MB, and Crashpad 16 MB. A manual limit below the process role's default requires a **five-second warning countdown** and explicit confirmation.
 
-The **same configured delay applies in both modes**, and it only starts once Spotify enters a window state you enabled under **Optimize when**. When Spotify returns to the foreground, or enters a state you did not enable, original limits are restored. The **Disabled** mode is the master on/off control: it stops new limits and requests restoration of original limits. If restoration cannot be confirmed immediately, pending recovery data is retained for retry.
+The **same configured delay applies whenever Custom is enabled**, and it only starts once Spotify enters a window state you enabled under **Optimize when**. When Spotify returns to the foreground, or enters a state you did not enable, original limits are restored. The **Disabled** mode is the master on/off control: it stops new limits and requests restoration of original limits. If restoration cannot be confirmed immediately, pending recovery data is retained for retry.
 
 ## Requirements
 
