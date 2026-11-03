@@ -68,6 +68,7 @@ function Diagnostics(props) {
       MSSDebugField(tx('debugRootPid'), num(spotify.rootPid), true),
       MSSDebugField(tx('debugWindowState'), MSSWindowLabel(spotify.windowState || 'not-detected')),
       MSSDebugField(tx('debugHiddenFor'), num(spotify.hiddenSeconds, ' s')),
+      MSSDebugField(tx('debugClientForeground'), spotify.clientStateAgeSeconds == null ? '—' : `${spotify.clientForeground ? 'on' : 'off'} · ${spotify.clientStateAgeSeconds}s`, true),
       MSSDebugField(tx('debugRestoreAt'), telemetry.lastRestoreAt ? MSSDate(telemetry.lastRestoreAt) : '—'),
       memory.systemTotalMB ? MSSDebugField(tx('dbgSystemMemory'), `${MSSFormatMB(memory.systemAvailableMB)} / ${MSSFormatMB(memory.systemTotalMB)} MB`) : null,
       memory.pressureLevel ? MSSDebugField(tx('dbgPressure'), tx(`pressure_${memory.pressureLevel}`)) : null,

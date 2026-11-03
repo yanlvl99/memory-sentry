@@ -178,6 +178,29 @@ function MSSApp() {
     return () => { alive = false; if (timer) window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisibility); };
   }, [settingsLoaded, reloadNonce, config.refreshIntervalMs]);
 
+  // Foreground beacon. The server's OS-level window enumeration can transiently miss the titled Spotify
+  // window (a tray hide/show, a DWM transition, focus briefly held by a modal), which used to strand a
+  // capped process even while the user was actively using Spotify. The renderer knows focus and
+  // visibility directly and for free, so it pushes a tiny beacon on every change; the server restores
+  // limits while the beacon stays fresh. Event-driven rather than polled, so it fires the instant focus
+  // returns and still fires under Chromium background throttling (which slows timers, not events).
+  R.useEffect(() => {
+    function beacon() {
+      const focused = document.hasFocus();
+      const visible = document.visibilityState !== 'hidden';
+      MSSRequest('/api/window-state', { method: 'POST', body: { focused, visible } }).catch(() => { /* server not reachable yet; the next focus change retries */ });
+    }
+    beacon();
+    window.addEventListener('focus', beacon);
+    window.addEventListener('blur', beacon);
+    document.addEventListener('visibilitychange', beacon);
+    return () => {
+      window.removeEventListener('focus', beacon);
+      window.removeEventListener('blur', beacon);
+      document.removeEventListener('visibilitychange', beacon);
+    };
+  }, []);
+
   R.useEffect(() => () => {
     for (const timer of manualApplyTimers.current.values()) window.clearTimeout(timer);
     manualApplyTimers.current.clear();
