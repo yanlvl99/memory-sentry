@@ -3,7 +3,7 @@
 
 use memory_sentry_windows as windows;
 use memory_sentry_core::{
-    pressure_level, ProcessRole, HIGH_CPU_PERCENT, MAX_CAP_MB, MIN_CAP_MB,
+    pressure_level, ProcessRole, DemandHistogram, MAX_CAP_MB, MIN_CAP_MB,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs::File;
@@ -83,6 +83,11 @@ pub(crate) struct Settings {
     // before this session has its own samples. Keyed by process_identity (role + sub-label), NEVER a
     // PID. Local-only, never uploaded (see PRIVACY.md).
     usage_scores: BTreeMap<String, u32>,
+    // Learned safe edge per identity: the lowest automatic ceiling that did not make the process
+    // thrash. A thrash-relief increase records the new ceiling here, and the engine never descends
+    // below it again, which is what prevents an 8 -> 16 -> 8 oscillation once the per-role floors are
+    // gone. Keyed by process_identity, NEVER a PID. Local-only.
+    safe_floors: BTreeMap<String, u32>,
     schema_version: u32,
 }
 
@@ -132,8 +137,8 @@ impl BackupRecord {
 struct AdaptiveProfile {
     creation: u64,
     current_cap_mb: u32,
-    high_cpu_ms: u64,
-    low_cpu_ms: u64,
+    demand: DemandHistogram,
+    cpu_ewma: Option<u32>,
     last_evaluated_snapshot_at_ms: u64,
     last_adjustment_at_ms: u64,
     last_reason: String,
@@ -325,6 +330,7 @@ mod tests {
             ]),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         };
         // The individually-pinned renderer keeps its own cap; a sibling falls back to the role default.
@@ -366,6 +372,7 @@ mod tests {
             manual_role_caps: BTreeMap::from([("Renderer".to_string(), 40), ("Renderer:#7".to_string(), 90)]),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         };
         // Only the exact identity is a pin; a bare-role default must not pin every sibling.
@@ -395,6 +402,7 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         };
         write_settings(&path, &settings).expect("write settings");
@@ -464,6 +472,7 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         assert!(should_manage_limits(&settings, "minimized"));
@@ -501,6 +510,7 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
@@ -541,6 +551,7 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
@@ -587,6 +598,21 @@ mod tests {
     }
 
     #[test]
+    fn safe_floor_parser_keeps_known_identities_and_valid_caps() {
+        // Identity may contain ':' (e.g. Renderer:#7), so the cap is the LAST segment. Values below
+        // the absolute floor or above the automatic cap range are dropped.
+        let serialized = r#"{"safeFloors":["Main:12","Renderer:#3:20","Unknown:40","GPU:3","Audio:65","Utility:notanumber"]}"#;
+        let floors = parse_safe_floors(serialized);
+        assert_eq!(floors.get("Main"), Some(&12));
+        assert_eq!(floors.get("Renderer:#3"), Some(&20));
+        assert!(!floors.contains_key("Unknown"));
+        assert!(!floors.contains_key("GPU"));
+        assert!(!floors.contains_key("Audio"));
+        assert!(!floors.contains_key("Utility"));
+        assert_eq!(floors.len(), 2);
+    }
+
+    #[test]
     fn role_override_is_reused_when_a_new_pid_replaces_an_old_process() {
         let mut settings = Settings {
             port: DEFAULT_PORT,
@@ -603,6 +629,7 @@ mod tests {
             manual_role_caps: BTreeMap::from([("Renderer".to_string(), 52)]),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         };
         let restarted_process = windows::ProcessRow {
@@ -674,6 +701,7 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         let mut state = build_state(base.clone(), settings);
@@ -711,14 +739,63 @@ mod tests {
             manual_role_caps: BTreeMap::new(),
             auto_role_caps: BTreeMap::new(),
             usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
         };
         settings.manual_role_caps.insert("Renderer".to_string(), 52);
+        settings.safe_floors.insert("Renderer:#7".to_string(), 20);
         write_settings(&path, &settings).expect("settings should be written");
         let loaded = load_settings(&path).expect("settings should load");
         assert_eq!(loaded.manual_role_caps.get("Renderer"), Some(&52));
+        assert_eq!(loaded.safe_floors.get("Renderer:#7"), Some(&20));
         assert!(!loaded.enabled);
         assert!(!loaded.auto_optimize);
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn status_payload_exposes_the_per_process_fault_rate() {
+        let settings = Settings {
+            port: DEFAULT_PORT,
+            token: "a".repeat(64),
+            enabled: false,
+            auto_optimize: false,
+            custom_mode: false,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
+            trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
+            manual_role_caps: BTreeMap::new(),
+            auto_role_caps: BTreeMap::new(),
+            usage_scores: BTreeMap::new(),
+            safe_floors: BTreeMap::new(),
+            schema_version: CURRENT_SCHEMA_VERSION,
+        };
+        let mut state = build_state(std::env::temp_dir().join("mss-status-payload-test"), settings);
+        state.root_pid = Some(10);
+        state.snapshot.processes.push(windows::ProcessRow {
+            pid: 10,
+            ppid: 1,
+            cmd: "spotify.exe".to_string(),
+            creation: 5,
+            cpu_time_ms: 0.0,
+            cpu_percent: Some(0.0),
+            working_set_mb: Some(20.0),
+            private_working_set_mb: None,
+            private_mb: None,
+            page_fault_count: Some(100),
+            page_faults_delta: Some(30),
+            page_faults_per_sec: Some(15.5),
+            error_code: 0,
+        });
+        let payload = status_payload(&state);
+        // The engine consumes the rate, not the delta, so the debug surface must report the same
+        // number: this is what a real-machine calibration of the thrash threshold reads.
+        assert!(
+            payload.contains("\"pageFaultsPerSec\":15.500"),
+            "payload must expose the per-process fault rate: {payload}"
+        );
     }
 }

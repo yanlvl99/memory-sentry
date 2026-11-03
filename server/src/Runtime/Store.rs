@@ -236,6 +236,25 @@ pub(crate) fn parse_usage_scores(text: &str) -> BTreeMap<String, u32> {
         .collect()
 }
 
+/// Learned safe edge per identity: the lowest ceiling that did not make the process thrash. Serialized
+/// like autoRoleCaps (flat "identity:cap" strings; identity may contain ':', so the cap is the LAST
+/// segment). Values outside the automatic cap range are dropped so a hand-edited file cannot freeze a
+/// process above its role maximum or push it below the absolute floor.
+pub(crate) fn parse_safe_floors(text: &str) -> BTreeMap<String, u32> {
+    parse_json_string_array(text, "safeFloors")
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|entry| {
+            let (identity, cap) = entry.rsplit_once(':')?;
+            let cap = cap.parse::<u32>().ok()?;
+            if !identity_role_prefix_ok(identity) || !(MIN_CAP_MB..=MAX_CAP_MB).contains(&cap) {
+                return None;
+            }
+            Some((identity.to_string(), cap))
+        })
+        .collect()
+}
+
 pub(crate) fn load_settings(path: &Path) -> Result<Settings, String> {
     let raw = fs::read_to_string(path)
         .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
@@ -265,6 +284,7 @@ pub(crate) fn load_settings(path: &Path) -> Result<Settings, String> {
     let manual_role_caps = parse_manual_role_caps(&raw);
     let auto_role_caps = parse_auto_role_caps(&raw);
     let usage_scores = parse_usage_scores(&raw);
+    let safe_floors = parse_safe_floors(&raw);
     Ok(Settings {
         port,
         token,
@@ -280,6 +300,7 @@ pub(crate) fn load_settings(path: &Path) -> Result<Settings, String> {
         manual_role_caps,
         auto_role_caps,
         usage_scores,
+        safe_floors,
         schema_version: CURRENT_SCHEMA_VERSION,
     })
 }
@@ -307,9 +328,15 @@ pub(crate) fn write_settings(path: &Path, settings: &Settings) -> Result<(), Str
         .map(|(identity, score)| json_quote(&format!("{identity}:{score}")))
         .collect::<Vec<_>>()
         .join(", ");
+    let safe_floors = settings
+        .safe_floors
+        .iter()
+        .map(|(identity, cap)| json_quote(&format!("{identity}:{cap}")))
+        .collect::<Vec<_>>()
+        .join(", ");
     let contents = format!(
-        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"customMode\": {},\n  \"hiddenDelaySeconds\": {},\n  \"refreshIntervalMs\": {},\n  \"trimToCap\": {},\n  \"optimizeWhenBackground\": {},\n  \"optimizeWhenMinimized\": {},\n  \"optimizeWhenHidden\": {},\n  \"manualRoleCaps\": [{}],\n  \"autoRoleCaps\": [{}],\n  \"usageScores\": [{}],\n  \"schemaVersion\": {},\n  \"version\": \"{}\"\n}}\n",
-        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.custom_mode, settings.hidden_delay_seconds, settings.refresh_interval_ms, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, manual_role_caps, auto_role_caps, usage_scores, settings.schema_version, VERSION
+        "{{\n  \"port\": {},\n  \"token\": {},\n  \"enabled\": {},\n  \"autoOptimize\": {},\n  \"customMode\": {},\n  \"hiddenDelaySeconds\": {},\n  \"refreshIntervalMs\": {},\n  \"trimToCap\": {},\n  \"optimizeWhenBackground\": {},\n  \"optimizeWhenMinimized\": {},\n  \"optimizeWhenHidden\": {},\n  \"manualRoleCaps\": [{}],\n  \"autoRoleCaps\": [{}],\n  \"usageScores\": [{}],\n  \"safeFloors\": [{}],\n  \"schemaVersion\": {},\n  \"version\": \"{}\"\n}}\n",
+        settings.port, json_quote(&settings.token), settings.enabled, settings.auto_optimize, settings.custom_mode, settings.hidden_delay_seconds, settings.refresh_interval_ms, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, manual_role_caps, auto_role_caps, usage_scores, safe_floors, settings.schema_version, VERSION
     );
     let mut file = File::create(&temp).map_err(|e| format!("Could not stage settings: {e}"))?;
     file.write_all(contents.as_bytes())
@@ -342,6 +369,7 @@ pub(crate) fn bootstrap_default_settings(path: &Path) -> Result<Settings, String
         manual_role_caps: BTreeMap::new(),
         auto_role_caps: BTreeMap::new(),
         usage_scores: BTreeMap::new(),
+        safe_floors: BTreeMap::new(),
         schema_version: CURRENT_SCHEMA_VERSION,
     };
     write_settings(path, &settings)?;

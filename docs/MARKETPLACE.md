@@ -10,7 +10,7 @@ The Marketplace listing is discovery-only: it links to this repository and does 
 
 Memory Sentry manages the **resident working set**, not committed memory. It does not free or decommit memory, and observed results vary by workload and system. Avoid describing the result as freed, released, or swapped-out memory.
 
-The server API binds to loopback, requires a per-install token, validates the Spotify HTTPS Origin and loopback Host header, and records original process limits for recovery. Custom mode gives Audio-role processes a 36 MB ceiling that adapts upward to 60 MB under sustained load, and a pinned process holds a fixed ceiling stored by PID-free process identity. Original limits are recorded per process instance. Logs and metrics stay on the PC.
+The server API binds to loopback, requires a per-install token, validates the Spotify HTTPS Origin and loopback Host header, and records original process limits for recovery. Custom mode starts every role at a 38 MB ceiling with a 4 MB absolute floor, targets a high percentile of each identity's recent working-set demand with a margin that grows when the machine has memory to spare, keeps Audio at 25 MB or more and a visible-background renderer at 38 MB, and remembers any relief ceiling as the identity's learned safe floor; Audio can adapt upward to 60 MB under sustained load, and a pinned process holds a fixed ceiling stored by PID-free process identity. Original limits are recorded per process instance. Logs and metrics stay on the PC.
 
 ## Listing requirements
 
@@ -19,7 +19,7 @@ The repository is public and currently has the `spicetify-apps` topic. Keep that
 Before submitting or updating the listing:
 
 1. Verify that the repository topic remains `spicetify-apps`.
-2. Keep the root manifest preview set to `assets/marketplace-cover.svg` and the README banner at `assets/readme-banner.svg`.
+2. Keep the root manifest preview set to `assets/marketplace-cover.svg` and the README banner at `assets/readme-banner.png`.
 3. State the Windows 10/11 x64/ARM64 requirement and separate server requirement in the listing description.
 4. Publish only the official per-user MSI and its SHA-256 checksum; do not add a separate Marketplace build or portable installer.
 5. Validate installation, missing-server behavior, upgrade, recovery, and uninstall on Windows 10 and Windows 11 desktop systems.

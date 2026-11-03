@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- The debug console now reports each process's page-fault rate next to its cumulative delta, so the exact thrash signal the adaptive engine acts on can be inspected. This is the value a real-machine calibration of the thrash threshold has to read.
+- The confirmation messages for a fixed limit now name the process they act on instead of calling it a shared role limit, and the leftover strings for the removed foreground capping were dropped.
+- The adaptive engine now starts every Spotify process at the same 38 MB ceiling and can descend to a 4 MB absolute floor instead of the previous per-role floors of 12-36 MB. Main no longer grows above 38 MB, while Audio keeps adapting upward to 60 MB. A process that thrashes at its ceiling receives an 8 MB relief increase and that ceiling becomes the identity's learned safe floor, so a later quiet window never descends back into it.
+- The engine also watches CPU as a starvation signal: a process that sustains high CPU while holding almost no resident memory gets the same 8 MB relief increase, even if its page-fault rate stays under the thrash threshold. Audio keeps a 25 MB floor so playback does not glitch, and a renderer holds 38 MB while the window is visible in the background, descending toward the floor only once minimized or hidden.
+- The adaptive policy now sizes each process from a decaying histogram of its recent working-set demand instead of fixed timers: the target is a high percentile plus a margin that widens when Windows reports plenty of free memory and disappears under low-memory pressure, changes need to pass a dead band, and the thrash guard compares faults per resident megabyte. The absolute step sizes remain only as a rate limit.
+- The Marketplace cover is replaced with the new square artwork, and the unused vector preview and banner assets were removed; the README banner and the Marketplace cover are now the only shipped artwork.
+
 ## 1.0.0-rc.6 — Custom-only redesign and native process discovery
 
 - Redesigned the dashboard around a single memory-composition bar with an expandable role panel: the mode model collapsed to Custom and Disabled, per-process limits are addressed and persisted by PID-free process identity (a pin survives restarts and PID changes), a tabbed debug console shows each identity's learned local usage profile, and a dedicated offline screen distinguishes a server that never started from a dropped connection. (PR #33)
