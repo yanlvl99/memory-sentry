@@ -22,23 +22,91 @@ pub const INITIAL_CAP_MB: u32 = 38;
 pub const MAX_CAP_MB: u32 = 64;
 pub const INCREASE_STEP_MB: u32 = 8;
 pub const DECREASE_STEP_MB: u32 = 6;
-pub const HIGH_CPU_PERCENT: f64 = 10.0;
-pub const LOW_CPU_PERCENT: f64 = 3.0;
-pub const HIGH_CPU_DURATION_MS: u64 = 6_000;
-pub const LOW_CPU_DURATION_MS: u64 = 10_000;
 pub const ADJUSTMENT_COOLDOWN_MS: u64 = 8_000;
-pub const LOW_WORKING_SET_MARGIN_MB: f64 = 6.0;
-/// How long a backgrounded process must stay quiet before the engine proactively squeezes it toward
-/// its floor even without the usual working-set headroom (Chrome's idle-reclaim model).
-pub const IDLE_PROACTIVE_MS: u64 = 60_000;
-/// Page faults per second above which a capped process is judged to be starved (thrashing). The
-/// engine then stops squeezing it and backs the ceiling off — the safety valve that lets the
-/// aggressive background floors stay crash-free. Measured on real hardware (Windows 11, eight Spotify
-/// processes): adaptive processes sitting at their ceiling in the background peak around 1,000
-/// faults/s (Main p95 850, max 1,064; network p95 488), while a manual pin too tight for its renderer
-/// sustains 3,500-8,500. This value sits in that gap on purpose: healthy caps never trip it, starved
-/// ones do.
-pub const THRASH_FAULTS_PER_SEC: f64 = 2_500.0;
+/// Demand histogram: 64 buckets of 4 MB (covering 256 MB) with per-sample exponential decay. At the
+/// observed ~1.3 s snapshot cadence the decay gives roughly a one-minute half-life, so the target
+/// follows recent demand the way PSI's 10/60/300 s windows do, without a fixed decision timer.
+pub const DEMAND_BUCKETS: usize = 64;
+pub const DEMAND_BUCKET_MB: f64 = 4.0;
+pub const DEMAND_DECAY: f64 = 0.985;
+/// The target is this percentile of recent working-set demand plus a margin; system memory pressure
+/// widens or removes the margin (see decide_adjustment).
+pub const DEMAND_PERCENTILE: f64 = 95.0;
+/// A change needs the target to differ by more than this band, which is the hysteresis that replaces
+/// the old "wait N seconds" rules.
+pub const DEAD_BAND_MB: f64 = 6.0;
+pub const DEAD_BAND_RATIO: f64 = 0.15;
+/// Refaults relative to resident size: a capped process is thrashing when it faults more than this
+/// per resident MB. Measured in the same captures as the old absolute value (idle adaptive ~25/MB,
+/// starved pin ~300/MB), so the ratio separates healthy from starved without depending on process
+/// size.
+pub const THRASH_FAULTS_PER_MB: f64 = 60.0;
+/// CPU is already a percentage of one core, and "tiny" is relative to the current cap, the way
+/// Android's lmkd compares refaults to the pagecache instead of using absolute counts.
+pub const STARVATION_CPU_PERCENT: f64 = 50.0;
+pub const STARVATION_CAP_SHARE: f64 = 0.25;
+
+/// Coarse system memory pressure, mirroring the Windows Low/High memory resource notifications:
+/// `High` means plenty of free memory, `Low` means the OS is asking applications to shrink, and the
+/// dead band between them should leave caps unchanged.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MemoryPressure {
+    High,
+    Normal,
+    Low,
+}
+
+/// Decaying histogram of recent working-set demand for one identity. The recommendation input: the
+/// target cap is a high percentile of it instead of a fixed step ladder, so a workload that gets
+/// busier raises its own ceiling and one that goes quiet lowers it, with no timer to tune.
+#[derive(Clone, Debug)]
+pub struct DemandHistogram {
+    buckets: [f64; DEMAND_BUCKETS],
+    total: f64,
+}
+
+impl Default for DemandHistogram {
+    fn default() -> Self {
+        Self {
+            buckets: [0.0; DEMAND_BUCKETS],
+            total: 0.0,
+        }
+    }
+}
+
+impl DemandHistogram {
+    pub fn observe(&mut self, working_set_mb: f64) {
+        if !working_set_mb.is_finite() || working_set_mb < 0.0 {
+            return;
+        }
+        for bucket in &mut self.buckets {
+            *bucket *= DEMAND_DECAY;
+        }
+        self.total *= DEMAND_DECAY;
+        let index = ((working_set_mb / DEMAND_BUCKET_MB).floor() as usize).min(DEMAND_BUCKETS - 1);
+        self.buckets[index] += 1.0;
+        self.total += 1.0;
+    }
+
+    pub fn percentile_mb(&self, percentile: f64) -> Option<f64> {
+        if self.total <= 0.0 {
+            return None;
+        }
+        let threshold = self.total * (percentile.clamp(0.0, 100.0) / 100.0);
+        let mut cumulative = 0.0;
+        for (index, bucket) in self.buckets.iter().enumerate() {
+            cumulative += bucket;
+            if cumulative >= threshold {
+                return Some((index as f64 + 0.5) * DEMAND_BUCKET_MB);
+            }
+        }
+        Some((DEMAND_BUCKETS as f64 - 0.5) * DEMAND_BUCKET_MB)
+    }
+
+    pub fn samples(&self) -> f64 {
+        self.total
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessRole {
@@ -80,6 +148,18 @@ impl ProcessRole {
             Self::Gpu | Self::Renderer => Some(52),
             Self::Utility | Self::Helper => Some(48),
             Self::Crashpad => Some(40),
+        }
+    }
+
+    /// Floor for a given window state, layered above the absolute minimum. Audio never drops below
+    /// 25 MB so playback does not glitch. A renderer keeps 38 MB while the window is visible in the
+    /// background, because the next alt-tab is a repaint away; once minimized or hidden the return
+    /// path is a full restore anyway, so it may descend to the absolute floor.
+    pub fn state_floor_mb(self, visible_background: bool) -> u32 {
+        match self {
+            Self::Audio => 25,
+            Self::Renderer if visible_background => 38,
+            _ => MIN_CAP_MB,
         }
     }
 
@@ -195,24 +275,14 @@ pub fn usage_bucket(busy_percent: f64) -> UsageBucket {
 }
 
 impl UsageBucket {
-    /// Extra MB kept above the role floor. Frequently-busy identities are protected from a full
-    /// squeeze (crash-safe); rarely-busy ones keep none, so they get reclaimed to the last drop.
-    pub fn floor_extra_mb(self) -> u32 {
+    /// Extra MB of headroom above the demand percentile. A frequently-busy identity gets more room
+    /// so its next burst does not immediately refault; a rarely-busy one gets the tight target.
+    pub fn margin_mb(self) -> f64 {
         match self {
-            UsageBucket::Active => 8,
-            UsageBucket::WorkingSet => 4,
-            UsageBucket::Frequent | UsageBucket::Rare => 0,
-        }
-    }
-
-    /// Working-set headroom required before the engine lowers the ceiling. Rare processes tolerate a
-    /// tighter margin (reclaim sooner); Active ones must show clear headroom before losing memory.
-    pub fn decrease_margin_mb(self) -> f64 {
-        match self {
-            UsageBucket::Active => 8.0,
-            UsageBucket::WorkingSet => 7.0,
-            UsageBucket::Frequent => LOW_WORKING_SET_MARGIN_MB,
-            UsageBucket::Rare => 3.0,
+            UsageBucket::Active => 6.0,
+            UsageBucket::WorkingSet => 4.0,
+            UsageBucket::Frequent => 2.0,
+            UsageBucket::Rare => 0.0,
         }
     }
 
@@ -284,13 +354,17 @@ pub struct PolicySample {
     pub current_cap_mb: u32,
     pub working_set_mb: f64,
     pub cpu_percent: f64,
-    /// Recent busy fraction (0..=100) of the sample window; the local usage-telemetry signal.
+    /// Recent busy fraction (0..=100), a slow EWMA of CPU: the usage signal and the starvation input.
     pub busy_percent: f64,
-    pub high_cpu_ms: u64,
-    pub low_cpu_ms: u64,
-    /// Page faults per second since the previous sample; the thrash signal for the safety valve.
+    /// Session CPU EWMA (0..=100): the sustained-CPU signal for starvation right now.
+    pub cpu_ewma: f64,
+    /// Page faults per second since the previous sample; normalized by resident size in the policy.
     pub faults_per_sec: f64,
-    /// Effective floor for this identity: the absolute minimum raised by the learned safe edge.
+    /// High percentile of recent working-set demand (see DemandHistogram).
+    pub demand_p95_mb: f64,
+    pub pressure: MemoryPressure,
+    /// Effective floor for this identity: the absolute minimum raised by the state floor and the
+    /// learned safe edge.
     pub minimum_cap_mb: u32,
     /// Total installed RAM in MB, used only to pick the headroom tier (0 == unknown -> Medium).
     pub system_total_mb: u64,
@@ -306,10 +380,10 @@ pub enum AdjustmentDirection {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AdjustmentReason {
-    SustainedHighCpu,
-    LowCpuAndMemoryHeadroom,
+    DemandIncrease,
+    DemandDecrease,
     ThrashRelief,
-    IdleProactive,
+    CpuStarvation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -363,16 +437,19 @@ pub fn working_set_at_ceiling(working_set_mb: f64, ceiling_mb: u32) -> bool {
 }
 
 /// Produces an advisory next ceiling only. It does not call any Windows API.
+///
+/// The model follows the way large systems size memory: trigger on relative signals, aim at a high
+/// percentile of recent demand, and keep bounds plus a dead band as hysteresis. Absolute steps remain
+/// only as a rate limit, and the cooldown as a floor on how often a cap may move.
 pub fn decide_adjustment(sample: PolicySample) -> Option<Adjustment> {
     let role_min = sample.role.minimum_cap_mb()?;
-    let role_base = sample.role.baseline_cap_mb().unwrap_or(MAX_CAP_MB);
-    // The learned safe edge can only raise the absolute floor. Clamped to the role ceiling below so a
-    // stale value cannot freeze the process.
     let floor = sample.minimum_cap_mb.max(role_min);
-    // Headroom scales with installed RAM: a large machine lets a busy process grow higher (thrash less),
-    // a small one keeps the ceiling tight. Unknown total -> Medium -> no bonus (unchanged behavior).
     let tier = memory_tier(sample.system_total_mb);
-    let maximum = sample.role.maximum_cap_mb()?.saturating_add(tier.maximum_bonus_mb()).min(MAX_CAP_MB);
+    let maximum = sample
+        .role
+        .maximum_cap_mb()?
+        .saturating_add(tier.maximum_bonus_mb())
+        .min(MAX_CAP_MB);
 
     if !sample.working_set_mb.is_finite()
         || sample.working_set_mb < 0.0
@@ -382,6 +459,10 @@ pub fn decide_adjustment(sample: PolicySample) -> Option<Adjustment> {
         || sample.faults_per_sec < 0.0
         || !sample.busy_percent.is_finite()
         || !(0.0..=100.0).contains(&sample.busy_percent)
+        || !sample.cpu_ewma.is_finite()
+        || !(0.0..=100.0).contains(&sample.cpu_ewma)
+        || !sample.demand_p95_mb.is_finite()
+        || sample.demand_p95_mb < 0.0
         || sample.current_cap_mb < role_min
         || sample.current_cap_mb > maximum
         || sample.now_ms.saturating_sub(sample.last_adjustment_ms) < ADJUSTMENT_COOLDOWN_MS
@@ -389,68 +470,66 @@ pub fn decide_adjustment(sample: PolicySample) -> Option<Adjustment> {
         return None;
     }
 
-    // A process pinned at its ceiling that keeps pulling pages back is being starved even when it is
-    // not burning CPU. That is the exact edge of a working-set freeze, so we stop squeezing and back
-    // the ceiling off. This is what lets the background floors go low without
-    // crashing: the engine finds each process's own safe edge instead of us guessing a fixed number.
-    let thrashing = sample.faults_per_sec >= THRASH_FAULTS_PER_SEC;
     let at_ceiling = working_set_at_ceiling(sample.working_set_mb, sample.current_cap_mb);
+    // Relative starvation: refaults per resident MB (lmkd compares refaults to the pagecache) and
+    // CPU spent while the resident set is a small share of the cap. Both scale with the process.
+    let faults_per_mb = sample.faults_per_sec / sample.working_set_mb.max(1.0);
+    let thrashing = faults_per_mb >= THRASH_FAULTS_PER_MB;
+    let tiny_set = sample.working_set_mb <= sample.current_cap_mb as f64 * STARVATION_CAP_SHARE;
+    let cpu_starved = sample.cpu_ewma >= STARVATION_CPU_PERCENT && tiny_set;
 
-    // Personalize the squeeze from local usage telemetry (the four usage buckets above):
-    // rarely-busy identities descend on a tighter margin toward the floor (last drop), while
-    // frequently-busy ones keep headroom above the floor so they are never starved on return.
+    if (thrashing && at_ceiling) || cpu_starved {
+        let next = maximum.min(sample.current_cap_mb.saturating_add(INCREASE_STEP_MB));
+        if next > sample.current_cap_mb {
+            return Some(Adjustment {
+                next_cap_mb: next,
+                direction: AdjustmentDirection::Increase,
+                reason: if thrashing {
+                    AdjustmentReason::ThrashRelief
+                } else {
+                    AdjustmentReason::CpuStarvation
+                },
+            });
+        }
+        return None;
+    }
+
+    // Target: a high percentile of recent demand plus headroom that grows with how busy the identity
+    // has been and with how much memory the machine has to spare. Under Low pressure the margin
+    // disappears (reclaim harder); under High pressure it widens (do not squeeze a machine that is
+    // not short on memory).
     let bucket = usage_bucket(sample.busy_percent);
-    let effective_min = floor.saturating_add(bucket.floor_extra_mb()).min(role_base);
-    let margin = bucket.decrease_margin_mb();
+    let pressure_margin = match sample.pressure {
+        MemoryPressure::Low => 0.0,
+        MemoryPressure::Normal => 2.0,
+        MemoryPressure::High => 6.0,
+    };
+    let target = (sample.demand_p95_mb + bucket.margin_mb() + pressure_margin)
+        .clamp(floor as f64, maximum as f64);
+    let dead_band = (sample.current_cap_mb as f64 * DEAD_BAND_RATIO).max(DEAD_BAND_MB);
+    let delta = target - sample.current_cap_mb as f64;
+    // The band must not strand the last few megabytes: once the target is the floor itself, finish
+    // the descent even though the remaining delta is smaller than the band.
+    let finish_at_floor = target <= floor as f64 && sample.current_cap_mb > floor;
 
-    if sample.cpu_percent >= HIGH_CPU_PERCENT
-        && sample.high_cpu_ms >= HIGH_CPU_DURATION_MS
-        && at_ceiling
-    {
-        let next = maximum.min(sample.current_cap_mb.saturating_add(INCREASE_STEP_MB));
-        return (next > sample.current_cap_mb).then_some(Adjustment {
-            next_cap_mb: next,
-            direction: AdjustmentDirection::Increase,
-            reason: AdjustmentReason::SustainedHighCpu,
-        });
-    }
-
-    if thrashing && at_ceiling && sample.current_cap_mb < maximum {
-        let next = maximum.min(sample.current_cap_mb.saturating_add(INCREASE_STEP_MB));
-        return (next > sample.current_cap_mb).then_some(Adjustment {
-            next_cap_mb: next,
-            direction: AdjustmentDirection::Increase,
-            reason: AdjustmentReason::ThrashRelief,
-        });
-    }
-
-    if sample.cpu_percent <= LOW_CPU_PERCENT
-        && sample.low_cpu_ms >= LOW_CPU_DURATION_MS
-        && !thrashing
-        && sample.working_set_mb <= sample.current_cap_mb as f64 - margin
-    {
-        let next = effective_min.max(sample.current_cap_mb.saturating_sub(DECREASE_STEP_MB));
+    if delta < -dead_band || finish_at_floor {
+        let next = (sample.current_cap_mb.saturating_sub(DECREASE_STEP_MB) as f64)
+            .max(target)
+            .max(floor as f64) as u32;
         return (next < sample.current_cap_mb).then_some(Adjustment {
             next_cap_mb: next,
             direction: AdjustmentDirection::Decrease,
-            reason: AdjustmentReason::LowCpuAndMemoryHeadroom,
+            reason: AdjustmentReason::DemandDecrease,
         });
     }
-
-    // Idle proactivity (Chrome model): a process left quiet for a long stretch is
-    // squeezed toward its floor even when it does not show the usual headroom, as long as it is not
-    // thrashing and is not pinned at the ceiling. This reclaims memory that backgrounded-but-untouched
-    // processes keep reserved indefinitely.
-    if sample.cpu_percent <= LOW_CPU_PERCENT
-        && sample.low_cpu_ms >= IDLE_PROACTIVE_MS
-        && !thrashing
-        && !at_ceiling
-    {
-        let next = effective_min.max(sample.current_cap_mb.saturating_sub(DECREASE_STEP_MB));
-        return (next < sample.current_cap_mb).then_some(Adjustment {
+    if delta > dead_band {
+        let next = (sample.current_cap_mb.saturating_add(INCREASE_STEP_MB) as f64)
+            .min(target)
+            .min(maximum as f64) as u32;
+        return (next > sample.current_cap_mb).then_some(Adjustment {
             next_cap_mb: next,
-            direction: AdjustmentDirection::Decrease,
-            reason: AdjustmentReason::IdleProactive,
+            direction: AdjustmentDirection::Increase,
+            reason: AdjustmentReason::DemandIncrease,
         });
     }
 
@@ -485,18 +564,162 @@ mod tests {
     fn sample(role: ProcessRole) -> PolicySample {
         PolicySample {
             role,
-            current_cap_mb: role.baseline_cap_mb().unwrap_or(24),
-            working_set_mb: 18.0,
+            current_cap_mb: 18,
+            working_set_mb: 16.0,
             cpu_percent: 1.0,
             busy_percent: 10.0,
-            high_cpu_ms: 0,
-            low_cpu_ms: 12_000,
+            cpu_ewma: 1.0,
             faults_per_sec: 0.0,
+            demand_p95_mb: 16.0,
+            pressure: MemoryPressure::Normal,
             minimum_cap_mb: MIN_CAP_MB,
             system_total_mb: 0,
             last_adjustment_ms: 0,
             now_ms: 20_000,
         }
+    }
+
+    #[test]
+    fn demand_percentile_follows_recent_usage_and_decays() {
+        let mut histogram = DemandHistogram::default();
+        assert_eq!(histogram.percentile_mb(95.0), None);
+        for _ in 0..50 {
+            histogram.observe(20.0);
+        }
+        let busy = histogram.percentile_mb(95.0).expect("percentile");
+        assert!((busy - 22.0).abs() < 0.01, "p95 = {busy}");
+        // A long quiet stretch pulls the percentile down without any timer.
+        for _ in 0..600 {
+            histogram.observe(0.5);
+        }
+        assert!(histogram.percentile_mb(95.0).expect("percentile") < 12.0);
+    }
+
+    #[test]
+    fn demand_above_the_cap_raises_one_step() {
+        let mut s = sample(ProcessRole::Renderer);
+        s.current_cap_mb = 20;
+        s.demand_p95_mb = 30.0;
+        let decision = decide_adjustment(s).expect("increase");
+        assert_eq!(decision.next_cap_mb, 28);
+        assert_eq!(decision.reason, AdjustmentReason::DemandIncrease);
+        assert_eq!(decision.direction, AdjustmentDirection::Increase);
+    }
+
+    #[test]
+    fn demand_below_the_cap_lowers_one_step() {
+        let mut s = sample(ProcessRole::Renderer);
+        s.current_cap_mb = 30;
+        s.working_set_mb = 10.0;
+        s.demand_p95_mb = 10.0;
+        let decision = decide_adjustment(s).expect("decrease");
+        assert_eq!(decision.next_cap_mb, 24);
+        assert_eq!(decision.reason, AdjustmentReason::DemandDecrease);
+    }
+
+    #[test]
+    fn a_delta_inside_the_dead_band_does_nothing() {
+        let mut s = sample(ProcessRole::Renderer);
+        s.current_cap_mb = 20;
+        s.working_set_mb = 16.0;
+        s.demand_p95_mb = 16.0;
+        assert_eq!(decide_adjustment(s), None);
+    }
+
+    #[test]
+    fn pressure_changes_the_target_margin() {
+        let mut low = sample(ProcessRole::Renderer);
+        low.current_cap_mb = 30;
+        low.working_set_mb = 20.0;
+        low.demand_p95_mb = 20.0;
+        low.pressure = MemoryPressure::Low;
+        let decision = decide_adjustment(low).expect("low pressure should reclaim");
+        assert_eq!(decision.next_cap_mb, 24);
+
+        let mut high = sample(ProcessRole::Renderer);
+        high.current_cap_mb = 30;
+        high.working_set_mb = 20.0;
+        high.demand_p95_mb = 20.0;
+        high.pressure = MemoryPressure::High;
+        assert_eq!(decide_adjustment(high), None);
+    }
+
+    #[test]
+    fn the_learned_floor_stops_a_demand_decrease() {
+        let mut s = sample(ProcessRole::Renderer);
+        s.current_cap_mb = 30;
+        s.working_set_mb = 10.0;
+        s.demand_p95_mb = 4.0;
+        s.minimum_cap_mb = 28;
+        let decision = decide_adjustment(s).expect("descend to the learned floor");
+        assert_eq!(decision.next_cap_mb, 28);
+        let mut at_floor = s;
+        at_floor.current_cap_mb = 28;
+        assert_eq!(decide_adjustment(at_floor), None);
+    }
+
+    #[test]
+    fn the_absolute_floor_is_reached_even_inside_the_dead_band() {
+        let mut s = sample(ProcessRole::Renderer);
+        s.current_cap_mb = 10;
+        s.working_set_mb = 2.0;
+        s.demand_p95_mb = 0.0;
+        let decision = decide_adjustment(s).expect("decrease toward the floor");
+        assert_eq!(decision.next_cap_mb, 4);
+    }
+
+    #[test]
+    fn thrash_relief_uses_refaults_per_resident_mb() {
+        let mut s = sample(ProcessRole::Renderer);
+        s.current_cap_mb = 28;
+        s.working_set_mb = 28.0;
+        s.faults_per_sec = 8_500.0;
+        let decision = decide_adjustment(s).expect("relief");
+        assert_eq!(decision.next_cap_mb, 36);
+        assert_eq!(decision.reason, AdjustmentReason::ThrashRelief);
+
+        // The same absolute fault count on a large resident set is not thrashing.
+        let mut big = sample(ProcessRole::Renderer);
+        big.current_cap_mb = 40;
+        big.working_set_mb = 40.0;
+        big.faults_per_sec = 2_000.0;
+        big.demand_p95_mb = 40.0;
+        assert_eq!(decide_adjustment(big), None);
+    }
+
+    #[test]
+    fn a_tiny_process_with_high_cpu_is_starved_even_below_the_cap() {
+        let mut s = sample(ProcessRole::Renderer);
+        s.current_cap_mb = 20;
+        s.working_set_mb = 4.0;
+        s.cpu_ewma = 60.0;
+        s.demand_p95_mb = 4.0;
+        let decision = decide_adjustment(s).expect("cpu starvation");
+        assert_eq!(decision.next_cap_mb, 28);
+        assert_eq!(decision.reason, AdjustmentReason::CpuStarvation);
+    }
+
+    #[test]
+    fn high_cpu_with_a_real_working_set_is_not_starvation() {
+        let mut s = sample(ProcessRole::Renderer);
+        s.current_cap_mb = 20;
+        s.working_set_mb = 18.0;
+        s.busy_percent = 75.0;
+        s.cpu_ewma = 75.0;
+        s.demand_p95_mb = 18.0;
+        assert_eq!(decide_adjustment(s), None);
+    }
+
+    #[test]
+    fn a_large_machine_raises_the_demand_ceiling() {
+        let mut s = sample(ProcessRole::Main);
+        s.current_cap_mb = 38;
+        s.working_set_mb = 40.0;
+        s.demand_p95_mb = 46.0;
+        s.system_total_mb = 32_768;
+        let decision = decide_adjustment(s).expect("large machine headroom");
+        assert_eq!(decision.next_cap_mb, 46);
+        assert_eq!(decision.reason, AdjustmentReason::DemandIncrease);
     }
 
     #[test]
@@ -520,28 +743,6 @@ mod tests {
     }
 
     #[test]
-    fn sustained_cpu_increases_ceiling_by_eight() {
-        let mut s = sample(ProcessRole::Renderer);
-        s.current_cap_mb = 28;
-        s.working_set_mb = 28.0;
-        s.cpu_percent = 18.0;
-        s.high_cpu_ms = 7_000;
-        let decision = decide_adjustment(s).expect("expected an increase");
-        assert_eq!(decision.next_cap_mb, 36);
-        assert_eq!(decision.reason, AdjustmentReason::SustainedHighCpu);
-    }
-
-    #[test]
-    fn high_cpu_below_the_working_set_ceiling_does_not_raise_the_limit() {
-        let mut s = sample(ProcessRole::Renderer);
-        s.current_cap_mb = 28;
-        s.working_set_mb = 27.9;
-        s.cpu_percent = 18.0;
-        s.high_cpu_ms = 20_000;
-        assert_eq!(decide_adjustment(s), None);
-    }
-
-    #[test]
     fn fault_rate_divides_by_the_age_of_its_own_reading() {
         assert_eq!(estimate_faults_per_second(1_000, 3_000, 2_000), Some(1_000.0));
         assert_eq!(estimate_faults_per_second(0, 500, 1_000), Some(500.0));
@@ -562,48 +763,21 @@ mod tests {
     }
 
     #[test]
-    fn main_ceiling_cannot_grow_above_thirty_six_megabytes() {
-        let mut s = sample(ProcessRole::Main);
-        s.cpu_percent = 50.0;
-        s.high_cpu_ms = 20_000;
-        assert_eq!(decide_adjustment(s), None);
+    fn audio_never_descends_below_25_mb() {
+        assert_eq!(ProcessRole::Audio.state_floor_mb(true), 25);
+        assert_eq!(ProcessRole::Audio.state_floor_mb(false), 25);
+        let mut s = sample(ProcessRole::Audio);
+        s.current_cap_mb = 26;
+        s.working_set_mb = 20.0;
+        s.minimum_cap_mb = ProcessRole::Audio.state_floor_mb(true);
+        assert_eq!(decide_adjustment(s).map(|d| d.next_cap_mb), Some(25));
     }
 
     #[test]
-    fn quiet_process_with_headroom_decreases_ceiling_by_six() {
-        let mut s = sample(ProcessRole::Renderer);
-        s.current_cap_mb = 28;
-        s.working_set_mb = 15.0;
-        let decision = decide_adjustment(s).expect("expected a decrease");
-        assert_eq!(decision.next_cap_mb, 22);
-        assert_eq!(decision.reason, AdjustmentReason::LowCpuAndMemoryHeadroom);
-    }
-
-    #[test]
-    fn a_starved_process_backs_off_even_without_high_cpu() {
-        // Pinned at the ceiling and faulting heavily: the thrash valve raises the ceiling (safety).
-        let mut s = sample(ProcessRole::Renderer);
-        s.current_cap_mb = 12;
-        s.working_set_mb = 12.0;
-        s.cpu_percent = 1.0;
-        s.low_cpu_ms = 12_000;
-        s.faults_per_sec = 5_000.0;
-        let decision = decide_adjustment(s).expect("thrash relief expected");
-        assert_eq!(decision.next_cap_mb, 20);
-        assert_eq!(decision.reason, AdjustmentReason::ThrashRelief);
-        assert_eq!(decision.direction, AdjustmentDirection::Increase);
-    }
-
-    #[test]
-    fn a_heavy_faulting_process_is_not_squeezed_further() {
-        // Headroom exists, but a high fault rate means squeezing would tip it into a freeze.
-        let mut s = sample(ProcessRole::Renderer);
-        s.current_cap_mb = 24;
-        s.working_set_mb = 15.0;
-        s.cpu_percent = 1.0;
-        s.low_cpu_ms = 12_000;
-        s.faults_per_sec = 5_000.0;
-        assert_eq!(decide_adjustment(s), None);
+    fn renderer_holds_38_while_visible_and_drops_to_4_when_hidden() {
+        assert_eq!(ProcessRole::Renderer.state_floor_mb(true), 38);
+        assert_eq!(ProcessRole::Renderer.state_floor_mb(false), 4);
+        assert_eq!(ProcessRole::Main.state_floor_mb(true), 4);
     }
 
     #[test]
@@ -615,35 +789,11 @@ mod tests {
     }
 
     #[test]
-    fn a_learned_safe_floor_keeps_a_busy_process_from_descending() {
-        // The learned safe edge raises the floor; with the Active headroom it can exceed the current
-        // cap, so a hot process keeps its memory instead of being squeezed.
-        let mut s = sample(ProcessRole::Main);
-        s.current_cap_mb = 24;
-        s.working_set_mb = 10.0;
-        s.busy_percent = 60.0; // Active -> +8 headroom
-        s.minimum_cap_mb = 20; // learned safe edge
-        assert_eq!(decide_adjustment(s), None);
-    }
-
-    #[test]
-    fn a_rare_process_is_reclaimed_on_a_tighter_margin() {
-        // A Frequent process leaves this sample alone; a Rare one squeezes it toward the floor.
-        let mut s = sample(ProcessRole::Renderer);
-        s.current_cap_mb = 20;
-        s.working_set_mb = 17.0;
-        s.busy_percent = 2.0; // Rare -> margin 3.0, 17 <= 20 - 3 -> descend toward floor 12
-        let decision = decide_adjustment(s).expect("rare should descend");
-        assert_eq!(decision.next_cap_mb, 14);
-        assert_eq!(decision.direction, AdjustmentDirection::Decrease);
-    }
-
-    #[test]
     fn audio_adapts_upward_from_38_to_60_megabytes() {
         let mut s = sample(ProcessRole::Audio);
+        s.current_cap_mb = 38;
         s.working_set_mb = 38.0;
-        s.cpu_percent = 50.0;
-        s.high_cpu_ms = 20_000;
+        s.demand_p95_mb = 46.0;
         assert_eq!(ProcessRole::Audio.baseline_cap_mb(), Some(38));
         assert_eq!(ProcessRole::Audio.minimum_cap_mb(), Some(4));
         assert_eq!(ProcessRole::Audio.maximum_cap_mb(), Some(60));
@@ -667,20 +817,6 @@ mod tests {
         s.last_adjustment_ms = 0;
         s.cpu_percent = f64::NAN;
         assert_eq!(decide_adjustment(s), None);
-    }
-
-    #[test]
-    fn an_idle_process_falls_to_the_absolute_floor_but_a_learned_floor_stops_it() {
-        let mut s = sample(ProcessRole::Main);
-        s.current_cap_mb = 10;
-        s.working_set_mb = 2.0;
-        assert_eq!(decide_adjustment(s).map(|d| d.next_cap_mb), Some(4));
-        // The learned safe edge blocks the same descent.
-        let mut learned = sample(ProcessRole::Main);
-        learned.current_cap_mb = 10;
-        learned.working_set_mb = 2.0;
-        learned.minimum_cap_mb = 8;
-        assert_eq!(decide_adjustment(learned).map(|d| d.next_cap_mb), Some(8));
     }
 
     #[test]
@@ -722,47 +858,6 @@ mod tests {
         assert_eq!(memory_tier(32_768), MemoryTier::Large);
         assert_eq!(MemoryTier::Small.maximum_bonus_mb(), 0);
         assert_eq!(MemoryTier::Large.maximum_bonus_mb(), 16);
-    }
-
-    #[test]
-    fn a_large_machine_gives_the_main_process_more_headroom() {
-        // Main is capped at 36 normally; on a >16 GB machine it may grow to 52 under sustained load.
-        let mut s = sample(ProcessRole::Main);
-        s.current_cap_mb = 36;
-        s.working_set_mb = 36.0;
-        s.cpu_percent = 50.0;
-        s.high_cpu_ms = 20_000;
-        s.system_total_mb = 32_768; // Large
-        let decision = decide_adjustment(s).expect("large machine should allow more headroom");
-        assert_eq!(decision.next_cap_mb, 44);
-        assert_eq!(decision.reason, AdjustmentReason::SustainedHighCpu);
-    }
-
-    #[test]
-    fn a_deeply_idle_process_is_squeezed_without_headroom() {
-        // Renderer at 20 MB using 19 MB shows no decrease margin, but after 60 s quiet it is reclaimed
-        // one step toward its floor (idle proactivity), as long as it is not thrashing.
-        let mut s = sample(ProcessRole::Renderer);
-        s.current_cap_mb = 20;
-        s.working_set_mb = 19.0;
-        s.cpu_percent = 1.0;
-        s.busy_percent = 2.0; // Rare
-        s.low_cpu_ms = 70_000;
-        let decision = decide_adjustment(s).expect("idle process should be proactively reclaimed");
-        assert_eq!(decision.next_cap_mb, 14);
-        assert_eq!(decision.reason, AdjustmentReason::IdleProactive);
-        assert_eq!(decision.direction, AdjustmentDirection::Decrease);
-    }
-
-    #[test]
-    fn a_thrashing_idle_process_is_not_proactively_squeezed() {
-        let mut s = sample(ProcessRole::Renderer);
-        s.current_cap_mb = 20;
-        s.working_set_mb = 19.0;
-        s.cpu_percent = 1.0;
-        s.low_cpu_ms = 70_000;
-        s.faults_per_sec = 5_000.0; // thrashing -> the safety valve wins over idle reclaim
-        assert_eq!(decide_adjustment(s), None);
     }
 
     #[test]

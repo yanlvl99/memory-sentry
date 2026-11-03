@@ -6,8 +6,8 @@
 
 use memory_sentry_core::{
     decide_adjustment, estimate_cpu_percent, estimate_faults_per_second, faults_since, memory_tier,
-    usage_ewma, working_set_at_ceiling, AdjustmentReason, AppProfile, ProcessRole, HIGH_CPU_PERCENT,
-    LOW_CPU_PERCENT, MAX_CAP_MB, MIN_CAP_MB,
+    usage_ewma, AdjustmentReason, AppProfile, DemandHistogram, MemoryPressure, ProcessRole,
+    DEMAND_PERCENTILE, MAX_CAP_MB, MIN_CAP_MB,
 };
 use memory_sentry_spotify::SpotifyProfile;
 use memory_sentry_windows as windows;
@@ -458,8 +458,8 @@ pub(crate) fn ensure_profile(state: &mut AppState, pid: u32, creation: u64, role
         AdaptiveProfile {
             creation,
             current_cap_mb: baseline,
-            high_cpu_ms: 0,
-            low_cpu_ms: 0,
+            demand: DemandHistogram::default(),
+            cpu_ewma: Some(10),
             last_evaluated_snapshot_at_ms: state.snapshot_at_ms,
             last_adjustment_at_ms: 0,
             last_reason: "baseline".to_string(),
@@ -810,6 +810,12 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
     // Installed-RAM tier is read once per pass and fed to every sample so headroom scales with the
     // machine. GlobalMemoryStatusEx is cheap; no need to cache it across the loop.
     let (system_total_mb, _, _) = windows::system_memory();
+    // System pressure is read once per pass: it decides how much headroom the target keeps.
+    let pressure = match windows::memory_pressure() {
+        windows::MemoryPressure::Low => MemoryPressure::Low,
+        windows::MemoryPressure::High => MemoryPressure::High,
+        windows::MemoryPressure::Normal => MemoryPressure::Normal,
+    };
     for (process, role) in targets {
         let record = state.active_caps.get(&process.pid).cloned();
         let Some(record) = record else {
@@ -822,6 +828,7 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
         if record.manual {
             continue;
         }
+        let identity = process_identity(&process.cmd, role);
         ensure_profile(state, process.pid, process.creation, role, now);
         let profile_snapshot_at = state
             .profiles
@@ -850,7 +857,18 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
             .unwrap_or(MAX_CAP_MB)
             .saturating_add(memory_tier(system_total_mb).maximum_bonus_mb())
             .min(MAX_CAP_MB);
-        let rebased = current_cap.clamp(role_min, role_max);
+        // Effective floor for this identity in this window state: the absolute minimum, the role's
+        // state floor (Audio 25, a visible-background Renderer 38) and the learned safe edge.
+        let effective_floor = state
+            .settings
+            .safe_floors
+            .get(&identity)
+            .copied()
+            .unwrap_or(MIN_CAP_MB)
+            .max(role.state_floor_mb(state.window_state == "background-visible"))
+            .max(role_min)
+            .min(role_max);
+        let rebased = current_cap.clamp(effective_floor, role_max);
         if rebased != current_cap {
             let cap_bytes = rebased as usize * 1024 * 1024;
             let minimum_bytes = windows::MIN_WORKING_SET_BYTES.min(cap_bytes);
@@ -868,8 +886,6 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
                     if let Some(profile) = state.profiles.get_mut(&process.pid) {
                         profile.current_cap_mb = rebased;
                         profile.last_reason = "role-rebased".to_string();
-                        profile.high_cpu_ms = 0;
-                        profile.low_cpu_ms = 0;
                     }
                     let _ = persist_or_log(state);
                     if let Err(error) = write_settings(&state.settings_path, &state.settings) {
@@ -901,29 +917,14 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
         }
         let cpu = process.cpu_percent;
         let working_set = process.working_set_mb;
-        let identity = process_identity(&process.cmd, role);
+        let observed_ws = working_set.unwrap_or(current_cap as f64);
         if let Some(profile) = state.profiles.get_mut(&process.pid) {
             profile.last_evaluated_snapshot_at_ms = state.snapshot_at_ms;
             profile.last_cpu_percent = cpu;
             profile.last_working_set_mb = working_set;
-            match cpu {
-                Some(cpu)
-                    if cpu >= HIGH_CPU_PERCENT
-                        && working_set
-                            .map(|ws| working_set_at_ceiling(ws, current_cap))
-                            .unwrap_or(false) =>
-                {
-                    profile.high_cpu_ms = profile.high_cpu_ms.saturating_add(interval);
-                    profile.low_cpu_ms = 0;
-                }
-                Some(cpu) if cpu <= LOW_CPU_PERCENT => {
-                    profile.low_cpu_ms = profile.low_cpu_ms.saturating_add(interval);
-                    profile.high_cpu_ms = 0;
-                }
-                _ => {
-                    profile.high_cpu_ms = 0;
-                    profile.low_cpu_ms = 0;
-                }
+            profile.demand.observe(observed_ws);
+            if let Some(cpu) = cpu {
+                profile.cpu_ewma = Some(usage_ewma(profile.cpu_ewma, cpu));
             }
         }
         // Cross-session usage telemetry: fold this window's instantaneous busy
@@ -940,41 +941,35 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
             None => continue,
         };
         let cpu = cpu.unwrap_or(0.0);
-        let ws = working_set.unwrap_or(current_cap as f64);
+        let ws = observed_ws;
         // Page faults per second for the exact window this row's delta came from, stamped by the
         // sampler that took it. Never divide that delta by the snapshot interval: the memory refresh
         // advances the counter faster, so the two windows differ and the quotient would be diluted.
         let faults_per_sec = process.page_faults_per_sec.unwrap_or(0.0);
-        // Personalize the squeeze from the learned cross-session score once we have one; before the
-        // first persisted sample fall back to this session's high/low ratio, then the neutral default
-        // (Frequent) so an identity with no history behaves exactly as it did before this feature.
-        let busy_percent = match state.settings.usage_scores.get(&identity) {
-            Some(score) => *score as f64,
-            None => {
-                let sum = profile.high_cpu_ms.saturating_add(profile.low_cpu_ms);
-                if sum > 0 {
-                    ((profile.high_cpu_ms as f64) / (sum as f64)) * 100.0
-                } else {
-                    10.0
-                }
-            }
-        };
+        // Target input: a high percentile of recent working-set demand. The learned cross-session
+        // score, when present, seeds the busy fraction before this session has its own samples.
+        let demand_p95_mb = profile
+            .demand
+            .percentile_mb(DEMAND_PERCENTILE)
+            .unwrap_or(ws);
+        let busy_percent = state
+            .settings
+            .usage_scores
+            .get(&identity)
+            .copied()
+            .or(profile.cpu_ewma)
+            .unwrap_or(10) as f64;
         let profile_sample = memory_sentry_core::PolicySample {
             role,
             current_cap_mb: current_cap,
             working_set_mb: ws,
             cpu_percent: cpu,
             busy_percent,
-            high_cpu_ms: profile.high_cpu_ms,
-            low_cpu_ms: profile.low_cpu_ms,
+            cpu_ewma: profile.cpu_ewma.unwrap_or(10) as f64,
             faults_per_sec,
-            minimum_cap_mb: state
-                .settings
-                .safe_floors
-                .get(&identity)
-                .copied()
-                .unwrap_or(MIN_CAP_MB)
-                .clamp(role_min, role_max),
+            demand_p95_mb,
+            pressure,
+            minimum_cap_mb: effective_floor,
             system_total_mb,
             last_adjustment_ms: profile.last_adjustment_at_ms,
             now_ms: now,
@@ -997,8 +992,11 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
                     }
                     state.settings.auto_role_caps.insert(process_identity(&process.cmd, role), next_cap);
                     // A relief increase is the engine finding this identity's safe edge: remember it
-                    // so the next quiet window cannot descend back into the cap that just thrashed.
-                    if decision.reason == AdjustmentReason::ThrashRelief {
+                    // so the next quiet window cannot descend back into the cap that just starved it.
+                    if matches!(
+                        decision.reason,
+                        AdjustmentReason::ThrashRelief | AdjustmentReason::CpuStarvation
+                    ) {
                         let floor = state
                             .settings
                             .safe_floors
@@ -1012,14 +1010,12 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
                         profile.current_cap_mb = next_cap;
                         profile.last_adjustment_at_ms = now;
                         profile.last_reason = match decision.reason {
-                            AdjustmentReason::SustainedHighCpu => "sustained-high-cpu",
-                            AdjustmentReason::LowCpuAndMemoryHeadroom => "low-cpu-and-memory-headroom",
+                            AdjustmentReason::DemandIncrease => "demand-increase",
+                            AdjustmentReason::DemandDecrease => "demand-decrease",
                             AdjustmentReason::ThrashRelief => "thrash-relief",
-                            AdjustmentReason::IdleProactive => "idle-proactive",
+                            AdjustmentReason::CpuStarvation => "cpu-starvation",
                         }
                         .to_string();
-                        profile.high_cpu_ms = 0;
-                        profile.low_cpu_ms = 0;
                     }
                     state.telemetry.adaptive_adjustments += 1;
                     state.telemetry.last_adaptive_adjustment_at = Some(iso_now());

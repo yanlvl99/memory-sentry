@@ -13,8 +13,8 @@ use super::*;
 
 pub(crate) fn public_config(settings: &Settings) -> String {
     format!(
-        "{{\"enabled\":{},\"autoOptimize\":{},\"customMode\":{},\"hiddenDelaySeconds\":{},\"refreshIntervalMs\":{},\"trimToCap\":{},\"optimizeWhenBackground\":{},\"optimizeWhenMinimized\":{},\"optimizeWhenHidden\":{},\"policy\":{{\"minMB\":{},\"maxMB\":{},\"cpuHighPercent\":{}}}}}",
-        settings.enabled, settings.auto_optimize, settings.custom_mode, settings.hidden_delay_seconds, settings.refresh_interval_ms, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, MIN_CAP_MB, MAX_CAP_MB, HIGH_CPU_PERCENT
+        "{{\"enabled\":{},\"autoOptimize\":{},\"customMode\":{},\"hiddenDelaySeconds\":{},\"refreshIntervalMs\":{},\"trimToCap\":{},\"optimizeWhenBackground\":{},\"optimizeWhenMinimized\":{},\"optimizeWhenHidden\":{},\"policy\":{{\"minMB\":{},\"maxMB\":{}}}}}",
+        settings.enabled, settings.auto_optimize, settings.custom_mode, settings.hidden_delay_seconds, settings.refresh_interval_ms, settings.trim_to_cap, settings.optimize_when_background, settings.optimize_when_minimized, settings.optimize_when_hidden, MIN_CAP_MB, MAX_CAP_MB
     )
 }
 
