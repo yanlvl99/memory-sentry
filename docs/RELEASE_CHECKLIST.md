@@ -20,8 +20,8 @@ Do not call the release stable until all required real-desktop tests are complet
 - [ ] Confirm original process limits are durably saved before each initial cap.
 - [ ] Confirm audio-role processes start at a 36 MB automatic ceiling and adapt upward to 60 MB under sustained load like the other roles.
 - [ ] Confirm high CPU alone does not raise a ceiling while the working set is below it; sustained high CPU at the full current ceiling does raise it, and idle/headroom lowers it without oscillation.
-- [ ] Confirm the selected background delay applies in both automatic and manual modes.
-- [ ] Confirm limits are restored on foreground return, master-switch disable, shutdown, restart recovery and uninstall; pending restores remain recorded and are retried.
+- [ ] Confirm the selected background delay applies in Custom mode to every process the engine manages.
+- [ ] Confirm limits are restored on foreground return, switching to Disabled, shutdown, restart recovery and uninstall; pending restores remain recorded and are retried.
 - [ ] Confirm an unresponsive recovery path leaves backups and blocks file removal.
 - [ ] Test legacy Node migration with and without Node.js 22+ and with successful and failed recovery.
 - [ ] Run at least five restore-to-interaction samples on representative low-, mid-, and higher-spec supported PCs; compare medians and record playback continuity, working-set reduction while minimized, UI reload/state retention, any temporary black screen on restore, and time until keyboard/mouse input is accepted.
@@ -35,6 +35,6 @@ Do not call the release stable until all required real-desktop tests are complet
 - [ ] Promote `develop` to `main` through a release pull request, then create the version tag on the `main` merge commit; the publish workflow builds and attaches the installers from that tag.
 - [ ] CI passes on the exact release commit.
 - [ ] MSI and SHA-256 files are attached to the correct release.
-- [ ] Mark v1.0.0-rc.4 as a prerelease; create stable v1.0.0 only after every required Windows 10/11 real-desktop test passes.
+- [ ] Mark v1.0.0-rc.6 as a prerelease; create stable v1.0.0 only after every required Windows 10/11 real-desktop test passes.
 - [ ] Never state the release has no antivirus warnings; the current executable is unsigned.
 - [ ] Verify the exact GitHub repository topic `spicetify-apps`, then submit the discovery listing. The listing only links to the repository and cannot install Memory Sentry.

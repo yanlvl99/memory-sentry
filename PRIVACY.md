@@ -24,4 +24,4 @@ The current server is written in Rust with no third-party runtime dependencies a
 
 ## User control
 
-Automatic optimization can be switched off in the dashboard. When disabled or when Spotify becomes visible, the server attempts to restore saved original working-set limits. The package includes an uninstaller and recovery procedure. A forced process termination or system crash can interrupt cleanup, so original settings are persisted before applying changes and recovery is attempted on the next launch.
+Optimization can be switched off by selecting **Disabled** in the dashboard. When disabled or when Spotify becomes visible, the server attempts to restore saved original working-set limits. The package includes an uninstaller and recovery procedure. A forced process termination or system crash can interrupt cleanup, so original settings are persisted before applying changes and recovery is attempted on the next launch.
