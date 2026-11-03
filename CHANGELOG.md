@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The debug console now reports each process's page-fault rate next to its cumulative delta, so the exact thrash signal the adaptive engine acts on can be inspected. This is the value a real-machine calibration of the thrash threshold has to read.
+
 ## 1.0.0-rc.6 — Custom-only redesign and native process discovery
 
 - Redesigned the dashboard around a single memory-composition bar with an expandable role panel: the mode model collapsed to Custom and Disabled, per-process limits are addressed and persisted by PID-free process identity (a pin survives restarts and PID changes), a tabbed debug console shows each identity's learned local usage profile, and a dedicated offline screen distinguishes a server that never started from a dropped connection. (PR #33)

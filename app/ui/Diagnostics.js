@@ -74,7 +74,7 @@ function Diagnostics(props) {
       h('span', { className: 'mss-diag-count' }, tx('dbgShowing', { shown: shownTargets.length, total: targets.length }))
     ),
     shownTargets.length ? h('table', { className: 'mss-diag-table' },
-      h('thead', null, h('tr', null, [tx('colRole'), 'PID', tx('colIdentity'), tx('colCreated'), tx('colUsed'), tx('colCap'), tx('colPin'), tx('colState'), tx('colLearned'), tx('colCpu'), tx('colFaults'), tx('colErr')].map((label, i) => h('th', { key: i }, label)))),
+      h('thead', null, h('tr', null, [tx('colRole'), 'PID', tx('colIdentity'), tx('colCreated'), tx('colUsed'), tx('colCap'), tx('colPin'), tx('colState'), tx('colLearned'), tx('colCpu'), tx('colFaults'), tx('colFaultRate'), tx('colErr')].map((label, i) => h('th', { key: i }, label)))),
       h('tbody', null, shownTargets.map((t) => h('tr', { key: `${t.pid}:${t.creation}` },
         h('td', null, `${MSSRoleLabel(t.role)}${t.subLabel ? ` ${t.subLabel}` : ''}`),
         h('td', { className: 'mss-mono' }, String(t.pid)),
@@ -87,6 +87,7 @@ function Diagnostics(props) {
         h('td', null, learnedBadge(t)),
         h('td', { className: 'mss-diag-num' }, pct(t.cpuPercent)),
         h('td', { className: 'mss-diag-num' }, num(t.pageFaultsDelta)),
+        h('td', { className: 'mss-diag-num' }, t.pageFaultsPerSec == null ? '—' : Number(t.pageFaultsPerSec).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 })),
         h('td', { className: 'mss-diag-num' }, t.errorCode ? String(t.errorCode) : '—')
       )))
     ) : h('div', { className: 'mss-empty' }, tx('dbgNoMatch'))
