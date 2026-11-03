@@ -306,6 +306,10 @@ pub struct ProcessRow {
     pub private_mb: Option<f64>,
     pub page_fault_count: Option<u64>,
     pub page_faults_delta: Option<u64>,
+    // Faults per second for the exact window this row's delta was taken over, stamped by whichever
+    // sampler advanced the baseline. Keeping the rate next to the delta stops a later consumer from
+    // dividing it by a different (wider) window.
+    pub page_faults_per_sec: Option<f64>,
     pub error_code: i32,
 }
 
@@ -921,7 +925,7 @@ pub fn native_process_snapshot(targets: &[&str]) -> Result<Snapshot, String> {
             snapshot.processes.push(ProcessRow {
                 pid, ppid, cmd, creation, cpu_time_ms, cpu_percent: None,
                 working_set_mb, private_working_set_mb, private_mb,
-                page_fault_count, page_faults_delta: None, error_code,
+                page_fault_count, page_faults_delta: None, page_faults_per_sec: None, error_code,
             });
         }
         if unsafe { Process32NextW(toolhelp, &mut entry) } == 0 {
@@ -1010,7 +1014,7 @@ try {
                     pid, ppid, cmd, creation, cpu_time_ms, cpu_percent: None,
                     working_set_mb, private_working_set_mb,
                     private_mb: (private > 0.0).then_some(private / (1024.0 * 1024.0)),
-                    page_fault_count, page_faults_delta: None, error_code,
+                    page_fault_count, page_faults_delta: None, page_faults_per_sec: None, error_code,
                 });
             }
             _ => {}

@@ -5,8 +5,9 @@
 //! parent module and reach this one through `use super::*;`.
 
 use memory_sentry_core::{
-    decide_adjustment, estimate_cpu_percent, usage_ewma, working_set_at_ceiling, AdjustmentReason,
-    AppProfile, ProcessRole, HIGH_CPU_PERCENT, LOW_CPU_PERCENT, MAX_CAP_MB, MIN_CAP_MB,
+    decide_adjustment, estimate_cpu_percent, estimate_faults_per_second, faults_since, usage_ewma,
+    working_set_at_ceiling, AdjustmentReason, AppProfile, ProcessRole, HIGH_CPU_PERCENT,
+    LOW_CPU_PERCENT, MAX_CAP_MB, MIN_CAP_MB,
 };
 use memory_sentry_spotify::SpotifyProfile;
 use memory_sentry_windows as windows;
@@ -255,17 +256,27 @@ pub(crate) fn accept_snapshot(state: &mut AppState, mut snapshot: windows::Snaps
         state
             .cpu_baselines
             .insert(key, (process.cpu_time_ms as u64, observed_at));
-        process.page_faults_delta = state.page_fault_baselines.get(&key).map(|previous| {
-            if let Some(current) = process.page_fault_count {
-                if current >= *previous {
-                    current - *previous
-                } else {
-                    current + (1u64 << 32) - *previous
-                }
-            } else {
-                0
-            }
-        });
+        // Page faults follow the same contract as the cpu percentage above: the delta and the rate are
+        // taken against the exact baseline this snapshot read, and the baseline carries when it was
+        // captured so the next reader - whichever cadence it runs on - divides by its own window.
+        let previous_faults = state.page_fault_baselines.get(&key).copied();
+        process.page_faults_delta = previous_faults
+            .zip(process.page_fault_count)
+            .map(|((previous, _), current)| faults_since(previous, current));
+        process.page_faults_per_sec = previous_faults
+            .zip(process.page_fault_count)
+            .and_then(|((previous, previous_at), current)| {
+                estimate_faults_per_second(
+                    previous,
+                    current,
+                    observed_at.saturating_sub(previous_at),
+                )
+            });
+        if let Some(current) = process.page_fault_count {
+            state
+                .page_fault_baselines
+                .insert(key, (current, observed_at));
+        }
     }
 
     state.snapshot = snapshot;
@@ -871,12 +882,10 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
         };
         let cpu = cpu.unwrap_or(0.0);
         let ws = working_set.unwrap_or(current_cap as f64);
-        // Faults since the last sample over the elapsed window => page faults/second, the thrash
-        // signal. Zero interval or a missing delta reads as no fault pressure (unknown is treated safe).
-        let faults_per_sec = match process.page_faults_delta {
-            Some(delta) if interval > 0 => delta as f64 / (interval as f64 / 1000.0),
-            _ => 0.0,
-        };
+        // Page faults per second for the exact window this row's delta came from, stamped by the
+        // sampler that took it. Never divide that delta by the snapshot interval: the memory refresh
+        // advances the counter faster, so the two windows differ and the quotient would be diluted.
+        let faults_per_sec = process.page_faults_per_sec.unwrap_or(0.0);
         // Personalize the squeeze from the learned cross-session score once we have one; before the
         // first persisted sample fall back to this session's high/low ratio, then the neutral default
         // (Frequent) so an identity with no history behaves exactly as it did before this feature.
@@ -1395,6 +1404,7 @@ pub(crate) fn refresh_memory(state: &mut AppState, now: u64) {
         None
     };
     let mut fault_delta = 0u64;
+    let mut fault_rate = 0.0f64;
     let mut measured = 0u64;
     for process in &mut state.snapshot.processes {
         if let Ok(stats) = windows::inspect_process(process.pid) {
@@ -1424,13 +1434,19 @@ pub(crate) fn refresh_memory(state: &mut AppState, now: u64) {
                     .cpu_baselines
                     .insert(key, (stats.cpu_time_ms as u64, now));
                 process.cpu_time_ms = stats.cpu_time_ms;
-                if let Some(previous_faults) = state.page_fault_baselines.get(&key).copied() {
-                    let delta = if stats.page_fault_count >= previous_faults {
-                        stats.page_fault_count - previous_faults
-                    } else {
-                        stats.page_fault_count + (1u64 << 32) - previous_faults
-                    };
+                if let Some((previous_faults, previous_at)) =
+                    state.page_fault_baselines.get(&key).copied()
+                {
+                    let delta = faults_since(previous_faults, stats.page_fault_count);
                     process.page_faults_delta = Some(delta);
+                    if let Some(rate) = estimate_faults_per_second(
+                        previous_faults,
+                        stats.page_fault_count,
+                        now.saturating_sub(previous_at),
+                    ) {
+                        process.page_faults_per_sec = Some(rate);
+                        fault_rate += rate;
+                    }
                     fault_delta = fault_delta.saturating_add(delta);
                     measured += 1;
                 }
@@ -1438,14 +1454,15 @@ pub(crate) fn refresh_memory(state: &mut AppState, now: u64) {
                 process.error_code = 0;
                 state
                     .page_fault_baselines
-                    .insert(key, stats.page_fault_count);
+                    .insert(key, (stats.page_fault_count, now));
             }
         }
     }
     if let Some(interval_ms) = interval.filter(|_| measured > 0) {
         state.telemetry.page_fault_delta = Some(fault_delta);
-        state.telemetry.page_faults_per_second =
-            Some(fault_delta as f64 * 1000.0 / interval_ms.max(1) as f64);
+        // Aggregate of each row's own rate, so rows whose baseline a snapshot advanced are still
+        // counted over their real window instead of the refresh loop's nominal one.
+        state.telemetry.page_faults_per_second = Some(fault_rate);
         state.telemetry.sample_interval_ms = Some(interval_ms);
     }
     state.last_memory_sample_at_ms = now;
