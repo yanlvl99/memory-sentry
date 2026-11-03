@@ -418,18 +418,10 @@ pub(crate) fn set_manual_cap(state: &mut AppState, body: &str) -> Result<(), Str
         }
         return Err(error);
     }
-    // Best-effort live apply for instant feedback. The monitor loop re-applies every identity pin
-    // each poll, so a transient failure (e.g. a protected process that cannot be opened) is NOT an
-    // error here - the limit simply takes effect on a later pass instead of a red error toast.
-    if let Some((process, role)) = live_target_for_identity(state, &identity) {
-        if let Err(error) = apply_manual_cap(state, &process, role, cap_mb) {
-            log_event(
-                state,
-                format!("Limit for {identity} saved; live apply deferred: {error}"),
-                "info",
-            );
-        }
-    }
+    // Save the pin only. A limit is applied exclusively while Spotify is backgrounded: the monitor
+    // loop re-resolves every identity pin each poll once the background delay elapses (see
+    // maybe_auto_optimize). Applying it here would cap a process the user is actively using in the
+    // foreground, which the background-only model forbids.
     Ok(())
 }
 
