@@ -43,12 +43,15 @@ The release mode selector in the dashboard controls whether trimming releases me
 The server is implemented in Rust; the Custom App is JavaScript served to Spotify.
 
 - app/index.js: Spicetify plugin installed by the official per-user MSI; automatic English/Brazilian Portuguese localization and missing-server help.
-- server/src/lib.rs: platform-independent adaptive policy and unit tests.
-- server/src/platform/windows.rs: Win32 process/memory/window primitives, process identity checks, Windows version gate and per-user single-instance lock.
-- server/src/runtime.rs: adaptive process monitor, recovery store, loopback API, configuration, logs, upgrade and uninstall actions.
+- server/crates/Core/src/lib.rs: platform-independent adaptive policy and unit tests.
+- server/crates/Windows/src/lib.rs: Win32 process/memory/window primitives, process identity checks, Windows version gate and per-user single-instance lock.
+- server/crates/Spotify/src/lib.rs: the Spotify app profile (executable name, Chromium role classification and command-line sub-labels) behind the generic AppProfile seam.
+- server/src/Runtime.rs plus server/src/Runtime/Setup.rs, Store.rs, Api.rs and Monitor.rs: the server binary's in-crate modules for setup and CLI actions, persistence and the event log, the loopback API, and the adaptive monitor.
+- server/src/main.rs: the binary entry point that dispatches the configure, monitor, launch, swap and uninstall commands.
 - installer/wix/Product.wxs: per-user MSI product definition, install wizard and custom actions.
 - [BENCHMARKING.md](BENCHMARKING.md): repeatable RAM and interaction-latency tests.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): release gates.
+- [MARKETPLACE.md](MARKETPLACE.md): Marketplace listing and the distribution model.
 
 ## Branching and release model
 
