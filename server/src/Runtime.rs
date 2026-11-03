@@ -721,4 +721,49 @@ mod tests {
         assert!(!loaded.auto_optimize);
         let _ = fs::remove_file(path);
     }
+
+    #[test]
+    fn status_payload_exposes_the_per_process_fault_rate() {
+        let settings = Settings {
+            port: DEFAULT_PORT,
+            token: "a".repeat(64),
+            enabled: false,
+            auto_optimize: false,
+            custom_mode: false,
+            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+            refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
+            trim_to_cap: true,
+            optimize_when_background: true,
+            optimize_when_minimized: true,
+            optimize_when_hidden: true,
+            manual_role_caps: BTreeMap::new(),
+            auto_role_caps: BTreeMap::new(),
+            usage_scores: BTreeMap::new(),
+            schema_version: CURRENT_SCHEMA_VERSION,
+        };
+        let mut state = build_state(std::env::temp_dir().join("mss-status-payload-test"), settings);
+        state.root_pid = Some(10);
+        state.snapshot.processes.push(windows::ProcessRow {
+            pid: 10,
+            ppid: 1,
+            cmd: "spotify.exe".to_string(),
+            creation: 5,
+            cpu_time_ms: 0.0,
+            cpu_percent: Some(0.0),
+            working_set_mb: Some(20.0),
+            private_working_set_mb: None,
+            private_mb: None,
+            page_fault_count: Some(100),
+            page_faults_delta: Some(30),
+            page_faults_per_sec: Some(15.5),
+            error_code: 0,
+        });
+        let payload = status_payload(&state);
+        // The engine consumes the rate, not the delta, so the debug surface must report the same
+        // number: this is what a real-machine calibration of the thrash threshold reads.
+        assert!(
+            payload.contains("\"pageFaultsPerSec\":15.500"),
+            "payload must expose the per-process fault rate: {payload}"
+        );
+    }
 }

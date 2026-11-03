@@ -85,7 +85,7 @@ pub(crate) fn status_payload(state: &AppState) -> String {
         }
         let _ = write!(
             targets_buf,
-            "{{\"pid\":{},\"creation\":{},\"role\":{},\"subLabel\":{},\"identity\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":true,\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{},\"usageScore\":{},\"usageBucket\":{}}}",
+            "{{\"pid\":{},\"creation\":{},\"role\":{},\"subLabel\":{},\"identity\":{},\"workingSetMB\":{},\"privateWorkingSetMB\":{},\"privateMB\":{},\"cpuPercent\":{},\"pageFaultCount\":{},\"pageFaultsDelta\":{},\"pageFaultsPerSec\":{},\"errorCode\":{},\"capped\":{},\"manual\":{},\"included\":true,\"limitMB\":{},\"manualCapMB\":{},\"defaultLimitMB\":{},\"adaptiveStatus\":{},\"usageScore\":{},\"usageBucket\":{}}}",
             p.pid, json_quote(&p.creation.to_string()), json_quote(role_name(*role)),
             json_optional_string(sub_label.as_deref()),
             json_quote(&identity),
@@ -95,6 +95,7 @@ pub(crate) fn status_payload(state: &AppState) -> String {
             json_optional_number(p.cpu_percent),
             json_optional_u64(p.page_fault_count),
             json_optional_u64(p.page_faults_delta),
+            json_optional_number(p.page_faults_per_sec),
             p.error_code,
             capped,
             record.map(|r| r.manual).unwrap_or(false),
