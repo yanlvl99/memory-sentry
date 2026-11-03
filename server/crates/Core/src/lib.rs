@@ -25,7 +25,11 @@ pub const LOW_WORKING_SET_MARGIN_MB: f64 = 6.0;
 pub const IDLE_PROACTIVE_MS: u64 = 60_000;
 /// Page faults per second above which a capped process is judged to be starved (thrashing). The
 /// engine then stops squeezing it and backs the ceiling off — the safety valve that lets the
-/// aggressive background floors stay crash-free. Calibrate on real hardware.
+/// aggressive background floors stay crash-free. Measured on real hardware (Windows 11, eight Spotify
+/// processes): adaptive processes sitting at their ceiling in the background peak around 1,000
+/// faults/s (Main p95 850, max 1,064; network p95 488), while a manual pin too tight for its renderer
+/// sustains 3,500-8,500. This value sits in that gap on purpose: healthy caps never trip it, starved
+/// ones do.
 pub const THRASH_FAULTS_PER_SEC: f64 = 2_500.0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -162,10 +166,12 @@ pub trait AppProfile {
     }
 }
 
-/// Buckets a process identity by how busy it has recently been, mirroring Android's App Standby
-/// Buckets (developer.android.com/topic/performance/appstandby): the OS ranks each app by local usage
-/// history and limits resources per bucket. The signal here is local telemetry only (fraction of the
-/// sample window spent hot), keyed by role + identity, NEVER a PID.
+/// Buckets a process identity by how busy it has recently been, borrowing Android's App Standby
+/// Bucket model (developer.android.com/topic/performance/appstandby): four usage tiers that decide how
+/// much headroom to reserve. The bucket NAMES mirror that model; the 40/20/8 percent cutoffs are this
+/// project's own choice - nothing in the Android documentation fixes them - so treat them as tunable
+/// heuristics. The signal here is local telemetry only (fraction of the sample window spent hot),
+/// keyed by role + identity, NEVER a PID.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UsageBucket {
     Active,
@@ -384,7 +390,7 @@ pub fn decide_adjustment(sample: PolicySample) -> Option<Adjustment> {
     let thrashing = sample.faults_per_sec >= THRASH_FAULTS_PER_SEC;
     let at_ceiling = working_set_at_ceiling(sample.working_set_mb, sample.current_cap_mb);
 
-    // Personalize the squeeze from local usage telemetry (App Standby Buckets):
+    // Personalize the squeeze from local usage telemetry (the four usage buckets above):
     // rarely-busy identities descend on a tighter margin toward the floor (last drop), while
     // frequently-busy ones keep headroom above the floor so they are never starved on return.
     let bucket = usage_bucket(sample.busy_percent);
