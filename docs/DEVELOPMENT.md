@@ -11,7 +11,7 @@
 
 From the repository root:
 
-    cargo test --manifest-path server/Cargo.toml --locked
+    cargo test --manifest-path server/Cargo.toml --workspace --locked
     cargo build --release --manifest-path server/Cargo.toml --target x86_64-pc-windows-msvc --locked
     node tests/validate-package.js
 
