@@ -1322,17 +1322,12 @@ pub(crate) fn maybe_auto_optimize(state: &mut AppState, now: u64) {
         // from a fixed ceiling: restore it so the next pass re-caps from the learned baseline
         // instead of leaving it pinned.
         if has_record {
-            let was_manual = state
+            let manual_record = state
                 .active_caps
                 .get(&process.pid)
-                .map(|r| r.manual)
-                .unwrap_or(false);
-            if was_manual {
-                let record = state
-                    .active_caps
-                    .get(&process.pid)
-                    .cloned()
-                    .expect("record present");
+                .cloned()
+                .filter(|r| r.manual);
+            if let Some(record) = manual_record {
                 let _ = restore_one_record(state, &record, "manual cap released");
             } else {
                 ensure_profile(state, process.pid, process.creation, role, now);
