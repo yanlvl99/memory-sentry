@@ -1,10 +1,15 @@
 // Local API client and formatting helpers shared by the dashboard.
 async function MSSRequest(path, options = {}) {
-  const response = await fetch(`${MSS_API}${path}`, {
-    method: options.method || 'GET', cache: 'no-store', mode: 'cors', credentials: 'omit',
-    headers: { Authorization: `Bearer ${MSS_TOKEN}`, ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
+  let response;
+  try {
+    response = await fetch(`${MSS_API}${path}`, {
+      method: options.method || 'GET', cache: 'no-store', mode: 'cors', credentials: 'omit',
+      headers: { Authorization: `Bearer ${MSS_TOKEN}`, ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+  } catch (err) {
+    throw new Error(`Network error contacting local server: ${err.message}`);
+  }
   let payload = {};
   try { payload = await response.json(); } catch (_) { }
   if (!response.ok) throw new Error(payload.error || `${tx('helperApiError')} (HTTP ${response.status}).`);
