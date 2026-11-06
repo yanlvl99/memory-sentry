@@ -102,14 +102,14 @@
                   Return="ignore" />
 
     <SetProperty Id="RemoveGhostRegistry"
-                 Value="&quot;[SystemFolder]reg.exe&quot; delete &quot;HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\{11504C42-5CF2-4B7F-B357-1562AFBD1561}&quot; /f"
+                 Value="&quot;[System64Folder]reg.exe&quot; delete &quot;HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\{11504C42-5CF2-4B7F-B357-1562AFBD1561}&quot; /f"
                  Before="RemoveGhostRegistry"
                  Sequence="execute" />
     <CustomAction Id="RemoveGhostRegistry"
                   BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
                   DllEntry="WixQuietExec"
                   Execute="deferred"
-                  Impersonate="yes"
+                  Impersonate="no"
                   Return="ignore" />
 
     <!-- The product is only asked to integrate with Spicetify (migrate data, register the Custom
