@@ -164,10 +164,17 @@ pub(crate) fn status_payload(state: &AppState) -> String {
         None
     };
     let (sys_total_mb, sys_avail_mb, mem_load) = windows::system_memory();
+    // Report the same pressure the adaptive engine acts on (read once per pass in update_caps),
+    // not a separate ratio computed here, so the dashboard and the engine never disagree.
+    let pressure_str = state.current_pressure.map(|p| match p {
+        MemoryPressure::Low => "low",
+        MemoryPressure::Normal => "normal",
+        MemoryPressure::High => "high",
+    }).unwrap_or_else(|| pressure_level(mem_load, sys_avail_mb, sys_total_mb));
     let memory = format!(
         "{{\"spotifyTotalMB\":{},\"targetTotalMB\":{},\"processCount\":{},\"targetCount\":{},\"cappedCount\":{},\"privateWorkingSet\":{},\"systemTotalMB\":{},\"systemAvailableMB\":{},\"memoryLoadPercent\":{},\"pressureLevel\":{},\"targets\":[{}],\"sampledAt\":{}}}",
         json_num(spotify_total_mb), json_num(target_total_mb), process_count, targets.len(), capped_count,
-        private_working_set_available, json_num(sys_total_mb as f64), json_num(sys_avail_mb as f64), json_num(mem_load as f64), json_quote(pressure_level(mem_load, sys_avail_mb, sys_total_mb)), targets_buf, json_quote(&iso_now())
+        private_working_set_available, json_num(sys_total_mb as f64), json_num(sys_avail_mb as f64), json_num(mem_load as f64), json_quote(&pressure_str), targets_buf, json_quote(&iso_now())
     );
     let telemetry = format!(
         "{{\"lastRestoreDurationMs\":{},\"lastRestoreAt\":{},\"lastRestoreRestored\":{},\"lastRestoreFailures\":{},\"pageFaultDelta\":{},\"pageFaultsPerSecond\":{},\"sampleIntervalMs\":{},\"adaptiveAdjustments\":{},\"lastAdaptiveAdjustmentAt\":{}}}",

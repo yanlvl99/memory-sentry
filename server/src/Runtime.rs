@@ -3,7 +3,7 @@
 
 use memory_sentry_windows as windows;
 use memory_sentry_core::{
-    pressure_level, ProcessRole, DemandHistogram, MAX_CAP_MB, MIN_CAP_MB,
+    MemoryPressure, ProcessRole, DemandHistogram, MAX_CAP_MB, MIN_CAP_MB, pressure_level,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs::File;
@@ -224,6 +224,7 @@ pub(crate) struct AppState {
     last_error: String,
     last_action: Option<LastAction>,
     shutdown_requested: bool,
+    current_pressure: Option<MemoryPressure>,
 }
 
 pub(crate) type SharedState = Arc<Mutex<AppState>>;
