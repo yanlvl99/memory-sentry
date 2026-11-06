@@ -73,40 +73,49 @@ foreach ($doc in @("INSTALLATION.md", "TROUBLESHOOTING.md")) {
     Copy-Item -LiteralPath (Join-Path $Root ("docs\" + $doc)) -Destination (Join-Path $Stage "docs") -Force
 }
 
+$buildErrors = @()
 foreach ($arch in $Architectures) {
     $Name = $arch.Name
-    Write-Host ("Building native " + $Name + " server...")
-    & cargo @CargoArgs --manifest-path $CargoManifest --target $arch.Target
-    if ($LASTEXITCODE -ne 0) { throw "Rust release build for " + $Name + " failed with exit code $LASTEXITCODE." }
-
-    $Binary = Join-Path $Root ("server\target\" + $arch.Target + "\release\memory-sentry-server.exe")
-    if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
-        throw "Compiled " + $Name + " server not found at $Binary."
-    }
-
-    # Only the host architecture's binary can run here, so the smoke checks are skipped otherwise.
-    if ($Name -eq $HostArch) {
-        $VersionOutput = & $Binary "--version" 2>&1
-        if ($LASTEXITCODE -ne 0 -or ($VersionOutput -join " ") -notmatch [regex]::Escape($Version)) {
-            throw "Compiled " + $Name + " binary version does not match package version $Version."
-        }
-        & $Binary "--self-test"
-        if ($LASTEXITCODE -ne 0) { throw "The " + $Name + " binary self-test failed." }
-    }
-
-    Copy-Item -LiteralPath $Binary -Destination (Join-Path $Stage "MemorySentry.exe") -Force
-
-    $Suffix = ""
-    if ($DebugApi) { $Suffix = "-debug" }
-    $Msi = Join-Path $Dist ("MemorySentryForSpicetify-" + $Version + "-" + $Name + $Suffix + ".msi")
-    Push-Location $WixProjDir
     try {
-        & $WixCommand.Source build -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext -d "MssMsiVersion=$MsiVersion" -arch $arch.WixArch -o $Msi "Product.wxs"
-        if ($LASTEXITCODE -ne 0) { throw "WiX MSI build for " + $Name + " failed with exit code $LASTEXITCODE." }
-    } finally { Pop-Location }
-    if (-not (Test-Path -LiteralPath $Msi -PathType Leaf)) { throw "WiX completed without producing $Msi." }
-    Write-Sha256 $Msi
-    $Kind = "Official installer"
-    if ($DebugApi) { $Kind = "DEBUG installer" }
-    Write-Host ($Kind + " (" + $Name + "): " + $Msi)
+        Write-Host ("Building native " + $Name + " server...")
+        & cargo @CargoArgs --manifest-path $CargoManifest --target $arch.Target
+        if ($LASTEXITCODE -ne 0) { throw "Rust release build for " + $Name + " failed with exit code $LASTEXITCODE." }
+
+        $Binary = Join-Path $Root ("server\target\" + $arch.Target + "\release\memory-sentry-server.exe")
+        if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
+            throw "Compiled " + $Name + " server not found at $Binary."
+        }
+
+        # Only the host architecture's binary can run here, so the smoke checks are skipped otherwise.
+        if ($Name -eq $HostArch) {
+            $VersionOutput = & $Binary "--version" 2>&1
+            if ($LASTEXITCODE -ne 0 -or ($VersionOutput -join " ") -notmatch [regex]::Escape($Version)) {
+                throw "Compiled " + $Name + " binary version does not match package version $Version."
+            }
+            & $Binary "--self-test"
+            if ($LASTEXITCODE -ne 0) { throw "The " + $Name + " binary self-test failed." }
+        }
+
+        Copy-Item -LiteralPath $Binary -Destination (Join-Path $Stage "MemorySentry.exe") -Force
+
+        $Suffix = ""
+        if ($DebugApi) { $Suffix = "-debug" }
+        $Msi = Join-Path $Dist ("MemorySentryForSpicetify-" + $Version + "-" + $Name + $Suffix + ".msi")
+        Push-Location $WixProjDir
+        try {
+            & $WixCommand.Source build -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext -d "MssMsiVersion=$MsiVersion" -arch $arch.WixArch -o $Msi "Product.wxs"
+            if ($LASTEXITCODE -ne 0) { throw "WiX MSI build for " + $Name + " failed with exit code $LASTEXITCODE." }
+        } finally { Pop-Location }
+        if (-not (Test-Path -LiteralPath $Msi -PathType Leaf)) { throw "WiX completed without producing $Msi." }
+        Write-Sha256 $Msi
+        $Kind = "Official installer"
+        if ($DebugApi) { $Kind = "DEBUG installer" }
+        Write-Host ($Kind + " (" + $Name + "): " + $Msi)
+    } catch {
+        $buildErrors += "${Name}: $_"
+        Write-Warning ("Build failed for " + $Name + ": " + $_)
+    }
+}
+if ($buildErrors.Count -gt 0) {
+    throw "Build failures: " + ($buildErrors -join "; ")
 }
