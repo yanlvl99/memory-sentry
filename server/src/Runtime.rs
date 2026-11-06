@@ -17,10 +17,6 @@ mod Setup;
 mod Store;
 mod Api;
 mod Monitor;
-// The debug-only HTTP surface for tools/DebugConsole. Gated by the `debug-api` feature so the
-// shipped server has no such routes at all; see the feature comment in server/Cargo.toml.
-#[cfg(feature = "debug-api")]
-mod DebugApi;
 
 // Re-export the CLI-time entry points so the `Runtime::` command dispatch in main.rs keeps working
 // now that the install/upgrade operations live in the Setup submodule.
@@ -40,7 +36,7 @@ pub(crate) use Api::*;
 // them into the `Runtime` namespace as well.
 pub(crate) use Monitor::*;
 
-const VERSION: &str = "1.0.0-rc.8";
+const VERSION: &str = "1.0.0-rc.7";
 const DEFAULT_PORT: u16 = 38472;
 const DEFAULT_HIDDEN_DELAY_SECONDS: f64 = 2.0;
 const DEFAULT_REFRESH_INTERVAL_MS: u64 = 700;
@@ -60,14 +56,6 @@ const MEMORY_SAMPLE_INTERVAL_MS: u64 = 2000;
 const WATCH_STALE_MS: u64 = 2500;
 const WATCH_SNAPSHOT_MS: u64 = 1300;
 const FOCUS_POLL_INTERVAL_MS: u64 = 100;
-// The dashboard (Spotify's Electron renderer) can assert, far more reliably than the server's Win32
-// window enumeration, that the user is actually looking at a focused, on-screen Spotify: it fires
-// window focus/blur and document visibilitychange the instant focus returns, even after a transient
-// enumeration gap that leaves window_state "unknown" (the bug that strands a capped process in the
-// foreground). A client beacon is trusted only while fresh; focus/visibility updates it on every
-// change, so it stays current while the renderer is alive and simply ages out when Spotify is closed,
-// crashes or the page is fully throttled - at which point the server falls back to its own detection.
-const CLIENT_STATE_FRESH_MS: u64 = 5000;
 const TARGET_RETRY_DELAY_MS: u64 = 2500;
 const TRIM_COOLDOWN_MS: u64 = 15_000;
 const MINIMUM_BACKUP_HEADER: &str = "# Memory Sentry recovery records v1";
@@ -204,11 +192,6 @@ pub(crate) struct AppState {
     window_state: String,
     window_state_reason: String,
     hidden_since_ms: u64,
-    // Last focus/visibility beacon from the dashboard renderer: whether it reported Spotify focused AND
-    // on-screen, and when. Drives a foreground restore that outranks a transiently-unknown Win32
-    // window_state. See CLIENT_STATE_FRESH_MS.
-    client_foreground: bool,
-    client_state_at_ms: u64,
     last_restore_attempt_at_ms: u64,
     last_memory_sample_at_ms: u64,
     last_status_request_ms: u64,
@@ -354,8 +337,8 @@ mod tests {
         // The individually-pinned renderer keeps its own cap; a sibling falls back to the role default.
         let pinned = row(11, "spotify.exe --type=renderer --renderer-client-id=7");
         let sibling = row(12, "spotify.exe --type=renderer --renderer-client-id=3");
-        assert_eq!(manual_cap_for_identity(&settings, &process_identity(&pinned.cmd, ProcessRole::Renderer), ProcessRole::Renderer), Some(80));
-        assert_eq!(manual_cap_for_identity(&settings, &process_identity(&sibling.cmd, ProcessRole::Renderer), ProcessRole::Renderer), Some(40));
+        assert_eq!(configured_manual_cap(&settings, &pinned, ProcessRole::Renderer), Some(80));
+        assert_eq!(configured_manual_cap(&settings, &sibling, ProcessRole::Renderer), Some(40));
     }
 
     #[test]
@@ -451,14 +434,15 @@ mod tests {
     }
 
     #[test]
-    fn manual_defaults_match_each_role() {
-        assert_eq!(ProcessRole::Main.manual_default_cap_mb(), 36);
-        assert_eq!(ProcessRole::Audio.manual_default_cap_mb(), 36);
-        assert_eq!(ProcessRole::Gpu.manual_default_cap_mb(), 28);
-        assert_eq!(ProcessRole::Renderer.manual_default_cap_mb(), 28);
-        assert_eq!(ProcessRole::Utility.manual_default_cap_mb(), 24);
-        assert_eq!(ProcessRole::Helper.manual_default_cap_mb(), 24);
-        assert_eq!(ProcessRole::Crashpad.manual_default_cap_mb(), 16);
+    fn manual_policy_uses_role_defaults_and_honors_saved_overrides() {
+        assert_eq!(manual_cap_for(ProcessRole::Main, None), 36);
+        assert_eq!(manual_cap_for(ProcessRole::Audio, None), 36);
+        assert_eq!(manual_cap_for(ProcessRole::Gpu, None), 28);
+        assert_eq!(manual_cap_for(ProcessRole::Renderer, None), 28);
+        assert_eq!(manual_cap_for(ProcessRole::Utility, None), 24);
+        assert_eq!(manual_cap_for(ProcessRole::Helper, None), 24);
+        assert_eq!(manual_cap_for(ProcessRole::Crashpad, None), 16);
+        assert_eq!(manual_cap_for(ProcessRole::Renderer, Some(40)), 40);
     }
 
     #[test]
@@ -666,12 +650,12 @@ mod tests {
         };
 
         assert_eq!(
-            manual_cap_for_identity(&settings, &process_identity(&restarted_process.cmd, ProcessRole::Renderer), ProcessRole::Renderer),
+            configured_manual_cap(&settings, &restarted_process, ProcessRole::Renderer),
             Some(52)
         );
         settings.manual_role_caps.clear();
         assert_eq!(
-            manual_cap_for_identity(&settings, &process_identity(&restarted_process.cmd, ProcessRole::Renderer), ProcessRole::Renderer),
+            configured_manual_cap(&settings, &restarted_process, ProcessRole::Renderer),
             None
         );
     }
@@ -680,20 +664,6 @@ mod tests {
     fn capmb_number_parser_requires_whole_positive_values() {
         assert_eq!(parse_json_number(r#"{"capMB":36}"#, "capMB"), Some(36));
         assert_eq!(parse_json_number(r#"{"capMB":36.5}"#, "capMB"), None);
-    }
-
-    #[test]
-    fn bool_parser_requires_a_whole_literal() {
-        let ok = r#"{"enabled": true, "autoOptimize": false}"#;
-        assert_eq!(parse_json_bool(ok, "enabled"), Some(true));
-        assert_eq!(parse_json_bool(ok, "autoOptimize"), Some(false));
-        assert_eq!(parse_json_bool(r#"{"a":true,"b":false}"#, "a"), Some(true));
-        // Typos and quoted values never parse as a bool, matching the number helper's strictness.
-        assert_eq!(parse_json_bool(r#"{"enabled": tru x}"#, "enabled"), None);
-        assert_eq!(parse_json_bool(r#"{"enabled": truex}"#, "enabled"), None);
-        assert_eq!(parse_json_bool(r#"{"enabled": falseish}"#, "enabled"), None);
-        assert_eq!(parse_json_bool(r#"{"enabled":"true"}"#, "enabled"), None);
-        assert_eq!(parse_json_bool(r#"{"a":true}"#, "enabled"), None);
     }
 
     #[test]

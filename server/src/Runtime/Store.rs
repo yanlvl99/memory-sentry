@@ -112,18 +112,12 @@ pub(crate) fn parse_json_bool(text: &str, key: &str) -> Option<bool> {
     let marker = format!("\"{key}\"");
     let pos = text.find(&marker)? + marker.len();
     let tail = text[pos..].trim_start().strip_prefix(':')?.trim_start();
-    let (literal, value) = if tail.starts_with("true") {
-        ("true", true)
+    if tail.starts_with("true") {
+        Some(true)
     } else if tail.starts_with("false") {
-        ("false", false)
+        Some(false)
     } else {
-        return None;
-    };
-    // End the literal at a JSON boundary so a hand typo (tru x, truex) is rejected instead of
-    // partially parsed; quoted values were always a parse miss, as with the number helper.
-    match tail.as_bytes().get(literal.len()) {
-        None | Some(b' ' | b'\t' | b'\r' | b'\n' | b',' | b'}' | b']') => Some(value),
-        Some(_) => None,
+        None
     }
 }
 
@@ -430,9 +424,17 @@ pub(crate) fn log_event(state: &mut AppState, message: impl Into<String>, level:
         level.to_ascii_uppercase(),
         message
     );
-    rotate_log_if_large(&state.log_path);
     if let Some(parent) = state.log_path.parent() {
         let _ = fs::create_dir_all(parent);
+    }
+    if fs::metadata(&state.log_path)
+        .map(|m| m.len() > 512 * 1024)
+        .unwrap_or(false)
+    {
+        if let Some(parent) = state.log_path.parent() {
+            let old = parent.join(format!("helper-{}.previous.log", now_ms()));
+            let _ = fs::rename(&state.log_path, old);
+        }
     }
     if let Ok(mut file) = OpenOptions::new()
         .create(true)
@@ -440,27 +442,6 @@ pub(crate) fn log_event(state: &mut AppState, message: impl Into<String>, level:
         .open(&state.log_path)
     {
         let _ = file.write_all(line.as_bytes());
-    }
-}
-
-/// Every app log grows one line at a time and never gets read back for correctness, so all logs
-/// share the same cap as helper.log: when a file passes 512 KB it is renamed beside itself as
-/// `<stem>-<ms>.previous.log` and the next append starts a fresh file. Best effort: rotation
-/// failures are ignored because logging must never break the engine.
-pub(crate) fn rotate_log_if_large(path: &Path) {
-    let limit = 512 * 1024;
-    if fs::metadata(path)
-        .map(|m| m.len() > limit)
-        .unwrap_or(false)
-    {
-        if let (Some(parent), Some(stem)) = (path.parent(), path.file_stem()) {
-            let shifted = parent.join(format!(
-                "{}-{}.previous.log",
-                stem.to_string_lossy(),
-                now_ms()
-            ));
-            let _ = fs::rename(path, &shifted);
-        }
     }
 }
 
@@ -550,39 +531,5 @@ pub(crate) fn persist_backups(state: &AppState) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     file.sync_all().map_err(|e| e.to_string())?;
     replace_file(&temp, &state.backup_path)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn unique_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("mss-rotate-{}-{}-{}", name, std::process::id(), now_ms()));
-        fs::create_dir_all(&dir).expect("test dir");
-        dir
-    }
-
-    #[test]
-    fn large_logs_rotate_beside_themselves_and_small_ones_stay() {
-        let dir = unique_dir(&format!("test-{}", now_ms()));
-        let big = dir.join("mss-rotate-big.log");
-        fs::write(&big, "x".repeat(600 * 1024)).expect("test log");
-        rotate_log_if_large(&big);
-        let shifted = fs::read_dir(&dir)
-            .expect("dir")
-            .filter_map(|e| e.ok())
-            .any(|e| e.file_name().to_string_lossy().starts_with("mss-rotate-big-")
-                && e.file_name().to_string_lossy().ends_with(".previous.log"));
-        assert!(shifted, "a rotated previous log must exist");
-        assert!(fs::metadata(&big).is_err(), "original must be renamed away");
-
-        let small = dir.join("mss-rotate-small.log");
-        fs::write(&small, "small").expect("test log");
-        rotate_log_if_large(&small);
-        assert!(fs::metadata(&small).is_ok(), "small files keep their name");
-
-        let _ = fs::remove_dir_all(dir);
-    }
 }
 

@@ -17,9 +17,7 @@ fn log_setup_failure(error: &str) {
         .join("MemorySentryForSpicetify")
         .join("logs");
     if std::fs::create_dir_all(&log_dir).is_err() { return; }
-    let log_path = log_dir.join("setup.log");
-    Runtime::rotate_log_if_large(&log_path);
-    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&log_path) else { return; };
+    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_dir.join("setup.log")) else { return; };
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
     let _ = writeln!(file, "[{timestamp}] [SETUP] {error}");
 }

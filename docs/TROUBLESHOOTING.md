@@ -21,16 +21,6 @@ The first command prints a direct error if the launcher cannot initialize; the s
 
 The uninstaller asks the server to restore the original Windows working-set limits and exit, removes its current-user startup registration, then removes the plugin from Spicetify and runs `spicetify apply`. That lets Spicetify refresh Spotify as part of removing the app; you should not need to close Spotify manually for a normal uninstall. If the server cannot confirm recovery or its process will not exit, uninstall stops and preserves the recovery files instead of deleting them.
 
-## Two Memory Sentry entries in Programs and Features
-
-Memory Sentry installs as a single per-user entry named after the current release (for recent builds, a `1.0.0` MSI version; the prerelease letter is visible only in the file name and in the server's `--version` output). If you also see a fixed `1.0.0.0` entry, it is a leftover from a pre-release build installed before the per-user MSI existed, in a machine-wide context the current installer cannot reach: its uninstall string points to a product that is not registered on the machine, so that row is inert. The app itself has no remnants (verify: the only `MemorySentry.exe` is under `%LOCALAPPDATA%\Programs\MemorySentryForSpicetify`). Leaving the dead row is harmless.
-
-To remove the dead row while elevated (not required, and only meaningful on machines that had the old build) run PowerShell as administrator:
-
-```powershell
-reg.exe delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\{11504C42-5CF2-4B7F-B357-1562AFBD1561}" /f
-```
-
 ## Spotify restart during setup
 
 Setup does not require Spotify to be manually closed. It prepares or shuts down the previous Memory Sentry server, installs the plugin files, starts the local API, and then calls `spicetify apply`; Spicetify may restart Spotify itself.

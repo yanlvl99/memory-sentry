@@ -27,8 +27,8 @@ function Hero(props) {
   else {
     const mb = dispMB(hovered);
     const pct = totalMB > 0 ? Math.round((mb / totalMB) * 100) : 0;
-    const ceiling = MSSCeilingMB(hovered, Number(hovered.defaultLimitMB || 36));
-    const stateLabel = MSSProcessTag(hovered);
+    const ceiling = hovered.capped ? Number(hovered.limitMB ?? hovered.manualCapMB ?? Number(hovered.defaultLimitMB || 36)) : null;
+    const stateLabel = hovered.manual ? tx('tagManual') : (hovered.capped ? tx('tagAdaptive') : tx('tagNoCeiling'));
     const parts = [MSSRoleLabel(hovered.role), String(hovered.pid), `${MSSFormatMB(mb)} MB`, tx('pctOfTotal', { value: pct }), stateLabel];
     if (hovered.subLabel && subFor(hovered)) parts.splice(1, 0, subFor(hovered));
     if (ceiling != null) parts.push(`${tx('capLabel')} ${MSSFormatMB(ceiling)} MB`);

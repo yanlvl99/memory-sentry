@@ -5,11 +5,9 @@
   <!-- Per-user MSI for "Memory Sentry For Spicetify". MajorUpgrade removes any previous MSI
        product automatically; the first migration from the old Inno install is handled by a
        custom action (remove-previous verb) added in a later step. -->
-  <!-- MssMsiVersion is passed as a preprocessor define by scripts/build-package.ps1 from the
-       Cargo.toml version (numeric X.Y.Z prefix; MSI versions cannot carry a prerelease suffix). -->
   <Package Name="Memory Sentry For Spicetify"
            Manufacturer="Memory Sentry Contributors"
-           Version="$(MssMsiVersion)"
+           Version="1.0.0.0"
            UpgradeCode="7e5a9c22-4f3b-4e7a-9c11-2d6b8a0f4e31"
            Scope="perUser"
            Compressed="yes">
@@ -101,17 +99,6 @@
                   Impersonate="yes"
                   Return="ignore" />
 
-    <SetProperty Id="RemoveGhostRegistry"
-                 Value="&quot;[System64Folder]reg.exe&quot; delete &quot;HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\{11504C42-5CF2-4B7F-B357-1562AFBD1561}&quot; /f"
-                 Before="RemoveGhostRegistry"
-                 Sequence="execute" />
-    <CustomAction Id="RemoveGhostRegistry"
-                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
-                  DllEntry="WixQuietExec"
-                  Execute="deferred"
-                  Impersonate="no"
-                  Return="ignore" />
-
     <!-- The product is only asked to integrate with Spicetify (migrate data, register the Custom
          App, apply). A failure here is a real setup error, so it stops the transaction. QuietExec is
          used so no console window flashes; the detached server it starts no longer holds the output
@@ -166,7 +153,6 @@
       <Custom Action="ConfigureApp" After="InstallFiles" Condition="NOT REMOVE" />
       <Custom Action="RemoveLegacyFolder" After="ConfigureApp" Condition="NOT REMOVE" />
       <Custom Action="RemoveLegacyRegistry" After="RemoveLegacyFolder" Condition="NOT REMOVE" />
-      <Custom Action="RemoveGhostRegistry" After="RemoveLegacyRegistry" Condition="NOT REMOVE" />
       <Custom Action="PreUninstall" Before="RemoveFiles" Condition='REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE' />
       <Custom Action="RemoveProgramFolder" After="RemoveFiles" Condition='REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE' />
       <Custom Action="RemoveCustomAppFolder" After="RemoveProgramFolder" Condition='REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE' />
@@ -204,6 +190,7 @@
         <File Id="UiCore" Source="..\..\dist\stage\app\ui\Core.js" KeyPath="yes" />
         <File Id="UiI18n" Source="..\..\dist\stage\app\ui\I18n.js" />
         <File Id="UiApi" Source="..\..\dist\stage\app\ui\Api.js" />
+        <File Id="UiAdapters" Source="..\..\dist\stage\app\ui\Adapters.js" />
         <File Id="UiIcons" Source="..\..\dist\stage\app\ui\Icons.js" />
         <File Id="UiWidgets" Source="..\..\dist\stage\app\ui\Widgets.js" />
         <File Id="UiTopBar" Source="..\..\dist\stage\app\ui\TopBar.js" />

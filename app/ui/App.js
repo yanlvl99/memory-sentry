@@ -178,29 +178,6 @@ function MSSApp() {
     return () => { alive = false; if (timer) window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisibility); };
   }, [settingsLoaded, reloadNonce, config.refreshIntervalMs]);
 
-  // Foreground beacon. The server's OS-level window enumeration can transiently miss the titled Spotify
-  // window (a tray hide/show, a DWM transition, focus briefly held by a modal), which used to strand a
-  // capped process even while the user was actively using Spotify. The renderer knows focus and
-  // visibility directly and for free, so it pushes a tiny beacon on every change; the server restores
-  // limits while the beacon stays fresh. Event-driven rather than polled, so it fires the instant focus
-  // returns and still fires under Chromium background throttling (which slows timers, not events).
-  R.useEffect(() => {
-    function beacon() {
-      const focused = document.hasFocus();
-      const visible = document.visibilityState !== 'hidden';
-      MSSRequest('/api/window-state', { method: 'POST', body: { focused, visible } }).catch(() => { /* server not reachable yet; the next focus change retries */ });
-    }
-    beacon();
-    window.addEventListener('focus', beacon);
-    window.addEventListener('blur', beacon);
-    document.addEventListener('visibilitychange', beacon);
-    return () => {
-      window.removeEventListener('focus', beacon);
-      window.removeEventListener('blur', beacon);
-      document.removeEventListener('visibilitychange', beacon);
-    };
-  }, []);
-
   R.useEffect(() => () => {
     for (const timer of manualApplyTimers.current.values()) window.clearTimeout(timer);
     manualApplyTimers.current.clear();
@@ -287,7 +264,7 @@ function MSSApp() {
         capMB: warning.capMB,
         defaultMB: warning.defaultMB
       }) + (seconds > 0
-        ? ' ' + tx('lowLimitWait', { countdown: MSSCountValue(seconds) })
+        ? ' ' + tx('lowLimitWait', { countdown: tx(seconds === 1 ? 'second' : 'seconds', { value: seconds }) })
         : ' ' + tx('lowLimitReady'));
       if (countdownComplete) return;
       if (seconds > 0) {
@@ -382,7 +359,7 @@ function MSSApp() {
       await MSSRequest('/api/action', { method: 'POST', body: { action: 'setManualCap', identity: process.identity, capMB } });
       const updatedStatus = await MSSRequest('/api/status');
       setStatus(updatedStatus);
-      setManualInputs(previous => ({ ...previous, [MSSProcessKey(process)]: String(capMB) }));
+      setManualInputs(previous => ({ ...previous, [process.identity || `${process.pid}:${process.creation}`]: String(capMB) }));
       const background = ['minimized', 'hidden', 'background-visible'].includes(updatedStatus.spotify?.windowState);
       setManualMessage({ text: tx(background ? 'limitApplied' : 'limitSavedForBackground'), error: false });
     } catch (err) {
@@ -463,7 +440,7 @@ function MSSApp() {
 
   async function pinCurrentCeiling(process) {
     if (process.manualCapMB != null) return;
-    const key = MSSProcessKey(process);
+    const key = process.identity || `${process.pid}:${process.creation}`;
     const capMB = Number(manualInputs[key] ?? process.limitMB ?? process.defaultLimitMB ?? 36);
     await applyManualLimit(process, capMB);
   }
@@ -473,14 +450,14 @@ function MSSApp() {
   const telemetry = status?.telemetry || {};
   const helperRunning = Boolean(status?.helper?.running);
   const targets = Array.isArray(memory.targets) ? memory.targets : [];
-  const dispMB = t => MSSResidentMB(memory, t);
+  const dispMB = t => Number((memory.privateWorkingSet ? t.privateWorkingSetMB : t.workingSetMB) || 0);
   const listMaxMB = Math.max(1, ...targets.map(dispMB));
   const totalMB = targets.reduce((sum, t) => sum + dispMB(t), 0);
   const sortedTargets = [...targets].sort((a, b) => String(a.role).localeCompare(String(b.role)) || dispMB(b) - dispMB(a));
   const events = Array.isArray(status?.recentEvents) ? status.recentEvents : [];
   // Only Custom (enabled) and Disabled remain, so per-process caps are always editable when enabled.
   const capsEditable = config.enabled === true;
-  const serverLabel = MSSServerLabel(status?.helper);
+  const serverLabel = status?.helper ? `${status.helper.runtime || 'Server'} ${status.helper.version || ''}` : (MSS_PT ? 'Servidor' : 'Server');
   const cappedCount = targets.filter(target => target.capped).length;
   // Only a server we have NEVER reached this session shows the full setup screen. A server that was
   // connected and then dropped keeps the dashboard (last known data) with a non-blocking banner, so a

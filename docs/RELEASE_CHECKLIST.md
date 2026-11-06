@@ -4,7 +4,7 @@ Do not call the release stable until all required real-desktop tests are complet
 
 ## Build and package
 
-- [ ] `cargo test --manifest-path server/Cargo.toml --workspace --locked` passes (the workspace switch also runs the Core, Spotify and Windows crate suites).
+- [ ] cargo test for server/Cargo.toml passes.
 - [ ] Windows x64 and ARM64 builds succeed (x86_64-pc-windows-msvc and aarch64-pc-windows-msvc).
 - [ ] The WiX toolset builds the per-user MSI in CI.
 - [ ] Only the official MSI and its SHA-256 checksum are uploaded and independently verified.
