@@ -112,12 +112,18 @@ pub(crate) fn parse_json_bool(text: &str, key: &str) -> Option<bool> {
     let marker = format!("\"{key}\"");
     let pos = text.find(&marker)? + marker.len();
     let tail = text[pos..].trim_start().strip_prefix(':')?.trim_start();
-    if tail.starts_with("true") {
-        Some(true)
+    let (literal, value) = if tail.starts_with("true") {
+        ("true", true)
     } else if tail.starts_with("false") {
-        Some(false)
+        ("false", false)
     } else {
-        None
+        return None;
+    };
+    // End the literal at a JSON boundary so a hand typo (tru x, truex) is rejected instead of
+    // partially parsed; quoted values were always a parse miss, as with the number helper.
+    match tail.as_bytes().get(literal.len()) {
+        None | Some(b' ' | b'\t' | b'\r' | b'\n' | b',' | b'}' | b']') => Some(value),
+        Some(_) => None,
     }
 }
 
