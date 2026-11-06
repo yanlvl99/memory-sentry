@@ -2,13 +2,17 @@
 
 ## Unreleased
 
-- Every log file in the data folder now rotates at 512 KB like the runtime event log already did: the startup and setup logs can no longer grow without bound from daily launches, and the newest shifted log stays available beside the current file.
+- Every log file in the data folder now rotates at 512 KB like the runtime event log already did: the startup and setup logs can no longer grow without bound from daily launches, and the newest shifted log stays available beside the current file (PR #54).
+
+- A hand-edited `settings.json` value that is not a whole boolean literal (such as `truex` or a truncated `true`) no longer parses as an accidental state: the parser rejects it and the documented default takes over (PR #55).
 
 - The MSI package version now follows the version in `server/Cargo.toml`: the packaging script passes its numeric prefix (prerelease suffixes are dropped, because MSI versions are numeric only) to WiX, so Programs and Features reports the installed release instead of a fixed 1.0.0.0 (PR #50).
 
 - Fixed Spotify occasionally keeping a reduced memory ceiling while you were actively using it: the dashboard now tells the local server the instant its window is focused and on screen, and a fresh report releases every limit even when the server's own window enumeration briefly fails to see the Spotify window (a tray hide/show or a focus hand-off to a modal). This release path only ever restores limits, so it can never cap a foreground Spotify (PR #49).
 - A saved manual limit no longer distorts a Spotify you are actively using: the fixed ceiling takes effect only once the window is backgrounded again, matching the adaptive engine's background-only model (PR #48).
 - The Rust test jobs now run the whole Cargo workspace, so the Core policy, Spotify and Windows crate suites are exercised as part of every CI check (PR #51).
+- The local API layer has its first unit tests, covering the JSON escaping that guards server-built strings, the origin allowlist behind the loopback CORS gate, bearer-token parsing, the constant-time token comparison and the non-finite number guards (PR #53).
+- Internal cleanup with no behavior change: the unused Adapters layer was deleted from the dashboard, the shared resident-memory/ceiling/identity/server-label/tag formulas collapsed into one definition each, and the manual-cap release path does its record lookup once (PRs #56, #57, #58).
 
 ## 1.0.0-rc.7 — Demand-based adaptive policy
 
