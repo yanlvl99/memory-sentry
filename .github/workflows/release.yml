@@ -48,6 +48,7 @@ jobs:
           .\scripts\build-package.ps1 -Version "${{ steps.version.outputs.version }}"
       - name: Set release body
         id: body
+        shell: bash
         run: |
           if [[ "${{ steps.version.outputs.version }}" == *-* ]] || [[ "${{ steps.version.outputs.version }}" == 0.* ]]; then
             echo "body=**Release candidate.** Do not treat this build as stable until the complete real-desktop Windows 10/11 audio, recovery, upgrade/uninstall, and restore-latency test matrix has passed. Marketplace is discovery only; the official per-user MSI is the sole supported installation method." >> $GITHUB_OUTPUT
