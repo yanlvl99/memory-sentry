@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-rc.8 — Release version bump
 
 - Contributor documentation now states the testing strategy as five layers, each proving only its own thing: Core policy tests, Runtime helper tests, static package validation, CI across x64/ARM64, and real-machine validation that stays a manual release gate (in docs/DEVELOPMENT.md, no new tooling) (PR #60).
 
