@@ -101,6 +101,17 @@
                   Impersonate="yes"
                   Return="ignore" />
 
+    <SetProperty Id="RemoveGhostRegistry"
+                 Value="&quot;[SystemFolder]reg.exe&quot; delete &quot;HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\{11504C42-5CF2-4B7F-B357-1562AFBD1561}&quot; /f"
+                 Before="RemoveGhostRegistry"
+                 Sequence="execute" />
+    <CustomAction Id="RemoveGhostRegistry"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+
     <!-- The product is only asked to integrate with Spicetify (migrate data, register the Custom
          App, apply). A failure here is a real setup error, so it stops the transaction. QuietExec is
          used so no console window flashes; the detached server it starts no longer holds the output
@@ -155,6 +166,7 @@
       <Custom Action="ConfigureApp" After="InstallFiles" Condition="NOT REMOVE" />
       <Custom Action="RemoveLegacyFolder" After="ConfigureApp" Condition="NOT REMOVE" />
       <Custom Action="RemoveLegacyRegistry" After="RemoveLegacyFolder" Condition="NOT REMOVE" />
+      <Custom Action="RemoveGhostRegistry" After="RemoveLegacyRegistry" Condition="NOT REMOVE" />
       <Custom Action="PreUninstall" Before="RemoveFiles" Condition='REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE' />
       <Custom Action="RemoveProgramFolder" After="RemoveFiles" Condition='REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE' />
       <Custom Action="RemoveCustomAppFolder" After="RemoveProgramFolder" Condition='REMOVE = "ALL" AND NOT UPGRADINGPRODUCTCODE' />
