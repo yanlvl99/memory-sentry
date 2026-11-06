@@ -192,7 +192,6 @@
         <File Id="UiCore" Source="..\..\dist\stage\app\ui\Core.js" KeyPath="yes" />
         <File Id="UiI18n" Source="..\..\dist\stage\app\ui\I18n.js" />
         <File Id="UiApi" Source="..\..\dist\stage\app\ui\Api.js" />
-        <File Id="UiAdapters" Source="..\..\dist\stage\app\ui\Adapters.js" />
         <File Id="UiIcons" Source="..\..\dist\stage\app\ui\Icons.js" />
         <File Id="UiWidgets" Source="..\..\dist\stage\app\ui\Widgets.js" />
         <File Id="UiTopBar" Source="..\..\dist\stage\app\ui\TopBar.js" />
