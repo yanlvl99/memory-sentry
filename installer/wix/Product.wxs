@@ -188,6 +188,11 @@
         <File Id="DocSecurity" Source="..\..\dist\stage\SECURITY.md" />
         <File Id="DocInstallation" Source="..\..\dist\stage\docs\INSTALLATION.md" />
         <File Id="DocTroubleshooting" Source="..\..\dist\stage\docs\TROUBLESHOOTING.md" />
+        <File Id="DocBenchmarking" Source="..\..\dist\stage\docs\BENCHMARKING.md" />
+        <File Id="DocMarketplace" Source="..\..\dist\stage\docs\MARKETPLACE.md" />
+        <File Id="DocServerMigration" Source="..\..\dist\stage\docs\SERVER-MIGRATION.md" />
+        <File Id="DocReleaseChecklist" Source="..\..\dist\stage\docs\RELEASE_CHECKLIST.md" />
+        <File Id="DocDevelopment" Source="..\..\dist\stage\docs\DEVELOPMENT.md" />
       </Component>
     </ComponentGroup>
 
