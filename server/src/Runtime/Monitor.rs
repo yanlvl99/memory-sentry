@@ -66,6 +66,7 @@ pub(crate) fn build_state(base: PathBuf, settings: Settings) -> AppState {
         last_error: String::new(),
         last_action: None,
         shutdown_requested: false,
+        current_pressure: None,
     }
 }
 
@@ -834,6 +835,7 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
         windows::MemoryPressure::High => MemoryPressure::High,
         windows::MemoryPressure::Normal => MemoryPressure::Normal,
     };
+    state.current_pressure = Some(pressure);
     for (process, role) in targets {
         let record = state.active_caps.get(&process.pid).cloned();
         let Some(record) = record else {
