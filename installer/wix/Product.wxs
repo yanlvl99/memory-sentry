@@ -5,9 +5,11 @@
   <!-- Per-user MSI for "Memory Sentry For Spicetify". MajorUpgrade removes any previous MSI
        product automatically; the first migration from the old Inno install is handled by a
        custom action (remove-previous verb) added in a later step. -->
+  <!-- MssMsiVersion is passed as a preprocessor define by scripts/build-package.ps1 from the
+       Cargo.toml version (numeric X.Y.Z prefix; MSI versions cannot carry a prerelease suffix). -->
   <Package Name="Memory Sentry For Spicetify"
            Manufacturer="Memory Sentry Contributors"
-           Version="1.0.0.0"
+           Version="$(MssMsiVersion)"
            UpgradeCode="7e5a9c22-4f3b-4e7a-9c11-2d6b8a0f4e31"
            Scope="perUser"
            Compressed="yes">

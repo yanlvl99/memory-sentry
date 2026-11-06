@@ -21,6 +21,8 @@ if (-not $Version) {
     $Version = $Matches[1]
 }
 if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z.+-]*$') { throw "Invalid release version: $Version" }
+# MSI ProductVersion is numeric X.Y.Z only, so a prerelease suffix (e.g. 1.0.0-rc.7) is dropped.
+$MsiVersion = if ($Version -match '^(\d+\.\d+\.\d+)') { $Matches[1] } else { throw "Version $Version has no numeric X.Y.Z prefix for the MSI PackageVersion." }
 
 function Write-Sha256([string]$Path) {
     $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -99,7 +101,7 @@ foreach ($arch in $Architectures) {
     $Msi = Join-Path $Dist ("MemorySentryForSpicetify-" + $Version + "-" + $Name + $Suffix + ".msi")
     Push-Location $WixProjDir
     try {
-        & $WixCommand.Source build -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext -arch $arch.WixArch -o $Msi "Product.wxs"
+        & $WixCommand.Source build -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext -d "MssMsiVersion=$MsiVersion" -arch $arch.WixArch -o $Msi "Product.wxs"
         if ($LASTEXITCODE -ne 0) { throw "WiX MSI build for " + $Name + " failed with exit code $LASTEXITCODE." }
     } finally { Pop-Location }
     if (-not (Test-Path -LiteralPath $Msi -PathType Leaf)) { throw "WiX completed without producing $Msi." }
