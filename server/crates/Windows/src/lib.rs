@@ -25,12 +25,20 @@ const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
 const PROCESS_VM_READ: u32 = 0x0010;
 // NtQueryInformationProcess information class 0 == ProcessBasicInformation.
 const PROCESS_BASIC_INFORMATION_CLASS: u32 = 0;
-// x64 PEB offsets for reading a remote command line. There is no public API for a foreign process's
-// full command line, so we walk PEB -> ProcessParameters -> CommandLine. These are the well-known
-// x64 layout offsets; the size asserts below pin the local struct layouts so Process32/PEB reads
-// cannot silently mis-enumerate on a mismatched ABI.
+// PEB offsets for reading a remote command line. There is no public API for a foreign process's
+// full command line, so we walk PEB -> ProcessParameters -> CommandLine. Offsets are ABI-specific:
+// the x64 values below are well-known and verified on x64 hardware; the aarch64 values are the
+// documented Windows ARM64 layout but MUST be verified on real ARM64 hardware before this path is
+// trusted in production (no aarch64 target is installed in this build environment).
+#[cfg(target_arch = "x86_64")]
 const PEB_PROCESS_PARAMETERS_OFFSET: usize = 0x20;
+#[cfg(target_arch = "aarch64")]
+const PEB_PROCESS_PARAMETERS_OFFSET: usize = 0x20;
+
+#[cfg(target_arch = "x86_64")]
 const RTL_USER_PROCESS_PARAMETERS_COMMAND_LINE_OFFSET: usize = 0x70;
+#[cfg(target_arch = "aarch64")]
+const RTL_USER_PROCESS_PARAMETERS_COMMAND_LINE_OFFSET: usize = 0xD0;
 
 type Handle = *mut c_void;
 
@@ -186,6 +194,22 @@ extern "system" {
     fn GetWindowTextLengthW(hwnd: Handle) -> i32;
     fn GetWindowTextW(hwnd: Handle, buffer: *mut u16, max_count: i32) -> i32;
     fn GetWindowRect(hwnd: Handle, rect: *mut WindowRect) -> i32;
+    // Driven only by the feature-gated debug console (see control_window). PostMessage/SysCommand
+    // work cross-process, so a window can be minimized or restored without touching its thread.
+    fn PostMessageW(hwnd: Handle, message: u32, w_param: usize, l_param: isize) -> i32;
+    fn SetWindowPos(
+        hwnd: Handle,
+        insert_after: Handle,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        flags: u32,
+    ) -> i32;
+    fn SetForegroundWindow(hwnd: Handle) -> i32;
+    fn BringWindowToTop(hwnd: Handle) -> i32;
+    fn GetShellWindow() -> Handle;
+    fn keybd_event(virtual_key: u8, scan_code: u8, flags: u32, extra_info: usize);
 }
 
 #[link(name = "dwmapi")]
@@ -244,9 +268,9 @@ pub fn system_memory() -> (u64, u64, u32) {
 /// constant while neither the Low nor the High condition is signalled.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MemoryPressure {
-    Low,
-    Normal,
     High,
+    Normal,
+    Low,
 }
 
 pub fn memory_pressure() -> MemoryPressure {
@@ -593,6 +617,112 @@ pub fn foreground_process_id() -> Option<u32> {
     } else {
         Some(process_id)
     }
+}
+
+/// The foreground window as a raw handle. The debug console records this before it steals focus so a
+/// scenario can hand focus back to exactly whatever the user had up.
+pub fn foreground_window_hwnd() -> Option<usize> {
+    let foreground = unsafe { GetForegroundWindow() };
+    (!foreground.is_null()).then_some(foreground as usize)
+}
+
+// Window-control verbs for the feature-gated debug console. They let a test drive a real window
+// (minimize/restore/maximize/z-order/focus/blur) so the shipped focus/restore path can be exercised
+// without a human. These are the only Win32 *mutations* the server exposes; the monitor never calls
+// them, so in a release binary they are unreachable dead code (no route reaches control_window
+// without --features debug-api), which keeps the whole debug surface off end users.
+const WM_SYSCOMMAND: u32 = 0x0112;
+const SC_MINIMIZE: usize = 0xF020;
+const SC_MAXIMIZE: usize = 0xF030;
+const SC_RESTORE: usize = 0xF120;
+const HWND_TOP: usize = 0;
+const HWND_BOTTOM: usize = 1;
+const SWP_NOSIZE: u32 = 0x0001;
+const SWP_NOMOVE: u32 = 0x0002;
+const SWP_NOACTIVATE: u32 = 0x0010;
+const VK_MENU: u8 = 0x12;
+const KEYEVENTF_KEYUP: u32 = 0x0002;
+
+/// Move one real window for the debug console. Returns a short label describing the path that worked
+/// (e.g. which focus fallback was needed) so a scenario can quote how the transition happened. The
+/// unsafe FFI lives here, in one place, so DebugApi stays pure delegation.
+pub fn control_window(hwnd: usize, action: &str) -> Result<String, String> {
+    // Blur needs no target handle - it hands focus to the shell's desktop window, which is how a
+    // test takes foreground away from the app to reach a real background-visible transition.
+    if action == "blur" {
+        let shell = unsafe { GetShellWindow() };
+        if shell.is_null() {
+            return Err("No shell window to move focus to.".to_string());
+        }
+        return if unsafe { SetForegroundWindow(shell) } != 0 {
+            Ok("blurred-to-shell".to_string())
+        } else {
+            Err(format!("SetForegroundWindow(shell) failed ({})", last_error()))
+        };
+    }
+    if hwnd == 0 {
+        return Err("A window handle is required.".to_string());
+    }
+    let window = hwnd as Handle;
+    if unsafe { IsWindow(window) } == 0 {
+        return Err(format!("Handle {hwnd:#x} is not a live window."));
+    }
+    match action {
+        "minimize" => post_sys_command(window, SC_MINIMIZE, "minimize"),
+        "restore" => post_sys_command(window, SC_RESTORE, "restore"),
+        "maximize" => post_sys_command(window, SC_MAXIMIZE, "maximize"),
+        "bottom" => set_zorder(window, HWND_BOTTOM as Handle, "bottom"),
+        "top" => set_zorder(window, HWND_TOP as Handle, "top"),
+        "focus" => focus_window(window),
+        other => Err(format!("Unknown window action \"{other}\".")),
+    }
+}
+
+fn post_sys_command(window: Handle, command: usize, label: &str) -> Result<String, String> {
+    if unsafe { PostMessageW(window, WM_SYSCOMMAND, command, 0) } != 0 {
+        Ok(format!("posted-{label}"))
+    } else {
+        Err(format!("PostMessageW({label}) failed ({})", last_error()))
+    }
+}
+
+fn set_zorder(window: Handle, insert_after: Handle, label: &str) -> Result<String, String> {
+    let ok = unsafe {
+        SetWindowPos(
+            window,
+            insert_after,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+    };
+    if ok != 0 {
+        Ok(format!("zorder-{label}"))
+    } else {
+        Err(format!("SetWindowPos({label}) failed ({})", last_error()))
+    }
+}
+
+/// Mirror the fallback the harness used before this moved server-side: direct call, then clear the
+/// foreground lock with an Alt tap, then BringWindowToTop. Whichever works is reported as the path.
+fn focus_window(window: Handle) -> Result<String, String> {
+    if unsafe { SetForegroundWindow(window) } != 0 {
+        return Ok("direct".to_string());
+    }
+    unsafe {
+        keybd_event(VK_MENU, 0, 0, 0);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
+    }
+    if unsafe { SetForegroundWindow(window) } != 0 {
+        return Ok("alt-tap".to_string());
+    }
+    if unsafe { BringWindowToTop(window) } != 0 {
+        return Ok("bring-to-top".to_string());
+    }
+    Err(format!("focus failed ({})", last_error()))
 }
 
 #[repr(C)]
