@@ -1,54 +1,6 @@
 # Changelog
 
-## 1.0.0-rc.9 — Release version bump
-
-- Contributor documentation now states the testing strategy as five layers, each proving only its own thing: Core policy tests, Runtime helper tests, static package validation, CI across x64/ARM64, and real-machine validation that stays a manual release gate (in docs/DEVELOPMENT.md, no new tooling) (PR #60).
-
-- Opening a pull request from a same-repo branch no longer runs the whole validation suite twice: the `push` trigger now fires only for `develop` and `main`, so every PR gets exactly one CI run (PR #61).
-
-- The installer now attempts to remove the inert leftover "Memory Sentry For Spicetify 1.0.0.0" row from Programs and Features — an empty registry entry left by pre-MSI builds whose uninstall string points at a product no longer registered on the machine. The row lives in the machine-wide registry, which a per-user install cannot write without elevation, so the attempt is best-effort and ignored on failure. On an elevated install it deletes the row; otherwise the documented recovery is a one-line elevated PowerShell command in docs/TROUBLESHOOTING.md, which also explains how to tell the real entry from the dead one (PRs #62, #63, #64).
-
-- Every log file in the data folder now rotates at 512 KB like the runtime event log already did: the startup and setup logs can no longer grow without bound from daily launches, and the newest shifted log stays available beside the current file (PR #54).
-
-- A hand-edited `settings.json` value that is not a whole boolean literal (such as `truex` or a truncated `true`) no longer parses as an accidental state: the parser rejects it and the documented default takes over (PR #55).
-
-- The MSI package version now follows the version in `server/Cargo.toml`: the packaging script passes its numeric prefix (prerelease suffixes are dropped, because MSI versions are numeric only) to WiX, so Programs and Features reports the installed release instead of a fixed 1.0.0.0 (PR #50).
-
-- Fixed Spotify occasionally keeping a reduced memory ceiling while you were actively using it: the dashboard now tells the local server the instant its window is focused and on screen, and a fresh report releases every limit even when the server's own window enumeration briefly fails to see the Spotify window (a tray hide/show or a focus hand-off to a modal). This release path only ever restores limits, so it can never cap a foreground Spotify (PR #49).
-- A saved manual limit no longer distorts a Spotify you are actively using: the fixed ceiling takes effect only once the window is backgrounded again, matching the adaptive engine's background-only model (PR #48).
-- The Rust test jobs now run the whole Cargo workspace, so the Core policy, Spotify and Windows crate suites are exercised as part of every CI check (PR #51).
-- The local API layer has its first unit tests, covering the JSON escaping that guards server-built strings, the origin allowlist behind the loopback CORS gate, bearer-token parsing, the constant-time token comparison and the non-finite number guards (PR #53).
-- Internal cleanup with no behavior change: the unused Adapters layer was deleted from the dashboard, the shared resident-memory/ceiling/identity/server-label/tag formulas collapsed into one definition each, and the manual-cap release path does its record lookup once (PRs #56, #57, #58).
-
-- The Win32 command-line discovery now splits PEB offsets by target architecture: x64 keeps the verified values, ARM64 uses the documented Windows ARM64 layout (marked as needing verification on real ARM64 hardware) so native process discovery no longer silently degrades to the PowerShell fallback (PR #68).
-
-- The server no longer leaves a process capped with no durable recovery record: if the backup persist fails after the working-set cap was already applied, the cap is reverted before reporting the failure (PR #69).
-
-- The server no longer leaves `active_caps` inconsistent with on-disk settings after a failed config change: the in-memory caps are snapshotted before `restore_all` mutates them and rolled back if the settings write never happens (PR #70).
-
-- The `MemoryPressure` enum variant order is now identical in the Core and Windows crates, so the explicit mapping in the monitor can never silently mis-map pressure levels (PR #71).
-
-- The status API `pressureLevel` now reports the same memory pressure the adaptive engine acts on (read once per pass from Windows memory resource notifications), instead of computing a separate `GlobalMemoryStatusEx` ratio that could disagree (PR #72).
-
-- The `--self-test` command now runs real adaptive policy checks (DemandHistogram percentiles, `faults_since` with 32-bit wraparound, `decide_adjustment` accept/reject, `memory_tier` classification) and exits non-zero on any failure, instead of printing a message without testing anything (PR #73).
-
-- The MSI `ServerExe` component now uses a stable GUID instead of `Guid="*"`, so the component identity is stable across rebuilds and MajorUpgrade/servicing behaves predictably (PR #74).
-
-- The release workflow body is now conditional: "Release candidate" text for prerelease versions, "Release" text for stable versions, instead of always saying "Release candidate" (PR #75).
-
-- The release workflow no longer has a `paths` filter on its `push` trigger, so a tag `v*` always publishes regardless of which files the commit touched (PR #76).
-
-- The MSI build script now wraps each architecture in try/catch, so x64 is still published even if arm64 compilation or WiX packaging fails (PR #77).
-
-- The MSI now ships BENCHMARKING.md, MARKETPLACE.md, SERVER-MIGRATION.md, RELEASE_CHECKLIST.md and DEVELOPMENT.md under `docs\`, so all contributor docs are available after installation (PR #78).
-
-- The dashboard now fails closed with a clear error if the installer did not substitute the access token (`__MSS_TOKEN__` placeholder), instead of silently returning 403 on every API call (PR #79).
-
-- The dashboard `MSSRequest` now wraps `fetch` in try/catch and throws a clear `Network error contacting local server` message when the local server is unreachable, instead of propagating a raw fetch failure (PR #80).
-
-- The dashboard `Core.js` now guards the `Spicetify` global with a `typeof` check, so the bundle loads outside the Spicetify host with a clear "App bundle is incomplete" message instead of an uncaught `ReferenceError` (PR #81).
-
-- The automatic mode (`enabled=true, customMode=false`) now has a segment in the mode picker: `segAuto` appears between Auto and Custom, driven by `isAuto = config.enabled && !config.customMode`, and `setMode('auto')` configures `enabled=true, autoOptimize=true, customMode=false` (PR #83).
+## Unreleased
 
 ## 1.0.0-rc.7 — Demand-based adaptive policy
 

@@ -1,6 +1,6 @@
 [package]
 name = "memory-sentry-windows"
-version = "1.0.0-rc.9"
+version = "1.0.0-rc.7"
 edition = "2021"
 rust-version = "1.75"
 publish = false

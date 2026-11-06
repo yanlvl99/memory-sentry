@@ -49,8 +49,6 @@ pub(crate) fn build_state(base: PathBuf, settings: Settings) -> AppState {
         window_state: "not-detected".to_string(),
         window_state_reason: "startup".to_string(),
         hidden_since_ms: 0,
-        client_foreground: false,
-        client_state_at_ms: 0,
         last_restore_attempt_at_ms: 0,
         last_memory_sample_at_ms: 0,
         last_status_request_ms: 0,
@@ -66,7 +64,6 @@ pub(crate) fn build_state(base: PathBuf, settings: Settings) -> AppState {
         last_error: String::new(),
         last_action: None,
         shutdown_requested: false,
-        current_pressure: None,
     }
 }
 
@@ -531,23 +528,8 @@ pub(crate) fn apply_initial_cap(
         record.record_applied_cap(role, baseline, false);
     }
     if !persist_or_log(state) {
-        // The cap was already applied to the process (line 518 succeeded). Undo it so the process
-        // is not left with a working-set limit that has no durable recovery record, then drop the
-        // in-memory record and report the failure.
-        if let Some(record) = state.active_caps.get(&process.pid) {
-            let _ = windows::restore_working_set_limits(
-                record.pid,
-                record.creation,
-                record.minimum,
-                record.maximum,
-                record.flags,
-            );
-        }
-        state.active_caps.remove(&process.pid);
-        let _ = persist_or_log(state);
-        return Err(
-            "Cap was applied, but the backup update failed; the cap was reverted.".to_string(),
-        );
+        // Limits were changed, so keep the in-memory record and stop applying further caps.
+        return Err("Cap was applied, but the backup update failed. The in-memory recovery record remains active.".to_string());
     }
     ensure_profile(state, process.pid, process.creation, role, now);
     let mut trimmed = false;
@@ -835,7 +817,6 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
         windows::MemoryPressure::High => MemoryPressure::High,
         windows::MemoryPressure::Normal => MemoryPressure::Normal,
     };
-    state.current_pressure = Some(pressure);
     for (process, role) in targets {
         let record = state.active_caps.get(&process.pid).cloned();
         let Some(record) = record else {
@@ -1074,6 +1055,10 @@ pub(crate) fn update_caps(state: &mut AppState, now: u64) {
     }
 }
 
+pub(crate) fn manual_cap_for(role: ProcessRole, configured: Option<u32>) -> u32 {
+    configured.unwrap_or_else(|| role.manual_default_cap_mb())
+}
+
 /// Rebuild the identity key from a role and an already-parsed sub-label, so a caller that has the
 /// sub-label in hand (the status payload does) never re-parses the command line to derive it. Mirrors
 /// exactly what `AppProfile::identity` produces from `sub_label`.
@@ -1095,6 +1080,17 @@ pub(crate) fn manual_cap_for_identity(settings: &Settings, identity: &str, role:
         .or_else(|| settings.manual_role_caps.get(role.label()).copied())
 }
 
+pub(crate) fn configured_manual_cap(
+    settings: &Settings,
+    process: &windows::ProcessRow,
+    role: ProcessRole,
+) -> Option<u32> {
+    // Per-process identity wins; a bare-role entry (older data, or roles with no sub-label) then
+    // acts as the shared default.
+    let identity = process_identity(&process.cmd, role);
+    manual_cap_for_identity(settings, &identity, role)
+}
+
 pub(crate) fn configured_auto_cap(
     settings: &Settings,
     process: &windows::ProcessRow,
@@ -1106,6 +1102,66 @@ pub(crate) fn configured_auto_cap(
         .get(&identity)
         .copied()
         .or_else(|| settings.auto_role_caps.get(role_name(role)).copied())
+}
+
+pub(crate) fn reconcile_manual_caps(state: &mut AppState) {
+    if !state.snapshot_ok
+        || state.snapshot_at_ms == 0
+        || now_ms().saturating_sub(state.snapshot_at_ms) > SNAPSHOT_STALE_MS
+    {
+        return;
+    }
+    let targets = descendants(state);
+    let wanted: BTreeSet<(u32, u64)> = targets
+        .iter()
+        .map(|(process, _)| target_key(process.pid, process.creation))
+        .collect();
+    let records: Vec<BackupRecord> = state.active_caps.values().cloned().collect();
+    let mut pruned = false;
+    for record in records {
+        let is_live = wanted.contains(&target_key(record.pid, record.creation));
+        if !is_live {
+            // The process is gone or its PID was reused: its original limits are moot and a restore
+            // can never succeed. Drop the record (once, at warn) instead of retrying every poll.
+            state.active_caps.remove(&record.pid);
+            state.profiles.remove(&record.pid);
+            pruned = true;
+            continue;
+        }
+        if !record.manual {
+            if let Err(error) = restore_one_record(state, &record, "manual policy reconciliation") {
+                log_event(
+                    state,
+                    format!("Could not restore live PID {}: {error}", record.pid),
+                    "warn",
+                );
+            }
+        }
+    }
+    if pruned {
+        let _ = persist_or_log(state);
+    }
+    for (process, role) in targets {
+        let cap_mb = manual_cap_for(
+            role,
+            configured_manual_cap(&state.settings, &process, role),
+        );
+        let current = state.active_caps.get(&process.pid).filter(|record| {
+            record.creation == process.creation
+                && record.manual
+                && record.applied_maximum_mb == Some(cap_mb)
+        });
+        if current.is_some() {
+            continue;
+        }
+        if let Err(error) = apply_manual_cap(state, &process, role, cap_mb) {
+            log_event(
+                state,
+                format!("Manual limit skipped for PID {}: {error}", process.pid),
+                "warn",
+            );
+        }
+    }
 }
 
 pub(crate) fn should_manage_limits(settings: &Settings, window_state: &str) -> bool {
@@ -1204,22 +1260,44 @@ pub(crate) fn maybe_auto_optimize(state: &mut AppState, now: u64) {
         }
         return;
     }
-    // A fresh dashboard beacon that says Spotify is focused AND on-screen is the strongest available
-    // foreground signal. It outranks a transient Win32 window-enumeration gap (window_state "unknown")
-    // or a misread "background-visible", both of which otherwise strand a capped process while the user
-    // is actively looking at Spotify. Restore now; the background apply path resumes only once the
-    // beacon ages out or the renderer reports it left the foreground. This only RELEASES limits, so it
-    // cannot violate the "foreground is never capped" invariant.
-    let client_foreground = state.client_foreground
-        && state.client_state_at_ms > 0
-        && now.saturating_sub(state.client_state_at_ms) <= CLIENT_STATE_FRESH_MS;
-    if client_foreground {
-        state.hidden_since_ms = 0;
-        if !state.active_caps.is_empty()
-            && now.saturating_sub(state.last_restore_attempt_at_ms) >= 1500
-        {
-            state.last_restore_attempt_at_ms = now;
-            restore_all(state, "client foreground");
+    if !state.settings.auto_optimize {
+        // An unreadable window state says nothing about eligibility. Restoring here
+        // would drop limits during the instant a tray hide is destroying the window,
+        // and the wait would restart on the next sample instead of finishing.
+        if window_state_is_unknown(&state.window_state) {
+            return;
+        }
+        if should_manage_limits(&state.settings, &state.window_state) {
+            if state.hidden_since_ms == 0 {
+                state.hidden_since_ms = now;
+                log_event(
+                    state,
+                    format!(
+                        "Spotify entered {}; manual limits wait {} second(s).",
+                        state.window_state, state.settings.hidden_delay_seconds
+                    ),
+                    "info",
+                );
+            }
+            if !background_delay_elapsed(
+                state.hidden_since_ms,
+                now,
+                state.settings.hidden_delay_seconds,
+            ) {
+                return;
+            }
+            reconcile_manual_caps(state);
+        } else {
+            state.hidden_since_ms = 0;
+            if !state.active_caps.is_empty()
+                && now.saturating_sub(state.last_restore_attempt_at_ms) >= 1500
+            {
+                state.last_restore_attempt_at_ms = now;
+                restore_all(
+                    state,
+                    &format!("manual policy window {}", state.window_state),
+                );
+            }
         }
         return;
     }
@@ -1339,12 +1417,17 @@ pub(crate) fn maybe_auto_optimize(state: &mut AppState, now: u64) {
         // from a fixed ceiling: restore it so the next pass re-caps from the learned baseline
         // instead of leaving it pinned.
         if has_record {
-            let manual_record = state
+            let was_manual = state
                 .active_caps
                 .get(&process.pid)
-                .cloned()
-                .filter(|r| r.manual);
-            if let Some(record) = manual_record {
+                .map(|r| r.manual)
+                .unwrap_or(false);
+            if was_manual {
+                let record = state
+                    .active_caps
+                    .get(&process.pid)
+                    .cloned()
+                    .expect("record present");
                 let _ = restore_one_record(state, &record, "manual cap released");
             } else {
                 ensure_profile(state, process.pid, process.creation, role, now);
@@ -1481,9 +1564,6 @@ pub(crate) fn start_background_copy() -> Result<(), String> {
     let log_dir = data_dir()?.join("logs");
     fs::create_dir_all(&log_dir)
         .map_err(|e| format!("Could not create startup log directory: {e}"))?;
-    // The launcher log grows one block per launch and is only debug output, so share the 512 KB
-    // rotation every other log uses instead of growing forever.
-    rotate_log_if_large(&log_dir.join("startup.log"));
     let stdout_log = OpenOptions::new()
         .create(true)
         .append(true)
@@ -1513,7 +1593,6 @@ pub(crate) fn append_startup_log(path: &Path, message: &str) -> Result<(), Strin
             parent.display()
         )
     })?;
-    rotate_log_if_large(path);
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)

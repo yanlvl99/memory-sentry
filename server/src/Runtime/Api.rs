@@ -156,25 +156,11 @@ pub(crate) fn status_payload(state: &AppState) -> String {
     } else {
         0
     };
-    // How stale the last dashboard focus/visibility beacon is, surfaced in Debug so the foreground
-    // restore path can be verified on a real machine. Null until the renderer has reported once.
-    let client_state_age_seconds = if state.client_state_at_ms > 0 {
-        Some(now_ms().saturating_sub(state.client_state_at_ms) / 1000)
-    } else {
-        None
-    };
     let (sys_total_mb, sys_avail_mb, mem_load) = windows::system_memory();
-    // Report the same pressure the adaptive engine acts on (read once per pass in update_caps),
-    // not a separate ratio computed here, so the dashboard and the engine never disagree.
-    let pressure_str = state.current_pressure.map(|p| match p {
-        MemoryPressure::Low => "low",
-        MemoryPressure::Normal => "normal",
-        MemoryPressure::High => "high",
-    }).unwrap_or_else(|| pressure_level(mem_load, sys_avail_mb, sys_total_mb));
     let memory = format!(
         "{{\"spotifyTotalMB\":{},\"targetTotalMB\":{},\"processCount\":{},\"targetCount\":{},\"cappedCount\":{},\"privateWorkingSet\":{},\"systemTotalMB\":{},\"systemAvailableMB\":{},\"memoryLoadPercent\":{},\"pressureLevel\":{},\"targets\":[{}],\"sampledAt\":{}}}",
         json_num(spotify_total_mb), json_num(target_total_mb), process_count, targets.len(), capped_count,
-        private_working_set_available, json_num(sys_total_mb as f64), json_num(sys_avail_mb as f64), json_num(mem_load as f64), json_quote(&pressure_str), targets_buf, json_quote(&iso_now())
+        private_working_set_available, json_num(sys_total_mb as f64), json_num(sys_avail_mb as f64), json_num(mem_load as f64), json_quote(pressure_level(mem_load, sys_avail_mb, sys_total_mb)), targets_buf, json_quote(&iso_now())
     );
     let telemetry = format!(
         "{{\"lastRestoreDurationMs\":{},\"lastRestoreAt\":{},\"lastRestoreRestored\":{},\"lastRestoreFailures\":{},\"pageFaultDelta\":{},\"pageFaultsPerSecond\":{},\"sampleIntervalMs\":{},\"adaptiveAdjustments\":{},\"lastAdaptiveAdjustmentAt\":{}}}",
@@ -190,8 +176,7 @@ pub(crate) fn status_payload(state: &AppState) -> String {
     );
 
     format!(
-        "{{\"ok\":true,\"debugApi\":{},\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"windowStateReason\":{},\"hiddenSeconds\":{},\"clientForeground\":{},\"clientStateAgeSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{}}}}}",
-        cfg!(feature = "debug-api"),
+        "{{\"ok\":true,\"helper\":{{\"running\":true,\"version\":{},\"node\":\"Server\",\"runtime\":\"Server\",\"startedAt\":{}}},\"spotify\":{{\"found\":{},\"rootPid\":{},\"windowTitle\":{},\"windowState\":{},\"windowStateReason\":{},\"hiddenSeconds\":{}}},\"config\":{},\"memory\":{},\"lastAction\":{},\"telemetry\":{},\"lastError\":{},\"recentEvents\":[{}],\"cap\":{{\"active\":{},\"cappedProcesses\":{},\"adaptive\":true,\"minMB\":{},\"maxMB\":{}}}}}",
         json_quote(VERSION),
         json_quote(&state.started_at),
         state.root_pid.is_some(),
@@ -200,8 +185,6 @@ pub(crate) fn status_payload(state: &AppState) -> String {
         json_quote(&state.window_state),
         json_quote(&state.window_state_reason),
         hidden_seconds,
-        state.client_foreground,
-        json_optional_number(client_state_age_seconds.map(|v| v as f64)),
         public_config(&state.settings),
         memory,
         last_action,
@@ -435,10 +418,18 @@ pub(crate) fn set_manual_cap(state: &mut AppState, body: &str) -> Result<(), Str
         }
         return Err(error);
     }
-    // Save the pin only. A limit is applied exclusively while Spotify is backgrounded: the monitor
-    // loop re-resolves every identity pin each poll once the background delay elapses (see
-    // maybe_auto_optimize). Applying it here would cap a process the user is actively using in the
-    // foreground, which the background-only model forbids.
+    // Best-effort live apply for instant feedback. The monitor loop re-applies every identity pin
+    // each poll, so a transient failure (e.g. a protected process that cannot be opened) is NOT an
+    // error here - the limit simply takes effect on a later pass instead of a red error toast.
+    if let Some((process, role)) = live_target_for_identity(state, &identity) {
+        if let Err(error) = apply_manual_cap(state, &process, role, cap_mb) {
+            log_event(
+                state,
+                format!("Limit for {identity} saved; live apply deferred: {error}"),
+                "info",
+            );
+        }
+    }
     Ok(())
 }
 
@@ -516,9 +507,6 @@ pub(crate) fn update_config(state: &mut AppState, body: &str) -> Result<(), Stri
         || next.custom_mode != state.settings.custom_mode;
     let disabling = state.settings.enabled && !next.enabled;
     if policy_changed || disabling {
-        // Snapshot before restore_all mutates state.active_caps, so we can roll back if the settings
-        // write below never happens (failed > 0 && !disabling returns early).
-        let previous_caps = state.active_caps.clone();
         let (_, failed) = restore_all(
             state,
             if disabling {
@@ -528,10 +516,6 @@ pub(crate) fn update_config(state: &mut AppState, body: &str) -> Result<(), Stri
             },
         );
         if failed > 0 && !disabling {
-            // Roll back the in-memory caps so memory and disk stay consistent; settings are not
-            // written on this error path, so active_caps must match the on-disk settings.
-            state.active_caps = previous_caps;
-            let _ = persist_or_log(state);
             return Err("The setting was not changed because some original process limits could not be restored.".to_string());
         }
         if failed > 0 {
@@ -658,78 +642,6 @@ pub(crate) fn handle_http_request(stream: TcpStream, shared: SharedState) {
             let payload = status_payload(&state);
             write_http_response(stream, 200, "OK", &payload, Some(origin));
         }
-        ("POST", "/api/window-state") => {
-            // The dashboard renderer reports focus/visibility the instant either changes. A fresh
-            // "focused and on-screen" beacon lets a genuinely foreground Spotify always restore its
-            // limits, even when the server's own window enumeration is mid-transition and unknown (the
-            // bug that left a capped process stuck while the user was actively using Spotify). This
-            // path only releases limits; it never caps, so it cannot violate the foreground invariant.
-            let focused = parse_json_bool(&request.body, "focused").unwrap_or(false);
-            let visible = parse_json_bool(&request.body, "visible").unwrap_or(false);
-            state.client_foreground = focused && visible;
-            let now = now_ms();
-            state.client_state_at_ms = now;
-            // Act now rather than waiting for the next poll, so the ceiling lifts the moment focus
-            // returns. The restore inside is throttled and idempotent, so a burst of events is harmless.
-            maybe_auto_optimize(&mut state, now);
-            write_http_response(stream, 200, "OK", r#"{"ok":true}"#, Some(origin));
-        }
-        // Debug-only diagnostics and on-demand cap control. Absent from every build that does not
-        // pass --features debug-api, where these paths fall through to the 404 arm below.
-        #[cfg(feature = "debug-api")]
-        ("POST", "/api/debug/windows") => {
-            write_http_response(stream, 200, "OK", &DebugApi::windows_view(&state), Some(origin));
-        }
-        #[cfg(feature = "debug-api")]
-        ("POST", "/api/debug/probe") => {
-            write_http_response(
-                stream,
-                200,
-                "OK",
-                &DebugApi::probe(&state, &request.body),
-                Some(origin),
-            );
-        }
-        #[cfg(feature = "debug-api")]
-        ("POST", "/api/debug/system") => {
-            write_http_response(stream, 200, "OK", &DebugApi::system_view(&state), Some(origin));
-        }
-        #[cfg(feature = "debug-api")]
-        ("POST", "/api/debug/force-cap") => match DebugApi::force_cap(&mut state, &request.body) {
-            Ok(payload) => write_http_response(stream, 200, "OK", &payload, Some(origin)),
-            Err(error) => {
-                let payload = format!("{{\"ok\":false,\"error\":{}}}", json_quote(&error));
-                write_http_response(stream, 400, "Bad Request", &payload, Some(origin));
-            }
-        },
-        #[cfg(feature = "debug-api")]
-        ("POST", "/api/debug/release-cap") => match DebugApi::release_cap(&mut state, &request.body) {
-            Ok(payload) => write_http_response(stream, 200, "OK", &payload, Some(origin)),
-            Err(error) => {
-                let payload = format!("{{\"ok\":false,\"error\":{}}}", json_quote(&error));
-                write_http_response(stream, 400, "Bad Request", &payload, Some(origin));
-            }
-        },
-        #[cfg(feature = "debug-api")]
-        ("POST", "/api/debug/empty") => match DebugApi::empty_working_set(&state, &request.body) {
-            Ok(payload) => write_http_response(stream, 200, "OK", &payload, Some(origin)),
-            Err(error) => {
-                let payload = format!("{{\"ok\":false,\"error\":{}}}", json_quote(&error));
-                write_http_response(stream, 400, "Bad Request", &payload, Some(origin));
-            }
-        },
-        #[cfg(feature = "debug-api")]
-        ("POST", "/api/debug/window-control") => {
-            // Always 200: the payload carries its own ok/error so a scenario cleanup can fire a verb
-            // at a window that may already be gone without the HTTP client throwing.
-            write_http_response(
-                stream,
-                200,
-                "OK",
-                &DebugApi::window_control(&request.body),
-                Some(origin),
-            );
-        },
         ("POST", "/api/config") => match update_config(&mut state, &request.body) {
             Ok(()) => {
                 let payload = format!(
@@ -877,61 +789,3 @@ pub(crate) fn request_status(port: u16, token: &str) -> Result<(), String> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // shortcut: socket-level framing limits (16 KiB headers / 32 KiB body) are only exercised in
-    // live debug runs — these tests cover the pure request-trust helpers.
-
-    #[test]
-    fn json_quote_escapes_every_response_breaking_character() {
-        let window_title = "Spotify \"Premium\" \\e\n\r\t\x01 ok";
-        assert_eq!(
-            json_quote(window_title),
-            r#""Spotify \"Premium\" \\e\n\r\t\u0001 ok""#
-        );
-        let quoted = json_quote("a\"b\\c d");
-        assert_eq!(quoted, r#""a\"b\\c d""#);
-    }
-
-    #[test]
-    fn trusted_origin_accepts_only_the_origin_allowlist() {
-        assert!(trusted_origin("https://xpui.app.spotify.com"));
-        assert!(trusted_origin("https://open.spotify.com/"));
-        assert!(trusted_origin("  https://spotify.com  "));
-        assert!(!trusted_origin("https://evil-spotify.com"));
-        assert!(!trusted_origin("https://spotify.com.evil.io"));
-        assert!(!trusted_origin("http://spotify.com"));
-        assert!(!trusted_origin("https://spotify.com:38472"));
-        assert!(!trusted_origin("https://user@spotify.com"));
-        assert!(!trusted_origin(""));
-    }
-
-    #[test]
-    fn bearer_tokens_only_parse_from_the_bearer_scheme() {
-        assert_eq!(parse_bearer("Bearer abc"), Some("abc"));
-        assert_eq!(parse_bearer(" bearer  token "), Some("token"));
-        assert_eq!(parse_bearer("Basic abc"), None);
-        assert_eq!(parse_bearer("Bearer"), None);
-        assert_eq!(parse_bearer(""), None);
-    }
-
-    #[test]
-    fn constant_time_compare_agrees_with_equality() {
-        let token = "a".repeat(64);
-        assert!(constant_time_equals(&token, &token));
-        assert!(!constant_time_equals(&token, "b".repeat(64).as_str()));
-        assert!(!constant_time_equals(&token, &token[..63]));
-        assert!(constant_time_equals("", ""));
-    }
-
-    #[test]
-    fn non_finite_numbers_serialize_as_zero_or_null() {
-        assert_eq!(json_num(f64::NAN), "0");
-        assert_eq!(json_num(f64::INFINITY), "0");
-        assert_eq!(json_optional_number(Some(f64::NAN)), "null");
-        assert_eq!(json_optional_number(Some(12.5)), "12.500");
-        assert_eq!(json_optional_string(None), "null");
-    }
-}

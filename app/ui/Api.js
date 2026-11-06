@@ -1,15 +1,10 @@
 // Local API client and formatting helpers shared by the dashboard.
 async function MSSRequest(path, options = {}) {
-  let response;
-  try {
-    response = await fetch(`${MSS_API}${path}`, {
-      method: options.method || 'GET', cache: 'no-store', mode: 'cors', credentials: 'omit',
-      headers: { Authorization: `Bearer ${MSS_TOKEN}`, ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
-      body: options.body ? JSON.stringify(options.body) : undefined
-    });
-  } catch (err) {
-    throw new Error(`Network error contacting local server: ${err.message}`);
-  }
+  const response = await fetch(`${MSS_API}${path}`, {
+    method: options.method || 'GET', cache: 'no-store', mode: 'cors', credentials: 'omit',
+    headers: { Authorization: `Bearer ${MSS_TOKEN}`, ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
   let payload = {};
   try { payload = await response.json(); } catch (_) { }
   if (!response.ok) throw new Error(payload.error || `${tx('helperApiError')} (HTTP ${response.status}).`);
@@ -38,25 +33,4 @@ function MSSOpenInstallGuide() {
 }
 function MSSDate(value) {
   return value ? new Date(value).toLocaleTimeString(MSS_LOCALE) : '—';
-}
-// Shared value picks so every screen reads memory and ceilings the same way:
-// a private-working-set fallback lives next to the format helper it feeds.
-function MSSResidentMB(memory, process) {
-  return Number((
-    memory && memory.privateWorkingSet
-      ? process.privateWorkingSetMB
-      : process.workingSetMB
-  ) || 0);
-}
-function MSSCeilingMB(process, fallbackMB) {
-  return process && process.capped
-    ? Number(process.limitMB ?? process.manualCapMB ?? fallbackMB)
-    : null;
-}
-function MSSProcessKey(process) {
-  return process.identity || `${process.pid}:${process.creation}`;
-}
-function MSSServerLabel(helper) {
-  if (!helper) return MSS_PT ? 'Servidor' : 'Server';
-  return `${helper.runtime || 'Server'} ${helper.version || ''}`.trim();
 }
