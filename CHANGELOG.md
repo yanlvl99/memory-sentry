@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Every log file in the data folder now rotates at 512 KB like the runtime event log already did: the startup and setup logs can no longer grow without bound from daily launches, and the newest shifted log stays available beside the current file.
+
 - The MSI package version now follows the version in `server/Cargo.toml`: the packaging script passes its numeric prefix (prerelease suffixes are dropped, because MSI versions are numeric only) to WiX, so Programs and Features reports the installed release instead of a fixed 1.0.0.0 (PR #50).
 
 - Fixed Spotify occasionally keeping a reduced memory ceiling while you were actively using it: the dashboard now tells the local server the instant its window is focused and on screen, and a fresh report releases every limit even when the server's own window enumeration briefly fails to see the Spotify window (a tray hide/show or a focus hand-off to a modal). This release path only ever restores limits, so it can never cap a foreground Spotify (PR #49).

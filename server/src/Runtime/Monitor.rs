@@ -1469,6 +1469,9 @@ pub(crate) fn start_background_copy() -> Result<(), String> {
     let log_dir = data_dir()?.join("logs");
     fs::create_dir_all(&log_dir)
         .map_err(|e| format!("Could not create startup log directory: {e}"))?;
+    // The launcher log grows one block per launch and is only debug output, so share the 512 KB
+    // rotation every other log uses instead of growing forever.
+    rotate_log_if_large(&log_dir.join("startup.log"));
     let stdout_log = OpenOptions::new()
         .create(true)
         .append(true)
@@ -1498,6 +1501,7 @@ pub(crate) fn append_startup_log(path: &Path, message: &str) -> Result<(), Strin
             parent.display()
         )
     })?;
+    rotate_log_if_large(path);
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
