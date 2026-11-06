@@ -175,7 +175,7 @@
 
   <Fragment>
     <ComponentGroup Id="ProgramComponents" Directory="INSTALLFOLDER">
-      <Component Id="ServerExe" Guid="*">
+      <Component Id="ServerExe" Guid="{E2076032-0391-4D0E-9936-EFA3F278C853}">
         <File Id="MemorySentryExe" Source="..\..\dist\stage\MemorySentry.exe" KeyPath="yes" />
       </Component>
     </ComponentGroup>
