@@ -5,21 +5,6 @@ on:
       - main
     tags:
       - 'v*'
-    paths:
-      - '.github/workflows/release.yml'
-      - 'server/Cargo.toml'
-      - 'server/Cargo.lock'
-      - 'server/src/Runtime.rs'
-      - 'server/src/Runtime/**'
-      - 'server/src/main.rs'
-      - 'installer/wix/Product.wxs'
-      - 'CHANGELOG.md'
-      - 'scripts/build-package.ps1'
-      - 'tests/validate-package.js'
-      - 'app/index.js'
-      - 'manifest.json'
-      - 'README.md'
-      - 'docs/**'
 permissions:
   contents: write
 
