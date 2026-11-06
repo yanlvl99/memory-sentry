@@ -69,7 +69,7 @@ Copy-Item -Path (Join-Path $Root "app\*") -Destination (Join-Path $Stage "app") 
 foreach ($doc in @("README.md", "LICENSE", "PRIVACY.md", "SECURITY.md")) {
     Copy-Item -LiteralPath (Join-Path $Root $doc) -Destination $Stage -Force
 }
-foreach ($doc in @("INSTALLATION.md", "TROUBLESHOOTING.md")) {
+foreach ($doc in @("INSTALLATION.md", "TROUBLESHOOTING.md", "BENCHMARKING.md", "MARKETPLACE.md", "SERVER-MIGRATION.md", "RELEASE_CHECKLIST.md", "DEVELOPMENT.md")) {
     Copy-Item -LiteralPath (Join-Path $Root ("docs\" + $doc)) -Destination (Join-Path $Stage "docs") -Force
 }
 
