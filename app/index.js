@@ -7,6 +7,10 @@
 const MSS_TOKEN = '__MSS_TOKEN__';
 
 function render() {
+  if (MSS_TOKEN === '__MSS_TOKEN__') {
+    console.error('[Memory Sentry] Installer did not substitute the access token. Reinstall the official MSI.');
+    return null;
+  }
   if (typeof h !== 'function' || !window.MSS) {
     console.error('[Memory Sentry] App bundle is incomplete. Run "spicetify apply" and reopen the app.');
     return null;
