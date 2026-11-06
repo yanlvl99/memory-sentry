@@ -268,9 +268,9 @@ pub fn system_memory() -> (u64, u64, u32) {
 /// constant while neither the Low nor the High condition is signalled.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MemoryPressure {
-    Low,
-    Normal,
     High,
+    Normal,
+    Low,
 }
 
 pub fn memory_pressure() -> MemoryPressure {
