@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Contributor documentation now states the testing strategy as five layers, each proving only its own thing: Core policy tests, Runtime helper tests, static package validation, CI across x64/ARM64, and real-machine validation that stays a manual release gate (in docs/DEVELOPMENT.md, no new tooling) (PR #60).
+
 - Opening a pull request from a same-repo branch no longer runs the whole validation suite twice: the `push` trigger now fires only for `develop` and `main`, so every PR gets exactly one CI run (PR #61).
 
 - The installer now attempts to remove the inert leftover "Memory Sentry For Spicetify 1.0.0.0" row from Programs and Features — an empty registry entry left by pre-MSI builds whose uninstall string points at a product no longer registered on the machine. The row lives in the machine-wide registry, which a per-user install cannot write without elevation, so the attempt is best-effort and ignored on failure. On an elevated install it deletes the row; otherwise the documented recovery is a one-line elevated PowerShell command in docs/TROUBLESHOOTING.md, which also explains how to tell the real entry from the dead one (PRs #62, #63, #64).
