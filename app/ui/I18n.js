@@ -99,3 +99,14 @@ function MSSLocalizeEvent(message) {
   for (const [pattern, replacement] of mappings) if (pattern.test(message)) return message.replace(pattern, replacement);
   return message;
 }
+// Shared screen wording so the same state reads the same everywhere:
+// RolePanel shows the extra "over limit" state, Diagnostics passes the raw server text.
+function MSSProcessTag(process, over, adaptiveText) {
+  if (over) return tx('tagOver');
+  if (process.manual) return tx('tagManual');
+  return process.capped ? (adaptiveText || tx('tagAdaptive')) : tx('tagNoCeiling');
+}
+// Plural countdown/service unit; identical in the settings slider and the warning countdown.
+function MSSCountValue(count) {
+  return tx(count === 1 ? 'second' : 'seconds', { value: count });
+}

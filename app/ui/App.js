@@ -287,7 +287,7 @@ function MSSApp() {
         capMB: warning.capMB,
         defaultMB: warning.defaultMB
       }) + (seconds > 0
-        ? ' ' + tx('lowLimitWait', { countdown: tx(seconds === 1 ? 'second' : 'seconds', { value: seconds }) })
+        ? ' ' + tx('lowLimitWait', { countdown: MSSCountValue(seconds) })
         : ' ' + tx('lowLimitReady'));
       if (countdownComplete) return;
       if (seconds > 0) {
@@ -382,7 +382,7 @@ function MSSApp() {
       await MSSRequest('/api/action', { method: 'POST', body: { action: 'setManualCap', identity: process.identity, capMB } });
       const updatedStatus = await MSSRequest('/api/status');
       setStatus(updatedStatus);
-      setManualInputs(previous => ({ ...previous, [process.identity || `${process.pid}:${process.creation}`]: String(capMB) }));
+      setManualInputs(previous => ({ ...previous, [MSSProcessKey(process)]: String(capMB) }));
       const background = ['minimized', 'hidden', 'background-visible'].includes(updatedStatus.spotify?.windowState);
       setManualMessage({ text: tx(background ? 'limitApplied' : 'limitSavedForBackground'), error: false });
     } catch (err) {
@@ -463,7 +463,7 @@ function MSSApp() {
 
   async function pinCurrentCeiling(process) {
     if (process.manualCapMB != null) return;
-    const key = process.identity || `${process.pid}:${process.creation}`;
+    const key = MSSProcessKey(process);
     const capMB = Number(manualInputs[key] ?? process.limitMB ?? process.defaultLimitMB ?? 36);
     await applyManualLimit(process, capMB);
   }
@@ -473,14 +473,14 @@ function MSSApp() {
   const telemetry = status?.telemetry || {};
   const helperRunning = Boolean(status?.helper?.running);
   const targets = Array.isArray(memory.targets) ? memory.targets : [];
-  const dispMB = t => Number((memory.privateWorkingSet ? t.privateWorkingSetMB : t.workingSetMB) || 0);
+  const dispMB = t => MSSResidentMB(memory, t);
   const listMaxMB = Math.max(1, ...targets.map(dispMB));
   const totalMB = targets.reduce((sum, t) => sum + dispMB(t), 0);
   const sortedTargets = [...targets].sort((a, b) => String(a.role).localeCompare(String(b.role)) || dispMB(b) - dispMB(a));
   const events = Array.isArray(status?.recentEvents) ? status.recentEvents : [];
   // Only Custom (enabled) and Disabled remain, so per-process caps are always editable when enabled.
   const capsEditable = config.enabled === true;
-  const serverLabel = status?.helper ? `${status.helper.runtime || 'Server'} ${status.helper.version || ''}` : (MSS_PT ? 'Servidor' : 'Server');
+  const serverLabel = MSSServerLabel(status?.helper);
   const cappedCount = targets.filter(target => target.capped).length;
   // Only a server we have NEVER reached this session shows the full setup screen. A server that was
   // connected and then dropped keeps the dashboard (last known data) with a non-blocking banner, so a

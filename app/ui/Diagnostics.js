@@ -33,7 +33,7 @@ function Diagnostics(props) {
   const toggleRow = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   const num = (v, suffix = '') => (v == null ? '—' : `${v}${suffix}`);
   const pct = (v) => (Number.isFinite(v) ? `${v.toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 })}%` : '—');
-  const usedMB = (t) => MSSFormatMB(memory.privateWorkingSet ? t.privateWorkingSetMB : t.workingSetMB);
+  const usedMB = (t) => MSSFormatMB(MSSResidentMB(memory, t));
   const needle = filter.trim().toLowerCase();
   const matches = (t) => !needle
     || String(t.pid).includes(needle)
@@ -63,7 +63,7 @@ function Diagnostics(props) {
       MSSDebugField(tx('debugSampleInterval'), telemetry.sampleIntervalMs == null ? '—' : `${telemetry.sampleIntervalMs} ms`)
     )),
     MSSDebugSection(tx('debugServerState'), h('div', { className: 'mss-diag-grid' },
-      MSSDebugField(tx('debugServer'), `${helper.runtime || 'Server'} ${helper.version || ''}`.trim(), true),
+      MSSDebugField(tx('debugServer'), MSSServerLabel(helper), true),
       MSSDebugField(tx('debugStarted'), helper.startedAt ? MSSDate(helper.startedAt) : '—'),
       MSSDebugField(tx('debugRootPid'), num(spotify.rootPid), true),
       MSSDebugField(tx('debugWindowState'), MSSWindowLabel(spotify.windowState || 'not-detected')),
@@ -114,7 +114,7 @@ function Diagnostics(props) {
               h('td', { className: 'mss-diag-num' }, t.capped ? `${MSSFormatMB(t.limitMB)} MB` : '—'),
               h('td', { className: 'mss-diag-num' }, t.demandP95MB == null ? '—' : `${Number(t.demandP95MB).toLocaleString(MSS_LOCALE, { maximumFractionDigits: 1 })} MB`),
               h('td', { className: 'mss-diag-num' }, t.minimumCapMB == null ? '—' : `${t.minimumCapMB} MB`),
-              h('td', null, t.manual ? tx('tagManual') : (t.capped ? t.adaptiveStatus || tx('tagAdaptive') : tx('tagNoCeiling'))),
+              h('td', null, MSSProcessTag(t, false, t.adaptiveStatus)),
               h('td', { className: 'mss-diag-num' }, pct(t.cpuPercent))
             ),
             open ? h('tr', { className: 'mss-diag-detailrow' },
