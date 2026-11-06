@@ -530,8 +530,23 @@ pub(crate) fn apply_initial_cap(
         record.record_applied_cap(role, baseline, false);
     }
     if !persist_or_log(state) {
-        // Limits were changed, so keep the in-memory record and stop applying further caps.
-        return Err("Cap was applied, but the backup update failed. The in-memory recovery record remains active.".to_string());
+        // The cap was already applied to the process (line 518 succeeded). Undo it so the process
+        // is not left with a working-set limit that has no durable recovery record, then drop the
+        // in-memory record and report the failure.
+        if let Some(record) = state.active_caps.get(&process.pid) {
+            let _ = windows::restore_working_set_limits(
+                record.pid,
+                record.creation,
+                record.minimum,
+                record.maximum,
+                record.flags,
+            );
+        }
+        state.active_caps.remove(&process.pid);
+        let _ = persist_or_log(state);
+        return Err(
+            "Cap was applied, but the backup update failed; the cap was reverted.".to_string(),
+        );
     }
     ensure_profile(state, process.pid, process.creation, role, now);
     let mut trimmed = false;
