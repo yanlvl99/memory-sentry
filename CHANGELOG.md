@@ -48,6 +48,8 @@
 
 - The dashboard `Core.js` now guards the `Spicetify` global with a `typeof` check, so the bundle loads outside the Spicetify host with a clear "App bundle is incomplete" message instead of an uncaught `ReferenceError` (PR #81).
 
+- The automatic mode (`enabled=true, customMode=false`) now has a segment in the mode picker: `segAuto` appears between Auto and Custom, driven by `isAuto = config.enabled && !config.customMode`, and `setMode('auto')` configures `enabled=true, autoOptimize=true, customMode=false` (PR #83).
+
 ## 1.0.0-rc.7 — Demand-based adaptive policy
 
 - The debug console now reports each process's page-fault rate next to its cumulative delta, so the exact thrash signal the adaptive engine acts on can be inspected. This is the value a real-machine calibration of the thrash threshold has to read.
