@@ -509,6 +509,9 @@ pub(crate) fn update_config(state: &mut AppState, body: &str) -> Result<(), Stri
         || next.custom_mode != state.settings.custom_mode;
     let disabling = state.settings.enabled && !next.enabled;
     if policy_changed || disabling {
+        // Snapshot before restore_all mutates state.active_caps, so we can roll back if the settings
+        // write below never happens (failed > 0 && !disabling returns early).
+        let previous_caps = state.active_caps.clone();
         let (_, failed) = restore_all(
             state,
             if disabling {
@@ -518,6 +521,10 @@ pub(crate) fn update_config(state: &mut AppState, body: &str) -> Result<(), Stri
             },
         );
         if failed > 0 && !disabling {
+            // Roll back the in-memory caps so memory and disk stay consistent; settings are not
+            // written on this error path, so active_caps must match the on-disk settings.
+            state.active_caps = previous_caps;
+            let _ = persist_or_log(state);
             return Err("The setting was not changed because some original process limits could not be restored.".to_string());
         }
         if failed > 0 {
