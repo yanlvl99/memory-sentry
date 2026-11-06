@@ -25,12 +25,20 @@ const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
 const PROCESS_VM_READ: u32 = 0x0010;
 // NtQueryInformationProcess information class 0 == ProcessBasicInformation.
 const PROCESS_BASIC_INFORMATION_CLASS: u32 = 0;
-// x64 PEB offsets for reading a remote command line. There is no public API for a foreign process's
-// full command line, so we walk PEB -> ProcessParameters -> CommandLine. These are the well-known
-// x64 layout offsets; the size asserts below pin the local struct layouts so Process32/PEB reads
-// cannot silently mis-enumerate on a mismatched ABI.
+// PEB offsets for reading a remote command line. There is no public API for a foreign process's
+// full command line, so we walk PEB -> ProcessParameters -> CommandLine. Offsets are ABI-specific:
+// the x64 values below are well-known and verified on x64 hardware; the aarch64 values are the
+// documented Windows ARM64 layout but MUST be verified on real ARM64 hardware before this path is
+// trusted in production (no aarch64 target is installed in this build environment).
+#[cfg(target_arch = "x86_64")]
 const PEB_PROCESS_PARAMETERS_OFFSET: usize = 0x20;
+#[cfg(target_arch = "aarch64")]
+const PEB_PROCESS_PARAMETERS_OFFSET: usize = 0x20;
+
+#[cfg(target_arch = "x86_64")]
 const RTL_USER_PROCESS_PARAMETERS_COMMAND_LINE_OFFSET: usize = 0x70;
+#[cfg(target_arch = "aarch64")]
+const RTL_USER_PROCESS_PARAMETERS_COMMAND_LINE_OFFSET: usize = 0xD0;
 
 type Handle = *mut c_void;
 
