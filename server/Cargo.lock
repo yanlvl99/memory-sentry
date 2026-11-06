@@ -4,11 +4,11 @@ version = 3
 
 [[package]]
 name = "memory-sentry-core"
-version = "1.0.0-rc.8"
+version = "1.0.0-rc.9"
 
 [[package]]
 name = "memory-sentry-server"
-version = "1.0.0-rc.8"
+version = "1.0.0-rc.9"
 dependencies = [
  "memory-sentry-core",
  "memory-sentry-spotify",
@@ -17,11 +17,11 @@ dependencies = [
 
 [[package]]
 name = "memory-sentry-spotify"
-version = "1.0.0-rc.8"
+version = "1.0.0-rc.9"
 dependencies = [
  "memory-sentry-core",
 ]
 
 [[package]]
 name = "memory-sentry-windows"
-version = "1.0.0-rc.8"
+version = "1.0.0-rc.9"
