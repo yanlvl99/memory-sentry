@@ -683,6 +683,20 @@ mod tests {
     }
 
     #[test]
+    fn bool_parser_requires_a_whole_literal() {
+        let ok = r#"{"enabled": true, "autoOptimize": false}"#;
+        assert_eq!(parse_json_bool(ok, "enabled"), Some(true));
+        assert_eq!(parse_json_bool(ok, "autoOptimize"), Some(false));
+        assert_eq!(parse_json_bool(r#"{"a":true,"b":false}"#, "a"), Some(true));
+        // Typos and quoted values never parse as a bool, matching the number helper's strictness.
+        assert_eq!(parse_json_bool(r#"{"enabled": tru x}"#, "enabled"), None);
+        assert_eq!(parse_json_bool(r#"{"enabled": truex}"#, "enabled"), None);
+        assert_eq!(parse_json_bool(r#"{"enabled": falseish}"#, "enabled"), None);
+        assert_eq!(parse_json_bool(r#"{"enabled":"true"}"#, "enabled"), None);
+        assert_eq!(parse_json_bool(r#"{"a":true}"#, "enabled"), None);
+    }
+
+    #[test]
     fn legacy_settings_default_the_global_toggle_to_enabled() {
         let path = std::env::temp_dir().join(format!(
             "mss-legacy-settings-{}-{}.json",
