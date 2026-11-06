@@ -240,7 +240,7 @@ check('packaging script builds native x64 and arm64 servers and MSIs', /x86_64-p
 check('CI installs the aarch64 Windows target in both workflows', /rustup target add aarch64-pc-windows-msvc/.test(validation) && /rustup target add aarch64-pc-windows-msvc/.test(read('.github/workflows/release.yml')));
 
 check('CI runs package validation', validation.includes('node tests/validate-package.js'));
-check('release versions are aligned on 1.0.0-rc.8', rustCargo.includes('version = "1.0.0-rc.8"') && read('server/Cargo.lock').includes('version = "1.0.0-rc.8"') && rustServer.includes('const VERSION: &str = "1.0.0-rc.8"'));
+check('release versions are aligned on 1.0.0-rc.9', rustCargo.includes('version = "1.0.0-rc.9"') && read('server/Cargo.lock').includes('version = "1.0.0-rc.9"') && rustServer.includes('const VERSION: &str = "1.0.0-rc.9"'));
 check('no doc still claims the Audio ceiling is fixed in automatic mode', ['README.md','SECURITY.md','docs/TROUBLESHOOTING.md','docs/SERVER-MIGRATION.md','docs/MARKETPLACE.md'].every(f => !/not adaptively adjusted|excluded from adaptive adjustments|without adaptive adjustments|excludes them from adaptive cap adjustments/i.test(read(f))));
 check('server rejects a mismatched CPU architecture at configure time', read('server/crates/Windows/src/lib.rs').includes('GetNativeSystemInfo') && rustServer.includes('windows::native_arch()'));
 check('semantic prereleases are never marked as latest stable', read('.github/workflows/release.yml').includes("contains(steps.version.outputs.version, '-')") && read('.github/workflows/release.yml').includes("!contains(steps.version.outputs.version, '-')"));
