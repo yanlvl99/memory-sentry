@@ -47,7 +47,7 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag_name=v$version" >> $env:GITHUB_OUTPUT
       - name: Run Rust tests
-        run: cargo test --manifest-path server/Cargo.toml --locked
+        run: cargo test --manifest-path server/Cargo.toml --workspace --locked
       - name: Build Windows x64 server
         run: cargo build --release --manifest-path server/Cargo.toml --target x86_64-pc-windows-msvc --locked
       - name: Validate JavaScript and package metadata

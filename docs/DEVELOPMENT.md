@@ -11,7 +11,7 @@
 
 From the repository root:
 
-    cargo test --manifest-path server/Cargo.toml --locked
+    cargo test --manifest-path server/Cargo.toml --workspace --locked
     cargo build --release --manifest-path server/Cargo.toml --target x86_64-pc-windows-msvc --locked
     node tests/validate-package.js
 
@@ -21,6 +21,18 @@ For the resulting Windows binary, these commands do not apply working-set caps:
     server\target\x86_64-pc-windows-msvc\release\memory-sentry-server.exe --self-test
 
 The OS check must be run on a Windows 10/11 desktop edition. GitHub-hosted Windows runners are Windows Server, which is intentionally rejected by the product OS check.
+
+## Testing layers and what each proves
+
+Every change lands with an assertion at the layer it lives in, and each layer proves only its own thing:
+
+1. **Core policy tests** (`crates/Core`, plus the shared `Runtime` parser tests in the server suite) run on any OS and prove the adaptive math: demand percentiles, starvation signals, state floors and savings/cap unit rules.
+2. **Runtime helper tests** prove the server-side pure functions that a corrupted input would reach (settings JSON booleans and numbers, log rotation, local API request-trust helpers). Win32 side effects stay out of these tests for the same reason the OS check exists: CI is Windows Server.
+3. **Static package validation** (`node tests/validate-package.js`) proves the shipped source is coherent: built file lists, manifest stack order, installer stage contents, and the pinned user-facing behaviors the dashboard must keep (such as the per-identity limit field and the composition bar). It is a source-level contract, not a runtime test.
+4. **CI** combines all three across x64 and ARM64, and additionally proves both installers build. Green CI means the package builds and the policy is correct; it never proves live behavior on Spotify.
+5. **Real-machine validation** is manual and stays required before a stable call: playback continuity, cap restore, upgrade and uninstall on a real Windows 10/11 desktop (see `RELEASE_CHECKLIST.md`; `BENCHMARKING.md` holds the measurement protocol).
+
+This split is deliberate: behavior automatable without Windows desktop semantics belongs in layers 1-4, and everything that can only be learned from a running Spotify is documented as a manual step instead of faked with mocks of the Win32 surface.
 
 ## Build the setup program
 

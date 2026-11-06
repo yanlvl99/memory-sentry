@@ -1,9 +1,19 @@
 [CmdletBinding()]
-param([string]$Version = "")
+param([string]$Version = "", [switch]$DebugApi)
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
+# A debug package is a local diagnostic build, never a release: it compiles the server with the
+# debug-api feature (extra POST routes for tools/DebugConsole) and produces an MSI named *-debug.msi
+# so it cannot be mistaken for an official installer. The release path passes no --features at all,
+# which is what keeps those routes out of every CI build and every user's machine.
+$CargoArgs = @("build", "--release", "--locked")
+if ($DebugApi) {
+    $CargoArgs += @("--features", "debug-api")
+    Write-Host "DEBUG BUILD: server compiled with --features debug-api; not for distribution." -ForegroundColor Yellow
+}
 
 if (-not $Version) {
     $cargo = Get-Content -LiteralPath (Join-Path $Root "server\Cargo.toml") -Raw
@@ -11,6 +21,8 @@ if (-not $Version) {
     $Version = $Matches[1]
 }
 if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z.+-]*$') { throw "Invalid release version: $Version" }
+# MSI ProductVersion is numeric X.Y.Z only, so a prerelease suffix (e.g. 1.0.0-rc.7) is dropped.
+$MsiVersion = if ($Version -match '^(\d+\.\d+\.\d+)') { $Matches[1] } else { throw "Version $Version has no numeric X.Y.Z prefix for the MSI PackageVersion." }
 
 function Write-Sha256([string]$Path) {
     $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -39,6 +51,10 @@ $Architectures = @(
     @{ Name = "x64";   Target = "x86_64-pc-windows-msvc";  WixArch = "x64" },
     @{ Name = "arm64"; Target = "aarch64-pc-windows-msvc"; WixArch = "arm64" }
 )
+if ($DebugApi) {
+    # A diagnostic build only needs the architecture this machine runs.
+    $Architectures = $Architectures | Where-Object { $_.Name -eq $HostArch }
+}
 
 # Prepare one shared staging folder. The architecture-independent payload (Custom App and docs) is
 # copied once; only MemorySentry.exe is replaced per architecture before each MSI build.
@@ -60,7 +76,7 @@ foreach ($doc in @("INSTALLATION.md", "TROUBLESHOOTING.md")) {
 foreach ($arch in $Architectures) {
     $Name = $arch.Name
     Write-Host ("Building native " + $Name + " server...")
-    & cargo build --release --manifest-path $CargoManifest --target $arch.Target --locked
+    & cargo @CargoArgs --manifest-path $CargoManifest --target $arch.Target
     if ($LASTEXITCODE -ne 0) { throw "Rust release build for " + $Name + " failed with exit code $LASTEXITCODE." }
 
     $Binary = Join-Path $Root ("server\target\" + $arch.Target + "\release\memory-sentry-server.exe")
@@ -80,13 +96,17 @@ foreach ($arch in $Architectures) {
 
     Copy-Item -LiteralPath $Binary -Destination (Join-Path $Stage "MemorySentry.exe") -Force
 
-    $Msi = Join-Path $Dist ("MemorySentryForSpicetify-" + $Version + "-" + $Name + ".msi")
+    $Suffix = ""
+    if ($DebugApi) { $Suffix = "-debug" }
+    $Msi = Join-Path $Dist ("MemorySentryForSpicetify-" + $Version + "-" + $Name + $Suffix + ".msi")
     Push-Location $WixProjDir
     try {
-        & $WixCommand.Source build -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext -arch $arch.WixArch -o $Msi "Product.wxs"
+        & $WixCommand.Source build -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext -d "MssMsiVersion=$MsiVersion" -arch $arch.WixArch -o $Msi "Product.wxs"
         if ($LASTEXITCODE -ne 0) { throw "WiX MSI build for " + $Name + " failed with exit code $LASTEXITCODE." }
     } finally { Pop-Location }
     if (-not (Test-Path -LiteralPath $Msi -PathType Leaf)) { throw "WiX completed without producing $Msi." }
     Write-Sha256 $Msi
-    Write-Host ("Official installer (" + $Name + "): " + $Msi)
+    $Kind = "Official installer"
+    if ($DebugApi) { $Kind = "DEBUG installer" }
+    Write-Host ($Kind + " (" + $Name + "): " + $Msi)
 }

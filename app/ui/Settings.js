@@ -33,7 +33,7 @@ function Settings(props) {
         min: 0.5, max: 10, step: 0.5,
         value: Number(config.hiddenDelaySeconds),
         disabled: controlDisabled,
-        format: v => tx(v === 1 ? 'second' : 'seconds', { value: v }),
+        format: v => MSSCountValue(v),
         onChange: v => onField('hiddenDelaySeconds', v)
       })
     ),

@@ -18,7 +18,7 @@ strip = true
 
 [package]
 name = "memory-sentry-server"
-version = "1.0.0-rc.7"
+version = "1.0.0-rc.8"
 edition = "2021"
 rust-version = "1.75"
 publish = false
@@ -27,6 +27,13 @@ description = "Windows server for Memory Sentry, implemented in Rust"
 [[bin]]
 name = "memory-sentry-server"
 path = "src/main.rs"
+
+# Debug-only HTTP surface (window candidates, per-process memory truth, arming and releasing a cap on
+# demand) for tools/DebugConsole. OFF by default: no CI job, release build or installed MSI passes
+# --features, so an end user's server cannot answer those routes even with a valid local token.
+[features]
+default = []
+debug-api = []
 
 [dependencies]
 memory_sentry_core = { path = "crates/Core", package = "memory-sentry-core" }

@@ -34,3 +34,24 @@ function MSSOpenInstallGuide() {
 function MSSDate(value) {
   return value ? new Date(value).toLocaleTimeString(MSS_LOCALE) : '—';
 }
+// Shared value picks so every screen reads memory and ceilings the same way:
+// a private-working-set fallback lives next to the format helper it feeds.
+function MSSResidentMB(memory, process) {
+  return Number((
+    memory && memory.privateWorkingSet
+      ? process.privateWorkingSetMB
+      : process.workingSetMB
+  ) || 0);
+}
+function MSSCeilingMB(process, fallbackMB) {
+  return process && process.capped
+    ? Number(process.limitMB ?? process.manualCapMB ?? fallbackMB)
+    : null;
+}
+function MSSProcessKey(process) {
+  return process.identity || `${process.pid}:${process.creation}`;
+}
+function MSSServerLabel(helper) {
+  if (!helper) return MSS_PT ? 'Servidor' : 'Server';
+  return `${helper.runtime || 'Server'} ${helper.version || ''}`.trim();
+}
