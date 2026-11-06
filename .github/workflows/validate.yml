@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Test platform-independent Rust policy
-        run: cargo test --manifest-path server/Cargo.toml --locked
+        run: cargo test --manifest-path server/Cargo.toml --workspace --locked
 
   windows-setup-build:
     runs-on: windows-latest
@@ -37,7 +37,7 @@ jobs:
       - name: Validate JavaScript package
         run: node tests/validate-package.js
       - name: Run Rust tests on Windows
-        run: cargo test --manifest-path server/Cargo.toml --locked
+        run: cargo test --manifest-path server/Cargo.toml --workspace --locked
       - name: Build server for Windows x64
         run: cargo build --release --manifest-path server/Cargo.toml --target x86_64-pc-windows-msvc --locked
       - name: Verify safe binary commands
