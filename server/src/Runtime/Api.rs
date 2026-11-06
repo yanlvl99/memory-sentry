@@ -863,3 +863,61 @@ pub(crate) fn request_status(port: u16, token: &str) -> Result<(), String> {
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // shortcut: socket-level framing limits (16 KiB headers / 32 KiB body) are only exercised in
+    // live debug runs — these tests cover the pure request-trust helpers.
+
+    #[test]
+    fn json_quote_escapes_every_response_breaking_character() {
+        let window_title = "Spotify \"Premium\" \\e\n\r\t\x01 ok";
+        assert_eq!(
+            json_quote(window_title),
+            r#""Spotify \"Premium\" \\e\n\r\t\u0001 ok""#
+        );
+        let quoted = json_quote("a\"b\\c d");
+        assert_eq!(quoted, r#""a\"b\\c d""#);
+    }
+
+    #[test]
+    fn trusted_origin_accepts_only_the_origin_allowlist() {
+        assert!(trusted_origin("https://xpui.app.spotify.com"));
+        assert!(trusted_origin("https://open.spotify.com/"));
+        assert!(trusted_origin("  https://spotify.com  "));
+        assert!(!trusted_origin("https://evil-spotify.com"));
+        assert!(!trusted_origin("https://spotify.com.evil.io"));
+        assert!(!trusted_origin("http://spotify.com"));
+        assert!(!trusted_origin("https://spotify.com:38472"));
+        assert!(!trusted_origin("https://user@spotify.com"));
+        assert!(!trusted_origin(""));
+    }
+
+    #[test]
+    fn bearer_tokens_only_parse_from_the_bearer_scheme() {
+        assert_eq!(parse_bearer("Bearer abc"), Some("abc"));
+        assert_eq!(parse_bearer(" bearer  token "), Some("token"));
+        assert_eq!(parse_bearer("Basic abc"), None);
+        assert_eq!(parse_bearer("Bearer"), None);
+        assert_eq!(parse_bearer(""), None);
+    }
+
+    #[test]
+    fn constant_time_compare_agrees_with_equality() {
+        let token = "a".repeat(64);
+        assert!(constant_time_equals(&token, &token));
+        assert!(!constant_time_equals(&token, "b".repeat(64).as_str()));
+        assert!(!constant_time_equals(&token, &token[..63]));
+        assert!(constant_time_equals("", ""));
+    }
+
+    #[test]
+    fn non_finite_numbers_serialize_as_zero_or_null() {
+        assert_eq!(json_num(f64::NAN), "0");
+        assert_eq!(json_num(f64::INFINITY), "0");
+        assert_eq!(json_optional_number(Some(f64::NAN)), "null");
+        assert_eq!(json_optional_number(Some(12.5)), "12.500");
+        assert_eq!(json_optional_string(None), "null");
+    }
+}
