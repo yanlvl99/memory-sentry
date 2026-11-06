@@ -20,6 +20,34 @@
 - The local API layer has its first unit tests, covering the JSON escaping that guards server-built strings, the origin allowlist behind the loopback CORS gate, bearer-token parsing, the constant-time token comparison and the non-finite number guards (PR #53).
 - Internal cleanup with no behavior change: the unused Adapters layer was deleted from the dashboard, the shared resident-memory/ceiling/identity/server-label/tag formulas collapsed into one definition each, and the manual-cap release path does its record lookup once (PRs #56, #57, #58).
 
+- The Win32 command-line discovery now splits PEB offsets by target architecture: x64 keeps the verified values, ARM64 uses the documented Windows ARM64 layout (marked as needing verification on real ARM64 hardware) so native process discovery no longer silently degrades to the PowerShell fallback (PR #68).
+
+- The server no longer leaves a process capped with no durable recovery record: if the backup persist fails after the working-set cap was already applied, the cap is reverted before reporting the failure (PR #69).
+
+- The server no longer leaves `active_caps` inconsistent with on-disk settings after a failed config change: the in-memory caps are snapshotted before `restore_all` mutates them and rolled back if the settings write never happens (PR #70).
+
+- The `MemoryPressure` enum variant order is now identical in the Core and Windows crates, so the explicit mapping in the monitor can never silently mis-map pressure levels (PR #71).
+
+- The status API `pressureLevel` now reports the same memory pressure the adaptive engine acts on (read once per pass from Windows memory resource notifications), instead of computing a separate `GlobalMemoryStatusEx` ratio that could disagree (PR #72).
+
+- The `--self-test` command now runs real adaptive policy checks (DemandHistogram percentiles, `faults_since` with 32-bit wraparound, `decide_adjustment` accept/reject, `memory_tier` classification) and exits non-zero on any failure, instead of printing a message without testing anything (PR #73).
+
+- The MSI `ServerExe` component now uses a stable GUID instead of `Guid="*"`, so the component identity is stable across rebuilds and MajorUpgrade/servicing behaves predictably (PR #74).
+
+- The release workflow body is now conditional: "Release candidate" text for prerelease versions, "Release" text for stable versions, instead of always saying "Release candidate" (PR #75).
+
+- The release workflow no longer has a `paths` filter on its `push` trigger, so a tag `v*` always publishes regardless of which files the commit touched (PR #76).
+
+- The MSI build script now wraps each architecture in try/catch, so x64 is still published even if arm64 compilation or WiX packaging fails (PR #77).
+
+- The MSI now ships BENCHMARKING.md, MARKETPLACE.md, SERVER-MIGRATION.md, RELEASE_CHECKLIST.md and DEVELOPMENT.md under `docs\`, so all contributor docs are available after installation (PR #78).
+
+- The dashboard now fails closed with a clear error if the installer did not substitute the access token (`__MSS_TOKEN__` placeholder), instead of silently returning 403 on every API call (PR #79).
+
+- The dashboard `MSSRequest` now wraps `fetch` in try/catch and throws a clear `Network error contacting local server` message when the local server is unreachable, instead of propagating a raw fetch failure (PR #80).
+
+- The dashboard `Core.js` now guards the `Spicetify` global with a `typeof` check, so the bundle loads outside the Spicetify host with a clear "App bundle is incomplete" message instead of an uncaught `ReferenceError` (PR #81).
+
 ## 1.0.0-rc.7 — Demand-based adaptive policy
 
 - The debug console now reports each process's page-fault rate next to its cumulative delta, so the exact thrash signal the adaptive engine acts on can be inspected. This is the value a real-machine calibration of the thrash threshold has to read.
