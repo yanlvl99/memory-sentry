@@ -69,34 +69,13 @@ function tx(key, vars = {}) {
   for (const [name, replace] of Object.entries(vars)) value = value.replaceAll(`{${name}}`, String(replace));
   return value;
 }
+// Server event messages are emitted in English and never re-read here: this function rewrites only
+// the strings the current server actually produces. Everything else passes through unchanged.
 function MSSLocalizeEvent(message) {
   if (!MSS_PT || typeof message !== 'string') return message;
-  const mappings = [
-    [/^Não foi possível persistir o backup dos limites originais:/, 'Não foi possível salvar o arquivo local de recuperação:'],
-    [/^Existem (\d+) backups de limites; a detecção falhou, então não vou descartá-los\.$/, 'Há $1 registros de recuperação, mas a detecção falhou; os registros foram preservados.'],
-    [/^Recuperação de backups: (\d+) restaurados, (\d+) processos encerrados, (\d+) pendentes\.$/, 'Recuperação: $1 restaurados, $2 processos encerrados, $3 pendentes.'],
-    [/^Spotify ficou (.*); o teto rígido por processo será ativado após (\d+)s\.$/, 'O Spotify ficou $1; os limites adaptativos serão ativados após $2 s.'],
-    [/^Erro inesperado no monitor:/, 'Erro inesperado no monitor:'],
-    [/^Settings updated:/, 'Configurações atualizadas:'],
-    [/^Adaptive working-set cap applied to/, 'Limite adaptativo de working set aplicado a'],
-    [/^Restored original limits for/, 'Limites originais restaurados para'],
-    [/^Adaptive optimization started for/, 'Otimização adaptativa iniciada para'],
-    [/^Adaptive policy raised/, 'Política adaptativa elevou'],
-    [/^Adaptive policy lowered/, 'Política adaptativa reduziu'],
-    [/^Adaptive cap update failed for/, 'Falha ao atualizar o limite adaptativo de'],
-    [/^Adaptive cap update skipped for/, 'Atualização do limite adaptativo ignorada para'],
-    [/^Could not query Spotify processes:/, 'Não foi possível consultar os processos do Spotify:'],
-    [/^Could not inspect the Spotify window:/, 'Não foi possível verificar a janela do Spotify:'],
-    [/^Adaptive working-set cap applied to (.*) PID (\d+): (\d+) MB; (.*)$/, 'Limite adaptativo aplicado a $1 PID $2: $3 MB; $4'],
-    [/^Adaptive optimization started for (\d+) process\(es\); dedicated audio processes remain excluded\.$/, 'Otimização adaptativa iniciada para $1 processo(s); serviços de áudio continuam excluídos.'],
-    [/^Adaptive policy raised (.*) PID (\d+) to (\d+) MB (.*)$/, 'A política adaptativa elevou $1 PID $2 para $3 MB $4'],
-    [/^Adaptive policy lowered (.*) PID (\d+) to (\d+) MB (.*)$/, 'A política adaptativa reduziu $1 PID $2 para $3 MB $4'],
-    [/^Restored original limits for (.*) PID (\d+): (.*)$/, 'Limites originais restaurados para $1 PID $2: $3'],
-    [/^Discarded recovery record for PID (\d+): (.*)$/, 'Registro de recuperação descartado para PID $1: $2'],
-    [/^Settings updated: (.*)$/, 'Configurações atualizadas: $1'],
-    [/^Local API could not start on port (\d+): (.*)$/, 'A API local não iniciou na porta $1: $2']
-  ];
-  for (const [pattern, replacement] of mappings) if (pattern.test(message)) return message.replace(pattern, replacement);
+  // "Settings updated: ..." is the only message emitted by the current server this rewrites.
+  const updated = /^Settings updated: /;
+  if (updated.test(message)) return message.replace(updated, 'Configurações atualizadas: ');
   return message;
 }
 // Shared screen wording so the same state reads the same everywhere:

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Maintenance: the dashboard's event-message translation layer dropped 22 dead regex mappings carried over from the previous server implementation. None of them can match a message the current server emits; the only live case kept was the `Settings updated: ...` prefix rewrite. No behavior change (PR #97).
+
 - Maintenance: the dashboard now has a single config normalizer (`MSSNormalizeConfig`) shared by the initial state, the "server config" load path and the "save applied" response path, replacing three inline copies that had already drifted in defaults handling (PR #96).
 
 - Maintenance: the Custom App dropped dead code - the unused auto and manual icon glyphs and their unused `MSS_ICON_PATHS` registry (nothing rendered them since the mode picker became Custom + Disabled), and `window.MSS` no longer carries a hardcoded `version: '1.0.0'` and `adapters` that nothing reads anywhere (PR #95).
