@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Maintenance: the Custom App dropped dead code - the unused auto and manual icon glyphs and their unused `MSS_ICON_PATHS` registry (nothing rendered them since the mode picker became Custom + Disabled), and `window.MSS` no longer carries a hardcoded `version: '1.0.0'` and `adapters` that nothing reads anywhere (PR #95).
+
 - The installer's access-token substitution now rewrites only the token declaration in `app/index.js` instead of every occurrence of the placeholder in the file: the declaration gets the per-install token, the comment line stays neutral, and a stray literal outside the declaration fails closed instead of silently mangling the app (which is what blanked the dashboard in an earlier release) (PR #94).
 
 - Maintenance: the Win32 process enumeration loop shared by discovery and the forced-stop path now lives in one place with byte-identical behaviour (no user-visible change) (PR #93).
