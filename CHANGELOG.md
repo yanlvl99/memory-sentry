@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CI: `nightly.yml` is now present on `main`, enabling the 06:00 UTC daily schedule for the rolling `nightly-YYYY-MM-DD.N` prerelease builds (the workflow still builds from the `develop` ref). Nothing else changes for users (PR #105).
+
 - CI publishes dated experimental nightly builds from `develop`: at 06:00 UTC every day (skipped when a nightly for the same day already exists) and on demand via workflow dispatch, tagged `nightly-YYYY-MM-DD.N`. Each build is a prerelease-only GitHub Release clearly labelled unstable, intended for dogfooding between official releases; official releases and the Marketplace listing are unchanged. (PRs #103, #104)
 
 - Test coverage: the hand-rolled epoch-to-ISO timestamp helper used for log lines and persistence records is now pinned by known-date tests (epoch zero, a leap day, a 64-bit future date and the 2038 boundary) (PR #102).
