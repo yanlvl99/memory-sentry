@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The installer's access-token substitution now rewrites only the token declaration in `app/index.js` instead of every occurrence of the placeholder in the file: the declaration gets the per-install token, the comment line stays neutral, and a stray literal outside the declaration fails closed instead of silently mangling the app (which is what blanked the dashboard in an earlier release) (PR #94).
+
 - Maintenance: the Win32 process enumeration loop shared by discovery and the forced-stop path now lives in one place with byte-identical behaviour (no user-visible change) (PR #93).
 
 - Test coverage: the hand-rolled base64 decoder used by the PowerShell discovery fallback is now pinned by known-vector tests (no behavior change) (PR #92).
@@ -10,11 +12,11 @@
 
 - The `swap --upgrade` failure message now starts a new line for each unrestored process instead of printing a literal `\n` escape sequence (PR #90).
 
-- The dashboard's memory mode picker now offers exactly two states: Custom and Disabled. The separate Automatic tile is gone; a dashboard previously set to Automatic reads as Custom from now on, since both states manage Spotify the same adaptive way the server already applies (PR #89). I verified the picker and both modes on my PC after installing the corrected build.
+- The dashboard's memory mode picker now offers exactly two states: Custom and Disabled. The separate Automatic tile is gone; a dashboard previously set to Automatic reads as Custom from now on, since both states manage Spotify the same adaptive way the server already applies (PR #89).
 
 - The release workflow's "Set release body" step now declares `shell: bash`, matching the bash conditional it already used; a tag push no longer fails at that step with a PowerShell parse error before the release is published (PR #86).
 
-- Fixed the Memory Sentry dashboard inside Spotify rendering as an entirely blank panel after installing a release whose installer substitutes the per-install access token: the installer's token replace rewrote the new blank-screen guard condition too, turning it into an always-true comparison that made the app bail out before rendering anything. The guard now reads the token prefix instead of the placeholder literal, so the installer's replace cannot rewrite it; the unchanged placeholder check stays on the constant declaration where it belongs (PR #87). I fixed it on my PC by reinstalling with the corrected app and confirming the dashboard loads.
+- Fixed the Memory Sentry dashboard inside Spotify rendering as an entirely blank panel after installing a release whose installer substitutes the per-install access token: the installer's token replace rewrote the new blank-screen guard condition too, turning it into an always-true comparison that made the app bail out before rendering anything. The guard now reads the token prefix instead of the placeholder literal, so the installer's replace cannot rewrite it; the unchanged placeholder check stays on the constant declaration where it belongs (PR #87).
 
 ## 1.0.0-rc.9 — Release version bump
 

@@ -25,7 +25,7 @@ fn write_configured_app(index_path: &Path, token: &str) -> Result<(), String> {
     let source =
         fs::read_to_string(index_path).map_err(|e| format!("Custom App file is missing: {e}"))?;
     let updated = if source.contains("__MSS_TOKEN__") {
-        source.replace("__MSS_TOKEN__", token)
+        replace_token_declaration(&source, token)?
     } else if load_app_token(index_path).as_deref() == Some(token) {
         source
     } else {
@@ -34,6 +34,23 @@ fn write_configured_app(index_path: &Path, token: &str) -> Result<(), String> {
     let temp = index_path.with_extension("js.tmp");
     fs::write(&temp, updated).map_err(|e| format!("Could not stage the Custom App: {e}"))?;
     replace_file(&temp, index_path)
+}
+
+/// Rewrites only the token declaration. A placeholder that happens to appear outside
+/// `const MSS_TOKEN = '__MSS_TOKEN__'` stays untouched - that is the failure mode that used to
+/// blank the dashboard on install, so a stray literal fails closed instead of being substituted.
+fn replace_token_declaration(source: &str, token: &str) -> Result<String, String> {
+    const DECLARATION: &str = "const MSS_TOKEN = '__MSS_TOKEN__'";
+    let start = source.find(DECLARATION).ok_or_else(|| {
+        "The Custom App holds the placeholder outside the token declaration. Reinstall the signed-off package and retry.".to_string()
+    })?;
+    let mut updated = String::with_capacity(source.len() + token.len());
+    updated.push_str(&source[..start]);
+    updated.push_str("const MSS_TOKEN = '");
+    updated.push_str(token);
+    updated.push('\'');
+    updated.push_str(&source[start + DECLARATION.len()..]);
+    Ok(updated)
 }
 
 fn find_spicetify() -> Option<PathBuf> {
@@ -640,4 +657,28 @@ pub fn restore_limits_command() -> Result<(), String> {
     let _ = fs::remove_file(backup_path.with_extension("tsv.tmp"));
     println!("Recovery completed. {} record(s) processed.", records.len());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TOKEN: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    #[test]
+    fn replace_token_declaration_rewrites_only_the_declaration() {
+        let source = "// placeholder ### guard stays: __MSS_TOKEN__ literal not added\nconst MSS_TOKEN = '__MSS_TOKEN__';\n";
+        let updated = replace_token_declaration(source, TOKEN).expect("rewrite");
+        assert!(updated.contains("// placeholder ### guard stays: __MSS_TOKEN__ literal not added"));
+        let expected = format!("const MSS_TOKEN = '{}';", TOKEN);
+        assert!(updated.contains(&expected));
+        assert_eq!(updated.matches(TOKEN).count(), 1);
+    }
+
+    #[test]
+    fn replace_token_declaration_fails_closed_on_a_stray_literal() {
+        let source = "const OTHER = '__MSS_TOKEN__';";
+        let err = replace_token_declaration(source, TOKEN).unwrap_err();
+        assert!(err.contains("outside the token declaration"));
+    }
 }
