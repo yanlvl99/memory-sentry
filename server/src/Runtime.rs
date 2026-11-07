@@ -323,6 +323,14 @@ mod tests {
     }
 
     #[test]
+    fn unix_seconds_format_matches_the_expected_iso() {
+        assert_eq!(iso_from_unix_seconds(0), "1970-01-01T00:00:00Z");
+        assert_eq!(iso_from_unix_seconds(68_214_896), "1972-02-29T12:34:56Z");
+        assert_eq!(iso_from_unix_seconds(1_794_060_000), "2026-11-07T14:00:00Z");
+        assert_eq!(iso_from_unix_seconds(2_147_483_647), "2038-01-19T03:14:07Z");
+    }
+
+    #[test]
     fn foreground_child_process_is_recognized_as_spotify() {
         let spotify_pids = [42, 84, 126];
         assert!(spotify_process_is_foreground(Some(84), spotify_pids));

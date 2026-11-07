@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Test coverage: the hand-rolled epoch-to-ISO timestamp helper used for log lines and persistence records is now pinned by known-date tests (epoch zero, a leap day, a 64-bit future date and the 2038 boundary) (PR #102).
+
 - The GitHub issue templates now point to the current data folder (`%LOCALAPPDATA%\MemorySentryForSpicetify\logs` instead of the legacy `SpicetifyMemorySentry` path) and ask for the current mode vocabulary (Custom/Disabled, per-process Automatic/Manual); the static validator expects the same phrasing (PR #101).
 
 - Maintenance: the four "identity:value" settings parsers now share a single `collect_cap_map` helper with their range rules declared inline, replacing four hand-copied bodies that had to be edited together (PR #100).
