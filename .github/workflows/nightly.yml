@@ -30,7 +30,8 @@ jobs:
         shell: bash
         run: |
           TODAY=$(date -u +%Y-%m-%d)
-          if gh release list --limit 200 --json tagName --jq '.[].tagName' | grep -F "nightly-$TODAY" | grep -q .; then
+          TAGS=$(gh release list --limit 200 --json tagName --jq '.[].tagName' || true)
+          if printf '%s\n' "$TAGS" | grep -F "nightly-$TODAY" | grep -q .; then
             echo "A nightly for $TODAY already exists; the scheduled build is skipped."
             echo "exists=true" >> "$GITHUB_OUTPUT"
           fi
@@ -42,7 +43,8 @@ jobs:
         shell: bash
         run: |
           TODAY=$(date -u +%Y-%m-%d)
-          N=$(gh release list --limit 200 --json tagName --jq '.[].tagName' | grep -F "nightly-$TODAY." | sed 's/nightly-.*\.//' | sort -n | tail -1)
+          TAGS=$(gh release list --limit 200 --json tagName --jq '.[].tagName' || true)
+          N=$(printf '%s\n' "$TAGS" | grep -F "nightly-$TODAY." | sed 's/nightly-.*\.//' | sort -n | tail -1 || true)
           N=${N:-0}
           NEXT=$((N + 1))
           TAG="nightly-$TODAY.$NEXT"

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The nightly workflow now correctly counts same-day builds when no nightly existed yet (previously it aborted on an empty tag list), so the first ever nightly builds as `nightly-YYYY-MM-DD.1` and subsequent same-day builds increment (PRs #103, #104, #107).
+
 - CI: `nightly.yml` is now present on `main`, enabling the 06:00 UTC daily schedule for the rolling `nightly-YYYY-MM-DD.N` prerelease builds (the workflow still builds from the `develop` ref). Nothing else changes for users (PR #105).
 
 - CI publishes dated experimental nightly builds from `develop`: at 06:00 UTC every day (skipped when a nightly for the same day already exists) and on demand via workflow dispatch, tagged `nightly-YYYY-MM-DD.N`. Each build is a prerelease-only GitHub Release clearly labelled unstable, intended for dogfooding between official releases; official releases and the Marketplace listing are unchanged. (PRs #103, #104)
