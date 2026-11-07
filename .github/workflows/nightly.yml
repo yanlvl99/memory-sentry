@@ -57,7 +57,8 @@ jobs:
         run: |
           $cargo = Get-Content server/Cargo.toml -Raw
           if ($cargo -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw "Could not read Cargo version." }
-          "version=$Matches[1]" >> $env:GITHUB_OUTPUT
+          $version = $Matches[1]
+          "version=$version" >> $env:GITHUB_OUTPUT
       - name: Run Rust tests
         if: steps.guard.outputs.exists != 'true'
         run: cargo test --manifest-path server/Cargo.toml --workspace --locked
