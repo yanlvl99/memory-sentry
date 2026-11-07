@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-rc.10 — Release version bump
 
 - CI: the nightly release template now carries a short body that tells the reader what the channel is, how to install and revert, and where to report bugs - matching the current `nightly-2026-11-07.1` release (PR #111).
 
