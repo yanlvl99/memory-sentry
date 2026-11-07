@@ -13,7 +13,7 @@ function MSSRolePanel(props) {
       h('button', { type: 'button', className: 'mss-icon-btn', 'aria-label': tx('closeOptions'), onClick: onClose }, '\u00D7')
     ),
     processes.map(process => {
-      const key = process.identity || `${process.pid}:${process.creation}`;
+      const key = MSSProcessKey(process);
       const defaultMB = Number(process.defaultLimitMB || 36);
       const displayedMemoryMB = memory.privateWorkingSet ? process.privateWorkingSetMB : process.workingSetMB;
       const memoryMB = Number(displayedMemoryMB || 0);
@@ -23,9 +23,9 @@ function MSSRolePanel(props) {
       // that is not currently applied should read the same "Sem limite" as an automatic process,
       // never a misleading "Manual". (Keeps parity with the Hero hover readout.)
       const pinned = process.manualCapMB != null;
-      const ceilingMB = process.capped ? Number(process.limitMB ?? process.manualCapMB ?? defaultMB) : null;
+      const ceilingMB = MSSCeilingMB(process, defaultMB);
       const over = ceilingMB != null && memoryMB > ceilingMB;
-      const tagText = over ? tx('tagOver') : (process.manual ? tx('tagManual') : (process.capped ? tx('tagAdaptive') : tx('tagNoCeiling')));
+      const tagText = MSSProcessTag(process, over);
       return h('div', { className: 'mss-role-proc', key },
         h('span', { className: 'mss-proc-id' },
           h('span', { className: 'mss-pid-dot', style: { background: mssPidColor(process.pid) } }),

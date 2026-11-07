@@ -5,21 +5,6 @@ on:
       - main
     tags:
       - 'v*'
-    paths:
-      - '.github/workflows/release.yml'
-      - 'server/Cargo.toml'
-      - 'server/Cargo.lock'
-      - 'server/src/Runtime.rs'
-      - 'server/src/Runtime/**'
-      - 'server/src/main.rs'
-      - 'installer/wix/Product.wxs'
-      - 'CHANGELOG.md'
-      - 'scripts/build-package.ps1'
-      - 'tests/validate-package.js'
-      - 'app/index.js'
-      - 'manifest.json'
-      - 'README.md'
-      - 'docs/**'
 permissions:
   contents: write
 
@@ -47,7 +32,7 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag_name=v$version" >> $env:GITHUB_OUTPUT
       - name: Run Rust tests
-        run: cargo test --manifest-path server/Cargo.toml --locked
+        run: cargo test --manifest-path server/Cargo.toml --workspace --locked
       - name: Build Windows x64 server
         run: cargo build --release --manifest-path server/Cargo.toml --target x86_64-pc-windows-msvc --locked
       - name: Validate JavaScript and package metadata
@@ -61,14 +46,22 @@ jobs:
           wix extension add -g WixToolset.Util.wixext/5.0.2
           rustup target add aarch64-pc-windows-msvc
           .\scripts\build-package.ps1 -Version "${{ steps.version.outputs.version }}"
+      - name: Set release body
+        id: body
+        shell: bash
+        run: |
+          if [[ "${{ steps.version.outputs.version }}" == *-* ]] || [[ "${{ steps.version.outputs.version }}" == 0.* ]]; then
+            echo "body=**Release candidate.** Do not treat this build as stable until the complete real-desktop Windows 10/11 audio, recovery, upgrade/uninstall, and restore-latency test matrix has passed. Marketplace is discovery only; the official per-user MSI is the sole supported installation method." >> $GITHUB_OUTPUT
+          else
+            echo "body=**Release.** Stable build. The complete real-desktop Windows 10/11 audio, recovery, upgrade/uninstall, and restore-latency test matrix should be reviewed before production use. Marketplace is discovery only; the official per-user MSI is the sole supported installation method." >> $GITHUB_OUTPUT
+          fi
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
-          body: |
-            **Release candidate.** Do not treat this build as stable until the complete real-desktop Windows 10/11 audio, recovery, upgrade/uninstall, and restore-latency test matrix has passed. Marketplace is discovery only; the official per-user MSI is the sole supported installation method.
+          body: ${{ steps.body.outputs.body }}
           prerelease: ${{ contains(steps.version.outputs.version, '-') || startsWith(steps.version.outputs.version, '0.') }}
           make_latest: ${{ !contains(steps.version.outputs.version, '-') && !startsWith(steps.version.outputs.version, '0.') }}
           files: |

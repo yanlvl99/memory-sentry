@@ -1,6 +1,6 @@
 [package]
 name = "memory-sentry-core"
-version = "1.0.0-rc.7"
+version = "1.0.0-rc.9"
 edition = "2021"
 rust-version = "1.75"
 publish = false
