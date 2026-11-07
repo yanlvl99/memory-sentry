@@ -429,7 +429,7 @@ pub fn prepare_upgrade() -> Result<(), String> {
         }
     }
     if !failures.is_empty() {
-        return Err(format!("Upgrade stopped because some working-set limits could not be restored; recovery data was preserved:\\n{}", failures.join("\\n")));
+        return Err(format!("Upgrade stopped because some working-set limits could not be restored; recovery data was preserved:\n{}", failures.join("\n")));
     }
     let _ = fs::remove_file(&backup_path);
     let _ = fs::remove_file(backup_path.with_extension("previous"));
