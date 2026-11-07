@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CI: the nightly release template now carries a short body that tells the reader what the channel is, how to install and revert, and where to report bugs - matching the current `nightly-2026-11-07.1` release (PR #111).
+
 - Test coverage: the GitHub output quoting in the nightly workflow unpacks the Cargo version via an intermediate variable (``$version``) instead of a double-quoted ``$Matches[1]``, which corrupted the version string passed to the release builder (PR #109).
 
 - The nightly workflow now correctly counts same-day builds when no nightly existed yet (previously it aborted on an empty tag list), so the first ever nightly builds as `nightly-YYYY-MM-DD.1` and subsequent same-day builds increment (PRs #103, #104, #107).
