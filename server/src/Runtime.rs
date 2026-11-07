@@ -40,7 +40,9 @@ pub(crate) use Api::*;
 // them into the `Runtime` namespace as well.
 pub(crate) use Monitor::*;
 
-const VERSION: &str = "1.0.0-rc.9";
+// Single source of truth is server/Cargo.toml: this mirrors it at compile time so a release bump
+// only touches one place (the const previously hardcodes rc.9 by hand and drifted from --version).
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_PORT: u16 = 38472;
 const DEFAULT_HIDDEN_DELAY_SECONDS: f64 = 2.0;
 const DEFAULT_REFRESH_INTERVAL_MS: u64 = 700;
