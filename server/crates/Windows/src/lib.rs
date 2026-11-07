@@ -326,6 +326,7 @@ extern "system" {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 struct ProcessEntry32W {
     dw_size: u32,
     cnt_usage: u32,
@@ -1044,16 +1045,10 @@ fn entry_exe_matches(name: &[u16; 260], expected_lower: &str) -> bool {
     text == expected_lower
 }
 
-/// Pure Win32 process discovery, app-agnostic: enumerate every process whose executable base name is
-/// in `targets` (lowercased) with a Toolhelp32 snapshot, read each command line from the remote PEB,
-/// then reuse inspect_process for creation/CPU/working-set/faults. This replaces the per-tick
-/// PowerShell + Get-CimInstance subprocess (tens of MB transient + a WMI query every snapshot) with
-/// in-process calls. The Snapshot/ProcessRow shape is identical so the monitor, API and dashboard are
-/// unchanged. Callers keep a PowerShell fallback for the rare pass where native enumeration or the PEB
-/// reads fail broadly, so discovery is never worse than before. Which executable to target is supplied
-/// by the caller (the application profile) and never hardcoded here.
-pub fn native_process_snapshot(targets: &[&str]) -> Result<Snapshot, String> {
-    let mut snapshot = Snapshot::default();
+/// Collects every process entry in one Toolhelp snapshot. Both walk paths (the discovery and the
+/// forced-stop one) enumerate the same list, so the snapshot open/first/next loop lives here once.
+/// A failed snapshot or enumeration step is an Err; an empty process list is an empty Vec.
+fn process_entries() -> Result<Vec<ProcessEntry32W>, String> {
     let toolhelp = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
     if toolhelp.is_null() || toolhelp as isize == -1 {
         return Err(format!(
@@ -1077,11 +1072,32 @@ pub fn native_process_snapshot(targets: &[&str]) -> Result<Snapshot, String> {
         let error = last_error();
         unsafe { CloseHandle(toolhelp); }
         if error == ERROR_NO_MORE_FILES {
-            return Ok(snapshot);
+            return Ok(Vec::new());
         }
         return Err(format!("Could not enumerate processes (Win32 error {error})."));
     }
+    let mut entries = Vec::new();
     loop {
+        entries.push(entry);
+        if unsafe { Process32NextW(toolhelp, &mut entry) } == 0 {
+            break;
+        }
+    }
+    unsafe { CloseHandle(toolhelp); }
+    Ok(entries)
+}
+
+/// Pure Win32 process discovery, app-agnostic: enumerate every process whose executable base name is
+/// in `targets` (lowercased) with a Toolhelp32 snapshot, read each command line from the remote PEB,
+/// then reuse inspect_process for creation/CPU/working-set/faults. This replaces the per-tick
+/// PowerShell + Get-CimInstance subprocess (tens of MB transient + a WMI query every snapshot) with
+/// in-process calls. The Snapshot/ProcessRow shape is identical so the monitor, API and dashboard are
+/// unchanged. Callers keep a PowerShell fallback for the rare pass where native enumeration or the PEB
+/// reads fail broadly, so discovery is never worse than before. Which executable to target is supplied
+/// by the caller (the application profile) and never hardcoded here.
+pub fn native_process_snapshot(targets: &[&str]) -> Result<Snapshot, String> {
+    let mut snapshot = Snapshot::default();
+    for entry in process_entries()? {
         let pid = entry.th32_process_id;
         let ppid = entry.th32_parent_process_id.max(0) as u32;
         if pid != 0 && targets.iter().any(|target| entry_exe_matches(&entry.sz_exe_file, target)) {
@@ -1111,11 +1127,7 @@ pub fn native_process_snapshot(targets: &[&str]) -> Result<Snapshot, String> {
                 page_fault_count, page_faults_delta: None, page_faults_per_sec: None, error_code,
             });
         }
-        if unsafe { Process32NextW(toolhelp, &mut entry) } == 0 {
-            break;
-        }
     }
-    unsafe { CloseHandle(toolhelp); }
     Ok(snapshot)
 }
 
@@ -1252,43 +1264,12 @@ pub fn process_matches_executable(pid: u32, expected_path: &Path) -> bool {
 pub fn installed_process_pids(installed_exe: &Path) -> Result<Vec<u32>, String> {
     let mut pids = Vec::new();
     let self_pid = current_process_id();
-    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-    if snapshot.is_null() || snapshot as isize == -1 {
-        return Err(format!(
-            "Could not snapshot the process list (Win32 error {}).",
-            last_error()
-        ));
-    }
-    let mut entry = ProcessEntry32W {
-        dw_size: std::mem::size_of::<ProcessEntry32W>() as u32,
-        cnt_usage: 0,
-        th32_process_id: 0,
-        th32_default_heap_id: 0,
-        th32_module_id: 0,
-        cnt_threads: 0,
-        th32_parent_process_id: 0,
-        pc_pri_class_base: 0,
-        dw_flags: 0,
-        sz_exe_file: [0; 260],
-    };
-    if unsafe { Process32FirstW(snapshot, &mut entry) } == 0 {
-        let error = last_error();
-        unsafe { CloseHandle(snapshot); }
-        if error != ERROR_NO_MORE_FILES {
-            return Err(format!("Could not enumerate processes (Win32 error {error})."));
-        }
-        return Ok(pids);
-    }
-    loop {
+    for entry in process_entries()? {
         let pid = entry.th32_process_id;
         if pid != self_pid && process_matches_executable(pid, installed_exe) {
             pids.push(pid);
         }
-        if unsafe { Process32NextW(snapshot, &mut entry) } == 0 {
-            break;
-        }
     }
-    unsafe { CloseHandle(snapshot); }
     Ok(pids)
 }
 

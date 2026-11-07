@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Maintenance: the Win32 process enumeration loop shared by discovery and the forced-stop path now lives in one place with byte-identical behaviour (no user-visible change) (PR #93).
+
 - Test coverage: the hand-rolled base64 decoder used by the PowerShell discovery fallback is now pinned by known-vector tests (no behavior change) (PR #92).
 
 - The server version string now derives from `server/Cargo.toml` at compile time, so a release bump only touches one place (PR #91).
