@@ -191,74 +191,56 @@ pub(crate) fn parse_json_string_array(text: &str, key: &str) -> Option<Vec<Strin
     }
 }
 
-pub(crate) fn parse_manual_role_caps(text: &str) -> BTreeMap<String, u32> {
-    parse_json_string_array(text, "manualRoleCaps")
-        .unwrap_or_default()
+/// Shared collector for the flat "identity:value" settings arrays. Each entry is split at the
+/// LAST ':' (identities may contain ':'), and the value survives only when the identity's role
+/// prefix is known and `accept` passes. Hand-edited files therefore cannot poison the map;
+/// anything else is dropped.
+fn collect_cap_map(
+    entries: Vec<String>,
+    accept: impl Fn(u32) -> bool,
+) -> BTreeMap<String, u32> {
+    entries
         .into_iter()
         .filter_map(|entry| {
-            // Keys are per-process identities that may contain ':' (e.g. `Renderer:#7`), so the
-            // cap is the LAST segment; the leading role prefix must still be a known role.
-            let (identity, cap) = entry.rsplit_once(':')?;
-            let cap = cap.parse::<u32>().ok()?;
-            if !identity_role_prefix_ok(identity) || !(MIN_MANUAL_CAP_MB..=MAX_MANUAL_CAP_MB).contains(&cap) {
+            let (identity, raw) = entry.rsplit_once(':')?;
+            let value = raw.parse::<u32>().ok()?;
+            if !identity_role_prefix_ok(identity) || !accept(value) {
                 return None;
             }
-            Some((identity.to_string(), cap))
+            Some((identity.to_string(), value))
         })
         .collect()
+}
+
+pub(crate) fn parse_manual_role_caps(text: &str) -> BTreeMap<String, u32> {
+    collect_cap_map(
+        parse_json_string_array(text, "manualRoleCaps").unwrap_or_default(),
+        |cap| (MIN_MANUAL_CAP_MB..=MAX_MANUAL_CAP_MB).contains(&cap),
+    )
 }
 
 pub(crate) fn parse_auto_role_caps(text: &str) -> BTreeMap<String, u32> {
-    parse_json_string_array(text, "autoRoleCaps")
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|entry| {
-            let (identity, cap) = entry.rsplit_once(':')?;
-            let cap = cap.parse::<u32>().ok()?;
-            if !identity_role_prefix_ok(identity) || !(MIN_CAP_MB..=MAX_CAP_MB).contains(&cap) {
-                return None;
-            }
-            Some((identity.to_string(), cap))
-        })
-        .collect()
+    collect_cap_map(
+        parse_json_string_array(text, "autoRoleCaps").unwrap_or_default(),
+        |cap| (MIN_CAP_MB..=MAX_CAP_MB).contains(&cap),
+    )
 }
 
-/// Cross-session usage telemetry: a per-identity busy-fraction score (0..=100). Serialized as a flat
-/// array of "identity:score" strings (mirrors manualRoleCaps - the identity may contain ':', so the
-/// score is the LAST segment). The role prefix must be a known role and the score must be 0..=100,
-/// so a hand-edited file cannot poison the map; anything else is dropped.
+/// Cross-session usage telemetry: a per-identity busy-fraction score (0..=100).
 pub(crate) fn parse_usage_scores(text: &str) -> BTreeMap<String, u32> {
-    parse_json_string_array(text, "usageScores")
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|entry| {
-            let (identity, score) = entry.rsplit_once(':')?;
-            let score = score.parse::<u32>().ok()?;
-            if !identity_role_prefix_ok(identity) || score > 100 {
-                return None;
-            }
-            Some((identity.to_string(), score))
-        })
-        .collect()
+    collect_cap_map(
+        parse_json_string_array(text, "usageScores").unwrap_or_default(),
+        |score| score <= 100,
+    )
 }
 
-/// Learned safe edge per identity: the lowest ceiling that did not make the process thrash. Serialized
-/// like autoRoleCaps (flat "identity:cap" strings; identity may contain ':', so the cap is the LAST
-/// segment). Values outside the automatic cap range are dropped so a hand-edited file cannot freeze a
-/// process above its role maximum or push it below the absolute floor.
+/// Learned safe edge per identity: the lowest ceiling that did not make the process thrash.
+/// Values outside the automatic cap range are dropped.
 pub(crate) fn parse_safe_floors(text: &str) -> BTreeMap<String, u32> {
-    parse_json_string_array(text, "safeFloors")
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|entry| {
-            let (identity, cap) = entry.rsplit_once(':')?;
-            let cap = cap.parse::<u32>().ok()?;
-            if !identity_role_prefix_ok(identity) || !(MIN_CAP_MB..=MAX_CAP_MB).contains(&cap) {
-                return None;
-            }
-            Some((identity.to_string(), cap))
-        })
-        .collect()
+    collect_cap_map(
+        parse_json_string_array(text, "safeFloors").unwrap_or_default(),
+        |cap| (MIN_CAP_MB..=MAX_CAP_MB).contains(&cap),
+    )
 }
 
 pub(crate) fn load_settings(path: &Path) -> Result<Settings, String> {
