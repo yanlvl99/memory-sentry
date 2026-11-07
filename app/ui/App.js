@@ -29,7 +29,7 @@ function MSSApp() {
   const [saving, setSaving] = R.useState(false);
   const [settingsLoaded, setSettingsLoaded] = R.useState(false);
   const [debug, setDebug] = R.useState(() => { try { return window.localStorage.getItem('mss.debugMode') === '1'; } catch (_) { return false; } });
-  const [config, setConfig] = R.useState({ enabled: true, autoOptimize: true, customMode: false, hiddenDelaySeconds: 2, refreshIntervalMs: 700, trimToCap: true, optimizeWhenBackground: true, optimizeWhenMinimized: true, optimizeWhenHidden: true });
+  const [config, setConfig] = R.useState(() => MSSNormalizeConfig());
   const [manualInputs, setManualInputs] = R.useState({});
   const [expandedRole, setExpandedRole] = R.useState(null);
   const [hoveredKey, setHoveredKey] = R.useState(null);
@@ -125,8 +125,7 @@ function MSSApp() {
         setError(''); setReconnecting(false);
         everConnected.current = true; failCount.current = 0; setConnection('online');
         if (!settingsLoaded && data.config) {
-          const loadedConfig = { enabled: data.config.enabled !== false, autoOptimize: data.config.autoOptimize !== false, customMode: data.config.customMode === true, hiddenDelaySeconds: data.config.hiddenDelaySeconds || 2, refreshIntervalMs: data.config.refreshIntervalMs || 700, trimToCap: data.config.trimToCap !== false, optimizeWhenBackground: data.config.optimizeWhenBackground !== false, optimizeWhenMinimized: data.config.optimizeWhenMinimized !== false, optimizeWhenHidden: data.config.optimizeWhenHidden !== false };
-          setConfig(loadedConfig);
+          setConfig(MSSNormalizeConfig(data.config));
           setSettingsLoaded(true);
         }
       } catch (err) {
@@ -364,7 +363,7 @@ function MSSApp() {
     try {
       const body = { ...nextConfig };
       const result = await MSSRequest('/api/config', { method: 'POST', body });
-      const savedConfig = { enabled: typeof result.config?.enabled === 'boolean' ? result.config.enabled : nextConfig.enabled !== false, autoOptimize: result.config.autoOptimize, customMode: result.config.customMode === true, hiddenDelaySeconds: result.config.hiddenDelaySeconds, refreshIntervalMs: result.config.refreshIntervalMs, trimToCap: result.config.trimToCap !== false, optimizeWhenBackground: result.config.optimizeWhenBackground !== false, optimizeWhenMinimized: result.config.optimizeWhenMinimized !== false, optimizeWhenHidden: result.config.optimizeWhenHidden !== false };
+      const savedConfig = MSSNormalizeConfig(result.config, nextConfig);
       setConfig(savedConfig);
       setError('');
       try { setStatus(await MSSRequest('/api/status')); } catch (_) { }

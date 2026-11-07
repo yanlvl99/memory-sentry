@@ -11,3 +11,24 @@ const MSS_PT = MSS_LOCALE === 'pt-BR';
 
 // Presence marker: the entry point bails when the window global is missing (bundle mismatch).
 window.MSS = window.MSS || {};
+
+// One normalizer for dashboard config coming from any direction (initial state, GET status
+// payload, POST config response) so the copies cannot drift. `previous` seeds the fields the
+// server may omit (a partial POST response) — it defaults to the built-in defaults.
+const MSS_CONFIG_DEFAULTS = { enabled: true, autoOptimize: true, customMode: false, hiddenDelaySeconds: 2, refreshIntervalMs: 700, trimToCap: true, optimizeWhenBackground: true, optimizeWhenMinimized: true, optimizeWhenHidden: true };
+function MSSNormalizeConfig(raw, previous) {
+  const r = (raw && typeof raw === 'object') ? raw : {};
+  const prev = previous || MSS_CONFIG_DEFAULTS;
+  const num = (value, fallback) => (Number(value) > 0 ? Number(value) : fallback);
+  return {
+    enabled: typeof r.enabled === 'boolean' ? r.enabled : prev.enabled,
+    autoOptimize: r.autoOptimize !== false,
+    customMode: r.customMode === true,
+    hiddenDelaySeconds: num(r.hiddenDelaySeconds, prev.hiddenDelaySeconds),
+    refreshIntervalMs: num(r.refreshIntervalMs, prev.refreshIntervalMs),
+    trimToCap: r.trimToCap !== false,
+    optimizeWhenBackground: r.optimizeWhenBackground !== false,
+    optimizeWhenMinimized: r.optimizeWhenMinimized !== false,
+    optimizeWhenHidden: r.optimizeWhenHidden !== false
+  };
+}
