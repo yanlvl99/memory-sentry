@@ -91,9 +91,9 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: Include the Spotify window state (foreground, visible in background, minimized, or hidden), automatic/manual mode, selected background delay, and how long the issue took to appear.
+      description: Include the Spotify window state (foreground, visible in background, minimized, or hidden), the dashboard memory mode (Custom or Disabled), per-process limit mode (Automatic/Manual), selected background delay, and how long the issue took to appear.
       placeholder: |
-        1. Start playback and note the dashboard power state, policy mode, and delay
+        1. Start playback and note the dashboard mode, per-process limit mode, and delay
         2. Minimize Spotify and wait for the delay plus time for the issue to appear
         3. Restore Spotify to the foreground and describe what happened
     validations:
@@ -132,7 +132,7 @@ body:
     attributes:
       label: Logs and measurements
       description: |
-        Paste relevant files from `%LOCALAPPDATA%\SpicetifyMemorySentry\logs`:
+        Paste relevant files from `%LOCALAPPDATA%\MemorySentryForSpicetify\logs`:
         `setup.log` for setup/configuration failures, `startup.log` for launch failures,
         and `helper.log` for runtime events.
         If available, include Task Manager working-set figures before and after the issue.
