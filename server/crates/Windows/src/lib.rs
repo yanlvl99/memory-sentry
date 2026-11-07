@@ -1728,6 +1728,16 @@ mod tests {
     }
 
     #[test]
+    fn decode_base64_decodes_known_vectors() {
+        // The PowerShell discovery path ships command lines as base64; a wrong alphabet or padding
+        // step here would silently corrupt every identity sub-label, so pin known vectors including
+        // a 1-byte and a 2-byte tail (the remainders), not just 3-byte-aligned payloads.
+        assert_eq!(decode_base64("aGVsbG8gd29ybGQ="), b"hello world".to_vec());
+        assert_eq!(decode_base64("cw=="), b"s".to_vec());
+        assert_eq!(decode_base64("c3BvdA=="), b"spot".to_vec());
+    }
+
+    #[test]
     fn entry_exe_matches_filters_by_case_insensitive_base_name() {
         let mut name = [0u16; 260];
         for (index, unit) in "Spotify.exe".encode_utf16().enumerate() {

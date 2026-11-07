@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Test coverage: the hand-rolled base64 decoder used by the PowerShell discovery fallback is now pinned by known-vector tests (no behavior change) (PR #92).
+
 - The server version string now derives from `server/Cargo.toml` at compile time, so a release bump only touches one place (PR #91).
 
 - The `swap --upgrade` failure message now starts a new line for each unrestored process instead of printing a literal `\n` escape sequence (PR #90).
