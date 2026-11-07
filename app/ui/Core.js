@@ -9,4 +9,5 @@ const MSS_INSTALL_GUIDE_URL = `${MSS_GITHUB_URL}/blob/main/docs/INSTALLATION.md`
 const MSS_LOCALE = (typeof navigator !== 'undefined' && /^pt(?:-|$)/i.test(navigator.language || '')) ? 'pt-BR' : 'en-US';
 const MSS_PT = MSS_LOCALE === 'pt-BR';
 
-window.MSS = window.MSS || { version: '1.0.0', adapters: {} };
+// Presence marker: the entry point bails when the window global is missing (bundle mismatch).
+window.MSS = window.MSS || {};
