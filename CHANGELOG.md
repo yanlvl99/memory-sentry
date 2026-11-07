@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The dashboard's memory mode picker now offers exactly two states: Custom and Disabled. The separate Automatic tile is gone; a dashboard previously set to Automatic reads as Custom from now on, since both states manage Spotify the same adaptive way the server already applies (PR #89). I verified the picker and both modes on my PC after installing the corrected build.
+
 - The release workflow's "Set release body" step now declares `shell: bash`, matching the bash conditional it already used; a tag push no longer fails at that step with a PowerShell parse error before the release is published (PR #86).
 
 - Fixed the Memory Sentry dashboard inside Spotify rendering as an entirely blank panel after installing a release whose installer substitutes the per-install access token: the installer's token replace rewrote the new blank-screen guard condition too, turning it into an always-true comparison that made the app bail out before rendering anything. The guard now reads the token prefix instead of the placeholder literal, so the installer's replace cannot rewrite it; the unchanged placeholder check stays on the constant declaration where it belongs (PR #87). I fixed it on my PC by reinstalling with the corrected app and confirming the dashboard loads.
