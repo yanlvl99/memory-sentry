@@ -1,10 +1,48 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-rc.10 — Release version bump
+
+- CI: the nightly release template now carries a short body that tells the reader what the channel is, how to install and revert, and where to report bugs - matching the current `nightly-2026-11-07.1` release (PR #111).
+
+- Test coverage: the GitHub output quoting in the nightly workflow unpacks the Cargo version via an intermediate variable (``$version``) instead of a double-quoted ``$Matches[1]``, which corrupted the version string passed to the release builder (PR #109).
+
+- The nightly workflow now correctly counts same-day builds when no nightly existed yet (previously it aborted on an empty tag list), so the first ever nightly builds as `nightly-YYYY-MM-DD.1` and subsequent same-day builds increment (PRs #103, #104, #107).
+
+- CI: `nightly.yml` is now present on `main`, enabling the 06:00 UTC daily schedule for the rolling `nightly-YYYY-MM-DD.N` prerelease builds (the workflow still builds from the `develop` ref). Nothing else changes for users (PR #105).
+
+- CI publishes dated experimental nightly builds from `develop`: at 06:00 UTC every day (skipped when a nightly for the same day already exists) and on demand via workflow dispatch, tagged `nightly-YYYY-MM-DD.N`. Each build is a prerelease-only GitHub Release clearly labelled unstable, intended for dogfooding between official releases; official releases and the Marketplace listing are unchanged. (PRs #103, #104)
+
+- Test coverage: the hand-rolled epoch-to-ISO timestamp helper used for log lines and persistence records is now pinned by known-date tests (epoch zero, a leap day, a 64-bit future date and the 2038 boundary) (PR #102).
+
+- The GitHub issue templates now point to the current data folder (`%LOCALAPPDATA%\MemorySentryForSpicetify\logs` instead of the legacy `SpicetifyMemorySentry` path) and ask for the current mode vocabulary (Custom/Disabled, per-process Automatic/Manual); the static validator expects the same phrasing (PR #101).
+
+- Maintenance: the four "identity:value" settings parsers now share a single `collect_cap_map` helper with their range rules declared inline, replacing four hand-copied bodies that had to be edited together (PR #100).
+
+- Maintenance: the ten `Settings { ... }` literals (test fixtures across Runtime.rs plus the fresh-install factory path in Store.rs) now derive from one shared `default_settings()` helper instead of ten hand-written copies that had drifted in indentation and sugar (PR #99).
+
+- Maintenance: the dashboard stylesheet dropped two dead selectors left over from the debug redesign (`.mss-diag-details` and its child); nothing rendered them (PR #98).
+
+- Maintenance: the dashboard's event-message translation layer dropped 22 dead regex mappings carried over from the previous server implementation. None of them can match a message the current server emits; the only live case kept was the `Settings updated: ...` prefix rewrite. No behavior change (PR #97).
+
+- Maintenance: the dashboard now has a single config normalizer (`MSSNormalizeConfig`) shared by the initial state, the "server config" load path and the "save applied" response path, replacing three inline copies that had already drifted in defaults handling (PR #96).
+
+- Maintenance: the Custom App dropped dead code - the unused auto and manual icon glyphs and their unused `MSS_ICON_PATHS` registry (nothing rendered them since the mode picker became Custom + Disabled), and `window.MSS` no longer carries a hardcoded `version: '1.0.0'` and `adapters` that nothing reads anywhere (PR #95).
+
+- The installer's access-token substitution now rewrites only the token declaration in `app/index.js` instead of every occurrence of the placeholder in the file: the declaration gets the per-install token, the comment line stays neutral, and a stray literal outside the declaration fails closed instead of silently mangling the app (which is what blanked the dashboard in an earlier release) (PR #94).
+
+- Maintenance: the Win32 process enumeration loop shared by discovery and the forced-stop path now lives in one place with byte-identical behaviour (no user-visible change) (PR #93).
+
+- Test coverage: the hand-rolled base64 decoder used by the PowerShell discovery fallback is now pinned by known-vector tests (no behavior change) (PR #92).
+
+- The server version string now derives from `server/Cargo.toml` at compile time, so a release bump only touches one place (PR #91).
+
+- The `swap --upgrade` failure message now starts a new line for each unrestored process instead of printing a literal `\n` escape sequence (PR #90).
+
+- The dashboard's memory mode picker now offers exactly two states: Custom and Disabled. The separate Automatic tile is gone; a dashboard previously set to Automatic reads as Custom from now on, since both states manage Spotify the same adaptive way the server already applies (PR #89).
 
 - The release workflow's "Set release body" step now declares `shell: bash`, matching the bash conditional it already used; a tag push no longer fails at that step with a PowerShell parse error before the release is published (PR #86).
 
-- Fixed the Memory Sentry dashboard inside Spotify rendering as an entirely blank panel after installing a release whose installer substitutes the per-install access token: the installer's token replace rewrote the new blank-screen guard condition too, turning it into an always-true comparison that made the app bail out before rendering anything. The guard now reads the token prefix instead of the placeholder literal, so the installer's replace cannot rewrite it; the unchanged placeholder check stays on the constant declaration where it belongs (PR #87). I fixed it on my PC by reinstalling with the corrected app and confirming the dashboard loads.
+- Fixed the Memory Sentry dashboard inside Spotify rendering as an entirely blank panel after installing a release whose installer substitutes the per-install access token: the installer's token replace rewrote the new blank-screen guard condition too, turning it into an always-true comparison that made the app bail out before rendering anything. The guard now reads the token prefix instead of the placeholder literal, so the installer's replace cannot rewrite it; the unchanged placeholder check stays on the constant declaration where it belongs (PR #87).
 
 ## 1.0.0-rc.9 — Release version bump
 

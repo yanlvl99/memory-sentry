@@ -101,7 +101,7 @@ body:
       label: Logs and error messages
       description: |
         Paste dashboard or browser-console errors. If relevant, add logs from
-        `%LOCALAPPDATA%\SpicetifyMemorySentry\logs`: `setup.log` for setup/configuration
+        `%LOCALAPPDATA%\MemorySentryForSpicetify\logs`: `setup.log` for setup/configuration
         failures, `startup.log` for launch failures, or `helper.log` for runtime events.
       render: text
     validations:

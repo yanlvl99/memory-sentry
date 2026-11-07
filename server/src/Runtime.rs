@@ -40,7 +40,9 @@ pub(crate) use Api::*;
 // them into the `Runtime` namespace as well.
 pub(crate) use Monitor::*;
 
-const VERSION: &str = "1.0.0-rc.9";
+// Single source of truth is server/Cargo.toml: this mirrors it at compile time so a release bump
+// only touches one place (the const previously hardcodes rc.9 by hand and drifted from --version).
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_PORT: u16 = 38472;
 const DEFAULT_HIDDEN_DELAY_SECONDS: f64 = 2.0;
 const DEFAULT_REFRESH_INTERVAL_MS: u64 = 700;
@@ -285,11 +287,48 @@ fn program_dir() -> Result<PathBuf, String> {
     Ok(appdata_root()?.join("Programs").join("MemorySentryForSpicetify"))
 }
 
+/// The factory default for every Settings field except the token, shared by the fresh-install
+/// path and the test fixtures. Committing one field addition here reaches both instead of
+/// drifting through ten hand-written struct literals. The token is deliberately empty: the
+/// installer fills it with a per-install random one, tests fill it with a fixture.
+fn default_settings() -> Settings {
+    Settings {
+        port: DEFAULT_PORT,
+        token: String::new(),
+        enabled: true,
+        auto_optimize: true,
+        custom_mode: false,
+        hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
+        refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
+        trim_to_cap: true,
+        optimize_when_background: true,
+        optimize_when_minimized: true,
+        optimize_when_hidden: true,
+        manual_role_caps: BTreeMap::new(),
+        auto_role_caps: BTreeMap::new(),
+        usage_scores: BTreeMap::new(),
+        safe_floors: BTreeMap::new(),
+        schema_version: CURRENT_SCHEMA_VERSION,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use super::*;
+
+    fn test_settings() -> Settings {
+        Settings { token: "a".repeat(64), ..default_settings() }
+    }
+
+    #[test]
+    fn unix_seconds_format_matches_the_expected_iso() {
+        assert_eq!(iso_from_unix_seconds(0), "1970-01-01T00:00:00Z");
+        assert_eq!(iso_from_unix_seconds(68_214_896), "1972-02-29T12:34:56Z");
+        assert_eq!(iso_from_unix_seconds(1_794_060_000), "2026-11-07T14:00:00Z");
+        assert_eq!(iso_from_unix_seconds(2_147_483_647), "2038-01-19T03:14:07Z");
+    }
 
     #[test]
     fn foreground_child_process_is_recognized_as_spotify() {
@@ -331,27 +370,12 @@ mod tests {
             page_faults_per_sec: None,
             error_code: 0,
         };
-        let settings = Settings {
-            port: DEFAULT_PORT,
-            token: "a".repeat(64),
-            enabled: true,
-            auto_optimize: false,
-            custom_mode: false,
-            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
-                refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
-            trim_to_cap: true,
-            optimize_when_background: true,
-            optimize_when_minimized: true,
-            optimize_when_hidden: true,
-            manual_role_caps: BTreeMap::from([
-                ("Renderer".to_string(), 40),
-                ("Renderer:#7".to_string(), 80),
-            ]),
-            auto_role_caps: BTreeMap::new(),
-            usage_scores: BTreeMap::new(),
-            safe_floors: BTreeMap::new(),
-            schema_version: CURRENT_SCHEMA_VERSION,
-        };
+        let mut settings = test_settings();
+        settings.auto_optimize = false;
+        settings.manual_role_caps = BTreeMap::from([
+            ("Renderer".to_string(), 40),
+            ("Renderer:#7".to_string(), 80),
+        ]);
         // The individually-pinned renderer keeps its own cap; a sibling falls back to the role default.
         let pinned = row(11, "spotify.exe --type=renderer --renderer-client-id=7");
         let sibling = row(12, "spotify.exe --type=renderer --renderer-client-id=3");
@@ -376,24 +400,9 @@ mod tests {
             page_faults_per_sec: None,
             error_code: 0,
         };
-        let settings = Settings {
-            port: DEFAULT_PORT,
-            token: "a".repeat(64),
-            enabled: true,
-            auto_optimize: true,
-            custom_mode: true,
-            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
-                refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
-            trim_to_cap: true,
-            optimize_when_background: true,
-            optimize_when_minimized: true,
-            optimize_when_hidden: true,
-            manual_role_caps: BTreeMap::from([("Renderer".to_string(), 40), ("Renderer:#7".to_string(), 90)]),
-            auto_role_caps: BTreeMap::new(),
-            usage_scores: BTreeMap::new(),
-            safe_floors: BTreeMap::new(),
-            schema_version: CURRENT_SCHEMA_VERSION,
-        };
+        let mut settings = test_settings();
+        settings.custom_mode = true;
+        settings.manual_role_caps = BTreeMap::from([("Renderer".to_string(), 40), ("Renderer:#7".to_string(), 90)]);
         // Only the exact identity is a pin; a bare-role default must not pin every sibling.
         assert_eq!(identity_pin_cap(&settings, &row("spotify.exe --type=renderer --renderer-client-id=7"), ProcessRole::Renderer), Some(90));
         assert_eq!(identity_pin_cap(&settings, &row("spotify.exe --type=renderer --renderer-client-id=3"), ProcessRole::Renderer), None);
@@ -406,24 +415,8 @@ mod tests {
             .unwrap_or_default()
             .as_nanos();
         let path = std::env::temp_dir().join(format!("mss-schema-{}-{}.json", std::process::id(), unique));
-        let settings = Settings {
-            port: DEFAULT_PORT,
-            token: "0".repeat(32),
-            enabled: true,
-            auto_optimize: true,
-            custom_mode: false,
-            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
-                refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
-            trim_to_cap: true,
-            optimize_when_background: true,
-            optimize_when_minimized: true,
-            optimize_when_hidden: true,
-            manual_role_caps: BTreeMap::new(),
-            auto_role_caps: BTreeMap::new(),
-            usage_scores: BTreeMap::new(),
-            safe_floors: BTreeMap::new(),
-            schema_version: CURRENT_SCHEMA_VERSION,
-        };
+        let mut settings = test_settings();
+        settings.token = "0".repeat(32);
         write_settings(&path, &settings).expect("write settings");
         let raw = fs::read_to_string(&path).unwrap();
         assert!(raw.contains("\"schemaVersion\""));
@@ -475,24 +468,7 @@ mod tests {
 
     #[test]
     fn managed_limits_are_active_only_outside_the_foreground() {
-        let settings = Settings {
-            port: DEFAULT_PORT,
-            token: "a".repeat(64),
-            enabled: true,
-            auto_optimize: true,
-            custom_mode: false,
-            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
-                refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
-            trim_to_cap: true,
-            optimize_when_background: true,
-            optimize_when_minimized: true,
-            optimize_when_hidden: true,
-            manual_role_caps: BTreeMap::new(),
-            auto_role_caps: BTreeMap::new(),
-            usage_scores: BTreeMap::new(),
-            safe_floors: BTreeMap::new(),
-        schema_version: CURRENT_SCHEMA_VERSION,
-        };
+        let settings = test_settings();
         assert!(should_manage_limits(&settings, "minimized"));
         assert!(should_manage_limits(&settings, "hidden"));
         assert!(should_manage_limits(&settings, "background-visible"));
@@ -513,24 +489,9 @@ mod tests {
             std::process::id(),
             now_ms()
         ));
-        let settings = Settings {
-            port: DEFAULT_PORT,
-            token: "a".repeat(64),
-            enabled: true,
-            auto_optimize: true,
-            custom_mode: false,
-            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
-                refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
-            trim_to_cap: true,
-            optimize_when_background: false,
-            optimize_when_minimized: false,
-            optimize_when_hidden: true,
-            manual_role_caps: BTreeMap::new(),
-            auto_role_caps: BTreeMap::new(),
-            usage_scores: BTreeMap::new(),
-            safe_floors: BTreeMap::new(),
-        schema_version: CURRENT_SCHEMA_VERSION,
-        };
+        let mut settings = test_settings();
+        settings.optimize_when_background = false;
+        settings.optimize_when_minimized = false;
         let mut state = build_state(base.clone(), settings);
         state.window_state = "window-not-found".to_string();
         state.hidden_since_ms = 10_000;
@@ -554,24 +515,7 @@ mod tests {
             std::process::id(),
             now_ms()
         ));
-        let settings = Settings {
-            port: DEFAULT_PORT,
-            token: "a".repeat(64),
-            enabled: true,
-            auto_optimize: true,
-            custom_mode: false,
-            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
-                refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
-            trim_to_cap: true,
-            optimize_when_background: true,
-            optimize_when_minimized: true,
-            optimize_when_hidden: true,
-            manual_role_caps: BTreeMap::new(),
-            auto_role_caps: BTreeMap::new(),
-            usage_scores: BTreeMap::new(),
-            safe_floors: BTreeMap::new(),
-        schema_version: CURRENT_SCHEMA_VERSION,
-        };
+        let settings = test_settings();
         let mut state = build_state(base.clone(), settings);
         update_config(
             &mut state,
@@ -632,24 +576,9 @@ mod tests {
 
     #[test]
     fn role_override_is_reused_when_a_new_pid_replaces_an_old_process() {
-        let mut settings = Settings {
-            port: DEFAULT_PORT,
-            token: "a".repeat(64),
-            enabled: true,
-            auto_optimize: false,
-            custom_mode: false,
-            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
-                refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
-            trim_to_cap: true,
-            optimize_when_background: true,
-            optimize_when_minimized: true,
-            optimize_when_hidden: true,
-            manual_role_caps: BTreeMap::from([("Renderer".to_string(), 52)]),
-            auto_role_caps: BTreeMap::new(),
-            usage_scores: BTreeMap::new(),
-            safe_floors: BTreeMap::new(),
-            schema_version: CURRENT_SCHEMA_VERSION,
-        };
+        let mut settings = test_settings();
+        settings.auto_optimize = false;
+        settings.manual_role_caps = BTreeMap::from([("Renderer".to_string(), 52)]);
         let restarted_process = windows::ProcessRow {
             pid: 99,
             ppid: 1,
@@ -718,24 +647,7 @@ mod tests {
             std::process::id(),
             now_ms()
         ));
-        let settings = Settings {
-            port: DEFAULT_PORT,
-            token: "a".repeat(64),
-            enabled: true,
-            auto_optimize: true,
-            custom_mode: false,
-            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
-                refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
-            trim_to_cap: true,
-            optimize_when_background: true,
-            optimize_when_minimized: true,
-            optimize_when_hidden: true,
-            manual_role_caps: BTreeMap::new(),
-            auto_role_caps: BTreeMap::new(),
-            usage_scores: BTreeMap::new(),
-            safe_floors: BTreeMap::new(),
-        schema_version: CURRENT_SCHEMA_VERSION,
-        };
+        let settings = test_settings();
         let mut state = build_state(base.clone(), settings);
         update_config(&mut state, r#"{"enabled":false}"#)
             .expect("plugin should disable with no active process caps");
@@ -756,24 +668,9 @@ mod tests {
             std::process::id(),
             now_ms()
         ));
-        let mut settings = Settings {
-            port: DEFAULT_PORT,
-            token: "a".repeat(64),
-            enabled: false,
-            auto_optimize: false,
-            custom_mode: false,
-            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
-                refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
-            trim_to_cap: true,
-            optimize_when_background: true,
-            optimize_when_minimized: true,
-            optimize_when_hidden: true,
-            manual_role_caps: BTreeMap::new(),
-            auto_role_caps: BTreeMap::new(),
-            usage_scores: BTreeMap::new(),
-            safe_floors: BTreeMap::new(),
-        schema_version: CURRENT_SCHEMA_VERSION,
-        };
+        let mut settings = test_settings();
+        settings.enabled = false;
+        settings.auto_optimize = false;
         settings.manual_role_caps.insert("Renderer".to_string(), 52);
         settings.safe_floors.insert("Renderer:#7".to_string(), 20);
         write_settings(&path, &settings).expect("settings should be written");
@@ -787,24 +684,9 @@ mod tests {
 
     #[test]
     fn status_payload_exposes_the_per_process_fault_rate() {
-        let settings = Settings {
-            port: DEFAULT_PORT,
-            token: "a".repeat(64),
-            enabled: false,
-            auto_optimize: false,
-            custom_mode: false,
-            hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
-            refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
-            trim_to_cap: true,
-            optimize_when_background: true,
-            optimize_when_minimized: true,
-            optimize_when_hidden: true,
-            manual_role_caps: BTreeMap::new(),
-            auto_role_caps: BTreeMap::new(),
-            usage_scores: BTreeMap::new(),
-            safe_floors: BTreeMap::new(),
-            schema_version: CURRENT_SCHEMA_VERSION,
-        };
+        let mut settings = test_settings();
+        settings.enabled = false;
+        settings.auto_optimize = false;
         let mut state = build_state(std::env::temp_dir().join("mss-status-payload-test"), settings);
         state.root_pid = Some(10);
         state.snapshot.processes.push(windows::ProcessRow {
