@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The installer's access-token substitution now rewrites only the token declaration in `app/index.js` instead of every occurrence of the placeholder in the file: the declaration gets the per-install token, the comment line stays neutral, and a stray literal outside the declaration fails closed instead of silently mangling the app (which is what blanked the dashboard in an earlier release). I verified the result on my PC by installing the corrected build and loading the dashboard (PR #94).
+
 - Maintenance: the Win32 process enumeration loop shared by discovery and the forced-stop path now lives in one place with byte-identical behaviour (no user-visible change) (PR #93).
 
 - Test coverage: the hand-rolled base64 decoder used by the PowerShell discovery fallback is now pinned by known-vector tests (no behavior change) (PR #92).
