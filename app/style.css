@@ -293,8 +293,6 @@
 .mss-diag-grid > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .mss-diag-grid span { font-size: 11px; color: var(--mss-dim); }
 .mss-diag-grid strong { font-size: 13px; font-variant-numeric: tabular-nums; }
-.mss-diag-details { border: 1px solid var(--mss-border); border-radius: 8px; padding: 6px 10px; }
-.mss-diag-details > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--mss-muted); }
 .mss-diag-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11.5px; }
 .mss-diag-table th, .mss-diag-table td { text-align: left; padding: 3px 10px 3px 0; border-top: 1px solid var(--mss-border); white-space: nowrap; }
 .mss-diag-table th { color: var(--mss-dim); font-weight: 600; }
