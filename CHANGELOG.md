@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The GitHub issue templates now point to the current data folder (`%LOCALAPPDATA%\MemorySentryForSpicetify\logs` instead of the legacy `SpicetifyMemorySentry` path) and ask for the current mode vocabulary (Custom/Disabled, per-process Automatic/Manual); the static validator expects the same phrasing (PR #101).
+
 - Maintenance: the four "identity:value" settings parsers now share a single `collect_cap_map` helper with their range rules declared inline, replacing four hand-copied bodies that had to be edited together (PR #100).
 
 - Maintenance: the ten `Settings { ... }` literals (test fixtures across Runtime.rs plus the fresh-install factory path in Store.rs) now derive from one shared `default_settings()` helper instead of ten hand-written copies that had drifted in indentation and sugar (PR #99).
