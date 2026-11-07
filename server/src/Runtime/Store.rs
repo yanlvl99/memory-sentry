@@ -360,24 +360,7 @@ pub(crate) fn bootstrap_default_settings(path: &Path) -> Result<Settings, String
         let _ = fs::remove_file(&bad);
         let _ = fs::rename(path, &bad);
     }
-    let settings = Settings {
-        port: DEFAULT_PORT,
-        token: windows::random_token()?,
-        enabled: true,
-        auto_optimize: true,
-        custom_mode: false,
-        hidden_delay_seconds: DEFAULT_HIDDEN_DELAY_SECONDS,
-        refresh_interval_ms: DEFAULT_REFRESH_INTERVAL_MS,
-        trim_to_cap: true,
-        optimize_when_background: true,
-        optimize_when_minimized: true,
-        optimize_when_hidden: true,
-        manual_role_caps: BTreeMap::new(),
-        auto_role_caps: BTreeMap::new(),
-        usage_scores: BTreeMap::new(),
-        safe_floors: BTreeMap::new(),
-        schema_version: CURRENT_SCHEMA_VERSION,
-    };
+    let settings = Settings { token: windows::random_token()?, ..default_settings() };
     write_settings(path, &settings)?;
     Ok(settings)
 }

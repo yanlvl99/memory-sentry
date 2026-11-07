@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Maintenance: the ten `Settings { ... }` literals (test fixtures across Runtime.rs plus the fresh-install factory path in Store.rs) now derive from one shared `default_settings()` helper instead of ten hand-written copies that had drifted in indentation and sugar (PR #99).
+
 - Maintenance: the dashboard stylesheet dropped two dead selectors left over from the debug redesign (`.mss-diag-details` and its child); nothing rendered them (PR #98).
 
 - Maintenance: the dashboard's event-message translation layer dropped 22 dead regex mappings carried over from the previous server implementation. None of them can match a message the current server emits; the only live case kept was the `Settings updated: ...` prefix rewrite. No behavior change (PR #97).
