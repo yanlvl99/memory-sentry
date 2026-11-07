@@ -7,7 +7,9 @@
 const MSS_TOKEN = '__MSS_TOKEN__';
 
 function render() {
-  if (MSS_TOKEN === '__MSS_TOKEN__') {
+  // Sem literal do placeholder aqui: o replace do instalador e global, e trocaria a condicao
+  // tambem, tornando o guard sempre verdadeiro (tela preta na rc.9).
+  if (MSS_TOKEN.startsWith('__MSS')) {
     console.error('[Memory Sentry] Installer did not substitute the access token. Reinstall the official MSI.');
     return null;
   }
