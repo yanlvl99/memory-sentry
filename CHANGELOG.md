@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Test coverage: the GitHub output quoting in the nightly workflow unpacks the Cargo version via an intermediate variable (``$version``) instead of a double-quoted ``$Matches[1]``, which corrupted the version string passed to the release builder (PR #109).
+
 - The nightly workflow now correctly counts same-day builds when no nightly existed yet (previously it aborted on an empty tag list), so the first ever nightly builds as `nightly-YYYY-MM-DD.1` and subsequent same-day builds increment (PRs #103, #104, #107).
 
 - CI: `nightly.yml` is now present on `main`, enabling the 06:00 UTC daily schedule for the rolling `nightly-YYYY-MM-DD.N` prerelease builds (the workflow still builds from the `develop` ref). Nothing else changes for users (PR #105).
