@@ -96,9 +96,7 @@ function MSSApp() {
     setManualMessage(null);
     const nextConfig = mode === 'disabled'
       ? { ...config, enabled: false }
-      : mode === 'auto'
-        ? { ...config, enabled: true, autoOptimize: true, customMode: false }
-        : { ...config, enabled: true, autoOptimize: true, customMode: true };
+      : { ...config, enabled: true, autoOptimize: true, customMode: true };
     const saved = await saveSettings(nextConfig);
     if (!saved) return;
     if (config.enabled !== nextConfig.enabled) showActivationToast(nextConfig.enabled);

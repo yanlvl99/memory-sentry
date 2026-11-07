@@ -12,8 +12,7 @@ function Hero(props) {
   } = props;
 
   const modeDisabled = saving || !helperRunning || typeof status?.config?.enabled !== 'boolean';
-  const isCustom = config.enabled && config.customMode;
-  const isAuto = config.enabled && !config.customMode;
+  const isCustom = config.enabled;
   const isDisabled = !config.enabled;
 
   // A renderer sub-label is a live disambiguator only: the Chromium id is a per-session counter
@@ -55,7 +54,6 @@ function Hero(props) {
         )
       ),
       h('div', { className: 'mss-seg mss-seg-mode', role: 'group', 'aria-label': tx('modeLabel') },
-        h(MSSSegButton, { label: tx('segAuto'), iconName: 'auto', active: isAuto, disabled: modeDisabled, iconOnly: true, onClick: () => { void setMode('auto'); } }),
         h(MSSSegButton, { label: tx('segCustom'), iconName: 'custom', active: isCustom, disabled: modeDisabled, iconOnly: true, onClick: () => { void setMode('custom'); } }),
         h(MSSSegButton, { label: tx('segDisabled'), iconName: 'disabled', active: isDisabled, disabled: modeDisabled, iconOnly: true, onClick: () => { void setMode('disabled'); } })
       )
