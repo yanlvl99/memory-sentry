@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Test coverage: the hand-rolled base64 decoder used by the PowerShell discovery fallback is now pinned by known-vector tests (no behavior change) (PR #92).
+
 - The dashboard's memory mode picker now offers exactly two states: Custom and Disabled. The separate Automatic tile is gone; a dashboard previously set to Automatic reads as Custom from now on, since both states manage Spotify the same adaptive way the server already applies (PR #89). I verified the picker and both modes on my PC after installing the corrected build.
 
 - The release workflow's "Set release body" step now declares `shell: bash`, matching the bash conditional it already used; a tag push no longer fails at that step with a PowerShell parse error before the release is published (PR #86).
