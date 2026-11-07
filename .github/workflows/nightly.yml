@@ -1,0 +1,58 @@
+name: Nightly build (develop)
+on:
+  schedule:
+    # 06:00 UTC daily (03:00 in Sao Paulo). A rolling channel, not a release: it exists so the
+    # current state of develop is installable for dogfooding every day with zero ceremony.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+
+jobs:
+  build-nightly:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve the version from Cargo.toml
+        id: ver
+        shell: pwsh
+        run: |
+          $cargo = Get-Content server/Cargo.toml -Raw
+          if ($cargo -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw "Could not read Cargo version." }
+          "version=$Matches[1]" >> $env:GITHUB_OUTPUT
+      - name: Run Rust tests
+        run: cargo test --manifest-path server/Cargo.toml --workspace --locked
+      - name: Validate JavaScript and package metadata
+        run: node tests/validate-package.js
+      - name: Install WiX v5 and build the per-user MSIs (x64 + arm64)
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          $env:Path += ";$env:USERPROFILE\.dotnet\tools"
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+          wix extension add -g WixToolset.Util.wixext/5.0.2
+          rustup target add aarch64-pc-windows-msvc
+          .\scripts\build-package.ps1 -Version "${{ steps.ver.outputs.version }}"
+      - name: Remove the previous rolling nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          if gh release view nightly &> /dev/null; then
+            gh release delete nightly --yes --cleanup-tag
+          fi
+      - name: Create the rolling nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          NOTES="**Experimental nightly build.** Built automatically from the latest merges into \`develop\`. Untested on a real Windows desktop; may break Spotify. Install only if you want to dogfood Memory Sentry between official releases. Installs over the current build (major upgrade); remove any time via the normal uninstall flow. The weekly rc / stable channels are unchanged."
+          gh release create nightly \
+            dist/MemorySentryForSpicetify-*.msi dist/MemorySentryForSpicetify-*.msi.sha256 \
+            --prerelease \
+            --title "Nightly build (develop)" \
+            --notes "$NOTES"

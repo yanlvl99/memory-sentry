@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CI now builds a rolling experimental nightly from `develop` once a day (plus an ad-hoc workflow dispatch for manual dogfood builds). The nightly is a prerelease-only GitHub Release clearly labelled unstable and intended for testers between official releases; official releases and the Marketplace listing are unchanged (PR #103).
+
 - Test coverage: the hand-rolled epoch-to-ISO timestamp helper used for log lines and persistence records is now pinned by known-date tests (epoch zero, a leap day, a 64-bit future date and the 2038 boundary) (PR #102).
 
 - The GitHub issue templates now point to the current data folder (`%LOCALAPPDATA%\MemorySentryForSpicetify\logs` instead of the legacy `SpicetifyMemorySentry` path) and ask for the current mode vocabulary (Custom/Disabled, per-process Automatic/Manual); the static validator expects the same phrasing (PR #101).
